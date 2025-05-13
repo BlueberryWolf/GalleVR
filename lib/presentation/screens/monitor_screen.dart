@@ -28,9 +28,9 @@ class _MonitorScreenState extends State<MonitorScreen> {
   bool _rebuildScheduled = false;
 
   final List<_ProcessingEvent> _events = [];
-  StreamSubscription? _photoSubscription;
-  StreamSubscription? _configSubscription;
-  StreamSubscription? _errorSubscription;
+  StreamSubscription<String>? _photoSubscription;
+  StreamSubscription<ConfigModel>? _configSubscription;
+  StreamSubscription<PhotoErrorEvent>? _errorSubscription;
 
   @override
   void initState() {

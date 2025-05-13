@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
 import '../../core/platform/platform_service.dart';
@@ -45,7 +46,7 @@ class ConfigRepository {
       await configFile.writeAsString(jsonString);
     } catch (e) {
       // Handle error (could throw or log)
-      print('Error saving config: $e');
+      debugPrint('Error saving config: $e');
     }
   }
 

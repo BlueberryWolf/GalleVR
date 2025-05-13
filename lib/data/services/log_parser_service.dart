@@ -9,7 +9,8 @@ import '../models/config_model.dart';
 
 // Service for parsing VRChat logs
 class LogParserService {
-  final PlatformService _platformService;
+  // Platform service for platform-specific operations
+  final PlatformService platformService;
 
   // Regular expressions for parsing logs
   static final _roomNameRegex = RegExp(r'\[Behaviour\] Entering Room: (.*?)(?:\r?\n|$)');
@@ -66,7 +67,7 @@ class LogParserService {
 
   // Default constructor
   LogParserService({PlatformService? platformService})
-      : _platformService = platformService ?? PlatformServiceFactory.getPlatformService();
+      : platformService = platformService ?? PlatformServiceFactory.getPlatformService();
 
   // Get metadata from the latest log file
   Future<LogMetadata?> getLatestLogMetadata(ConfigModel config) async {

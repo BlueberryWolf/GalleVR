@@ -187,6 +187,18 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       return 0;
 
+    case WM_CLOSE:
+      if (GetAsyncKeyState(VK_MENU) & 0x8000) {
+        quit_on_close_ = true;
+        break;
+      }
+
+      if (!quit_on_close_) {
+        ShowWindow(hwnd, SW_HIDE);
+        return 0;
+      }
+      break;
+
     case WM_DPICHANGED: {
       auto newRectSize = reinterpret_cast<RECT*>(lparam);
       LONG newWidth = newRectSize->right - newRectSize->left;

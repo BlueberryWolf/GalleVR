@@ -1,13 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:developer' as developer;
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
 import '../models/config_model.dart';
 import '../models/log_metadata.dart';
 import '../models/photo_metadata.dart';
-import '../models/verification_models.dart';
 import '../repositories/photo_metadata_repository.dart';
 import '../../core/audio/sound_service.dart';
 import 'app_service_manager.dart';
@@ -19,18 +19,15 @@ class PhotoUploadService {
   final VRChatService _vrchatService;
   final PhotoMetadataRepository _photoMetadataRepository;
   final SoundService _soundService;
-  final AppServiceManager _appServiceManager;
 
   PhotoUploadService({
     VRChatService? vrchatService,
     PhotoMetadataRepository? photoMetadataRepository,
     SoundService? soundService,
-    AppServiceManager? appServiceManager,
   }) : _vrchatService = vrchatService ?? VRChatService(),
        _photoMetadataRepository =
            photoMetadataRepository ?? PhotoMetadataRepository(),
-       _soundService = soundService ?? AppServiceManager().soundService,
-       _appServiceManager = appServiceManager ?? AppServiceManager();
+       _soundService = soundService ?? AppServiceManager().soundService;
 
   Future<bool> uploadPhoto(
     String photoPath,
@@ -164,6 +161,27 @@ class PhotoUploadService {
             'Played upload complete sound',
             name: 'PhotoUploadService',
           );
+
+          if (config.autoCopyGalleryUrl && galleryUrl.isNotEmpty) {
+            try {
+              await Clipboard.setData(ClipboardData(text: galleryUrl));
+              developer.log(
+                'Copied gallery URL to clipboard: $galleryUrl',
+                name: 'PhotoUploadService',
+              );
+              PhotoEventService().notifyError(
+                'info',
+                'Gallery URL copied to clipboard',
+                photoPath: photoPath,
+              );
+            } catch (e) {
+              developer.log(
+                'Error copying gallery URL to clipboard: $e',
+                name: 'PhotoUploadService',
+                error: e,
+              );
+            }
+          }
 
           return true;
         } else {

@@ -6,7 +6,7 @@ import '../theme/app_theme.dart';
 class StepIndicator extends StatelessWidget {
   // List of step labels
   final List<String> steps;
-  
+
   // Current active step (0-based)
   final int currentStep;
 
@@ -26,7 +26,7 @@ class StepIndicator extends StatelessWidget {
           final stepIndex = index ~/ 2;
           final isActive = stepIndex <= currentStep;
           final isCurrentStep = stepIndex == currentStep;
-          
+
           return Expanded(
             child: Column(
               children: [
@@ -45,7 +45,7 @@ class StepIndicator extends StatelessWidget {
                     boxShadow: isActive
                         ? [
                             BoxShadow(
-                              color: AppTheme.primaryColor.withOpacity(0.3),
+                              color: AppTheme.primaryColor.withAlpha(77),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
@@ -78,7 +78,7 @@ class StepIndicator extends StatelessWidget {
         } else {
           final leftStepIndex = index ~/ 2;
           final isActive = leftStepIndex < currentStep;
-          
+
           return Expanded(
             child: Container(
               height: 2,

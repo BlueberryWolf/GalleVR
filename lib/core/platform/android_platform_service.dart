@@ -79,6 +79,10 @@ class AndroidPlatformService implements PlatformService {
       final String logsPath = path.join(externalPath, 'Documents', 'Logs');
       return logsPath;
     } catch (e) {
+      developer.log(
+        'Error getting logs directory: $e',
+        name: 'AndroidPlatformService',
+      );
       return '';
     }
   }
@@ -148,7 +152,12 @@ class AndroidPlatformService implements PlatformService {
 
         knownFiles.clear();
         knownFiles.addAll(currentFiles);
-      } catch (e) {}
+      } catch (e) {
+        developer.log(
+          'Error in directory watcher: $e',
+          name: 'AndroidPlatformService',
+        );
+      }
     });
 
     return controller.stream;

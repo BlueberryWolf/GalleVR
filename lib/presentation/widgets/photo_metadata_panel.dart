@@ -8,20 +8,20 @@ import '../theme/app_theme.dart';
 class PhotoMetadataPanel extends StatelessWidget {
   // The photo metadata to display
   final PhotoMetadata? metadata;
-  
+
   // Whether the panel is open
   final bool isOpen;
-  
+
   // Callback when the panel is closed
   final VoidCallback onClose;
 
   // Default constructor
   const PhotoMetadataPanel({
-    Key? key,
+    super.key,
     required this.metadata,
     required this.isOpen,
     required this.onClose,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -35,16 +35,16 @@ class PhotoMetadataPanel extends StatelessWidget {
       width: MediaQuery.of(context).size.width * 0.8,
       height: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.7),
+        color: Colors.black.withAlpha(179),
         border: Border(
           left: BorderSide(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withAlpha(26),
             width: 1,
           ),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.5),
+            color: Colors.black.withAlpha(128),
             blurRadius: 10,
             offset: const Offset(-5, 0),
           ),
@@ -74,10 +74,10 @@ class PhotoMetadataPanel extends StatelessWidget {
               ],
             ),
           ),
-          
+
           // Divider
-          Divider(color: Colors.white.withOpacity(0.1)),
-          
+          Divider(color: Colors.white.withAlpha(26)),
+
           // Content
           Expanded(
             child: metadata == null
@@ -124,13 +124,13 @@ class PhotoMetadataPanel extends StatelessWidget {
             _buildWorldInfo(context, metadata!.world!),
             const SizedBox(height: 24),
           ],
-          
+
           // Players list
           if (metadata?.players.isNotEmpty == true) ...[
             _buildSectionHeader('Players (${metadata!.players.length})'),
             ...metadata!.players.map((player) => _buildPlayerItem(player)),
           ],
-          
+
           // No metadata message
           if (metadata?.world == null && metadata?.players.isEmpty == true)
             _buildNoMetadataMessage(),
@@ -145,7 +145,7 @@ class PhotoMetadataPanel extends StatelessWidget {
       child: Text(
         title,
         style: TextStyle(
-          color: Colors.white.withOpacity(0.7),
+          color: Colors.white.withAlpha(179),
           fontSize: 14,
           fontWeight: FontWeight.bold,
         ),
@@ -155,11 +155,11 @@ class PhotoMetadataPanel extends StatelessWidget {
 
   Widget _buildWorldInfo(BuildContext context, WorldInfo world) {
     return Card(
-      color: AppTheme.surfaceColor.withOpacity(0.3),
+      color: AppTheme.surfaceColor.withAlpha(77),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withAlpha(26),
         ),
       ),
       child: InkWell(
@@ -194,7 +194,7 @@ class PhotoMetadataPanel extends StatelessWidget {
                       Text(
                         'Instance: ${world.instanceId}',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withAlpha(179),
                           fontSize: 12,
                         ),
                         maxLines: 1,
@@ -206,7 +206,7 @@ class PhotoMetadataPanel extends StatelessWidget {
               ),
               Icon(
                 Icons.open_in_new,
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withAlpha(128),
                 size: 16,
               ),
             ],
@@ -218,11 +218,11 @@ class PhotoMetadataPanel extends StatelessWidget {
 
   Widget _buildPlayerItem(Player player) {
     return Card(
-      color: AppTheme.surfaceColor.withOpacity(0.2),
+      color: AppTheme.surfaceColor.withAlpha(51),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withAlpha(13),
         ),
       ),
       margin: const EdgeInsets.only(bottom: 8),
@@ -252,7 +252,7 @@ class PhotoMetadataPanel extends StatelessWidget {
               ),
               Icon(
                 Icons.arrow_forward_ios,
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withAlpha(77),
                 size: 14,
               ),
             ],
@@ -263,14 +263,14 @@ class PhotoMetadataPanel extends StatelessWidget {
   }
 
   void _launchVRChatWorldUrl(String worldId) async {
-    final url = Uri.parse('https://vrchat.com/home/world/$worldId');
+    final url = Uri.parse('https://vr.blueberry.coffee/world/$worldId');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
   }
 
   void _launchVRChatUserUrl(String userId) async {
-    final url = Uri.parse('https://vrchat.com/home/user/$userId');
+    final url = Uri.parse('https://vr.blueberry.coffee/user/$userId');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }

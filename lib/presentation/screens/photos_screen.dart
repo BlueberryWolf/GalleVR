@@ -46,7 +46,7 @@ class _PhotosScreenState extends State<PhotosScreen> {
 
   final ScrollController _scrollController = ScrollController();
 
-  StreamSubscription? _photoAddedSubscription;
+  StreamSubscription<String>? _photoAddedSubscription;
 
   @override
   void initState() {
@@ -242,7 +242,9 @@ class _PhotosScreenState extends State<PhotosScreen> {
     try {
       final imageCacheService = ImageCacheService();
       await imageCacheService.getThumbnail(filePath, size: 200);
-    } catch (e) {}
+    } catch (e) {
+      developer.log('Error preloading thumbnail: $e', name: 'PhotosScreen');
+    }
   }
 
   static List<FileSystemEntity> _findPhotosInDirectory(
@@ -967,6 +969,7 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
               onPressed: _toggleMetadataPanel,
               tooltip: 'Show metadata',
             ),
+          if (_metadata?.galleryUrl != null)
           IconButton(
             icon: Container(
               padding: const EdgeInsets.all(8),
@@ -976,12 +979,30 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
               ),
               child: const Icon(Icons.share_rounded, color: Colors.white),
             ),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Sharing ${path.basename(widget.entity.path)}'),
-                ),
-              );
+            onPressed: () async {
+              if (_metadata?.galleryUrl != null) {
+                final galleryUrl = _metadata!.galleryUrl!;
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+                await Clipboard.setData(ClipboardData(text: galleryUrl));
+
+                if (mounted) {
+                  scaffoldMessenger.showSnackBar(
+                    SnackBar(
+                      content: const Text('Gallery URL copied to clipboard'),
+                      action: SnackBarAction(
+                        label: 'Open',
+                        onPressed: () => _openInGallery(),
+                      ),
+                    ),
+                  );
+                }
+
+                developer.log(
+                  'Copied gallery URL to clipboard: $galleryUrl',
+                  name: 'PhotoDetailScreen',
+                );
+              }
             },
           ),
           IconButton(
@@ -1290,23 +1311,7 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
                 ],
               ),
             ),
-            if (hasMetadata)
-              ElevatedButton.icon(
-                icon: const Icon(Icons.info_outline),
-                label: const Text('Photo Info'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      _isMetadataPanelOpen
-                          ? AppTheme.primaryColor
-                          : AppTheme.surfaceColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: _toggleMetadataPanel,
-              )
-            else if (_metadata?.galleryUrl != null)
+            if (_metadata?.galleryUrl != null)
               ElevatedButton.icon(
                 icon: const Icon(Icons.open_in_browser_rounded),
                 label: const Text('Open in Gallery'),
@@ -1319,27 +1324,7 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
                 ),
                 onPressed: () => _openInGallery(),
               )
-            else
-              ElevatedButton.icon(
-                icon: const Icon(Icons.open_in_browser_rounded),
-                label: const Text('Open in Browser'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'No gallery link available for ${path.basename(widget.entity.path)}',
-                      ),
-                    ),
-                  );
-                },
-              ),
+
           ],
         ),
       ),

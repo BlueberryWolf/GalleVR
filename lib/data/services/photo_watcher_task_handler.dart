@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:developer' as developer;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path/path.dart' as path;
@@ -9,7 +8,6 @@ import '../../core/platform/platform_service.dart';
 import '../../core/platform/platform_service_factory.dart';
 import '../models/config_model.dart';
 import '../repositories/config_repository.dart';
-import 'photo_event_service.dart';
 
 // Top-level callback function for the foreground task
 @pragma('vm:entry-point')

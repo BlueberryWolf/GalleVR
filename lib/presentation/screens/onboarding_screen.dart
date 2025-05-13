@@ -36,6 +36,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   bool _isVRChatRunning = false;
   bool _justEnabledLogging = false;
 
+  // Windows settings
+  bool _minimizeToTray = true;
+  bool _startWithWindows = false;
+
   int _currentStep = 0;
 
   final PageController _pageController = PageController();
@@ -216,8 +220,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   void _nextStep() {
-    // For Windows, add an extra step for VRChat logging
-    final maxStep = Platform.isAndroid ? 2 : (Platform.isWindows ? 2 : 1);
+    // For Windows, add extra steps for VRChat logging and Windows settings
+    final maxStep = Platform.isAndroid ? 2 : (Platform.isWindows ? 3 : 1);
     if (_currentStep < maxStep) {
       setState(() {
         _currentStep++;
@@ -244,6 +248,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _proceedToWebConnection() async {
+    // Save Windows settings if on Windows
+    if (Platform.isWindows) {
+      await _saveWindowsSettings();
+    }
+
     await _appServiceManager.markOnboardingComplete();
 
     if (mounted) {
@@ -254,6 +263,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _proceedToLocalOnly() async {
+    // Save Windows settings if on Windows
+    if (Platform.isWindows) {
+      await _saveWindowsSettings();
+    }
+
     await _appServiceManager.markOnboardingComplete();
 
     if (mounted) {
@@ -261,6 +275,33 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         MaterialPageRoute(
           builder: (context) => const HomeScreen(initialTabIndex: 0),
         ),
+      );
+    }
+  }
+
+  // Save Windows settings to config
+  Future<void> _saveWindowsSettings() async {
+    try {
+      // Load current config
+      final currentConfig = _appServiceManager.config;
+      if (currentConfig != null) {
+        // Create updated config with Windows settings
+        final updatedConfig = currentConfig.copyWith(
+          minimizeToTray: _minimizeToTray,
+          startWithWindows: _startWithWindows,
+        );
+
+        // Save the updated config
+        await _appServiceManager.updateConfig(updatedConfig);
+        developer.log(
+          'Windows settings saved during onboarding: minimizeToTray=$_minimizeToTray, startWithWindows=$_startWithWindows',
+          name: 'OnboardingScreen',
+        );
+      }
+    } catch (e) {
+      developer.log(
+        'Error saving Windows settings: $e',
+        name: 'OnboardingScreen',
       );
     }
   }
@@ -342,6 +383,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   ? [
                       _buildWelcomeStep(size, isSmallScreen),
                       _buildVRChatLoggingStep(size, isSmallScreen),
+                      _buildWindowsSettingsStep(size, isSmallScreen),
                       _buildConnectionStep(size, isSmallScreen),
                     ]
                   : [
@@ -1198,6 +1240,218 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWindowsSettingsStep(Size size, bool isSmallScreen) {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: isSmallScreen ? 24 : 48,
+          vertical: 24,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(height: size.height * 0.05),
+
+            ShaderMask(
+              shaderCallback:
+                  (bounds) => LinearGradient(
+                    colors: [
+                      AppTheme.primaryLightColor,
+                      AppTheme.primaryColor,
+                      AppTheme.primaryDarkColor,
+                    ],
+                  ).createShader(bounds),
+              child: Text(
+                'Windows Settings',
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 28 : 36,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+
+            SizedBox(height: size.height * 0.02),
+
+            Text(
+              'Configure how GalleVR behaves on your system',
+              style: TextStyle(
+                fontSize: isSmallScreen ? 16 : 18,
+                color: Color.fromRGBO(255, 255, 255, 0.8),
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+
+            SizedBox(height: size.height * 0.06),
+
+            _buildWindowsSettingsCard(),
+
+            SizedBox(height: size.height * 0.06),
+
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 56,
+                    child: OutlinedButton(
+                      onPressed: _previousStep,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white30),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text('Back'),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+
+                Expanded(
+                  child: SizedBox(
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _nextStep,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text('Next'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            SizedBox(height: size.height * 0.04),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWindowsSettingsCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color.fromRGBO(0, 0, 0, 0.2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.cardBorderColor, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withAlpha(25),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.settings_rounded,
+                  color: AppTheme.primaryColor,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Text(
+                  'Application Behavior',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Configure how GalleVR behaves on your Windows system:',
+            style: TextStyle(
+              fontSize: 14,
+              color: Color.fromRGBO(255, 255, 255, 0.7),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Minimize to tray switch
+          SwitchListTile(
+            title: const Text(
+              'Minimize to System Tray',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            subtitle: const Text(
+              'Keep GalleVR running in the background when closed',
+              style: TextStyle(
+                color: Color.fromRGBO(255, 255, 255, 0.7),
+                fontSize: 13,
+              ),
+            ),
+            value: _minimizeToTray,
+            activeColor: AppTheme.primaryColor,
+            onChanged: (value) {
+              setState(() {
+                _minimizeToTray = value;
+              });
+            },
+          ),
+
+          const Divider(color: Color.fromRGBO(255, 255, 255, 0.1)),
+
+          // Start with Windows switch
+          SwitchListTile(
+            title: const Text(
+              'Start with Windows',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            subtitle: const Text(
+              'Automatically start GalleVR when Windows starts',
+              style: TextStyle(
+                color: Color.fromRGBO(255, 255, 255, 0.7),
+                fontSize: 13,
+              ),
+            ),
+            value: _startWithWindows,
+            activeColor: AppTheme.primaryColor,
+            onChanged: (value) {
+              setState(() {
+                _startWithWindows = value;
+              });
+            },
+          ),
+
+          const SizedBox(height: 16),
+          const Text(
+            'Note: You can change these settings later in the app settings.',
+            style: TextStyle(
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+              color: Color.fromRGBO(255, 255, 255, 0.5),
             ),
           ),
         ],

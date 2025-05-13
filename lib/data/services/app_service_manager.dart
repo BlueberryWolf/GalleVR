@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/config_model.dart';
 import '../repositories/config_repository.dart';
 import '../../core/image/image_cache_service.dart';
 import '../../core/services/permission_service.dart';
+import '../../core/services/windows_service.dart';
 import '../../core/audio/sound_service.dart';
 import 'photo_watcher_service.dart';
 import 'photo_event_service.dart';
@@ -35,8 +37,8 @@ class AppServiceManager {
   // Photo watcher service
   final PhotoWatcherService photoWatcherService = PhotoWatcherService();
 
-  // Photo event service
-  final PhotoEventService _photoEventService = PhotoEventService();
+  // Photo event service - used by other services
+  final PhotoEventService photoEventService = PhotoEventService();
 
   // Image cache service
   final ImageCacheService _imageCacheService = ImageCacheService();
@@ -49,6 +51,9 @@ class AppServiceManager {
 
   // VRChat service
   final VRChatService _vrchatService = VRChatService();
+
+  // Windows service for system tray and auto-start
+  final WindowsService _windowsService = WindowsService();
 
   // Stream controller for config changes
   final _configStreamController = StreamController<ConfigModel>.broadcast();
@@ -140,6 +145,23 @@ class AppServiceManager {
       // Check verification status
       await checkVerificationStatus();
 
+      // Initialize Windows-specific services if on Windows
+      if (Platform.isWindows && _config != null) {
+        await _windowsService.initialize(
+          minimizeToTray: _config!.minimizeToTray,
+          appTitle: 'GalleVR',
+        );
+
+        // Check if auto-start setting matches registry
+        final isAutoStartEnabled = await _windowsService.isStartWithWindowsEnabled();
+        if (isAutoStartEnabled != _config!.startWithWindows) {
+          // Update registry to match settings
+          await _windowsService.setStartWithWindows(_config!.startWithWindows);
+        }
+
+        developer.log('Windows-specific services initialized', name: 'AppServiceManager');
+      }
+
       // Start watching for photos if directory is set
       if (_config != null && _config!.photosDirectory.isNotEmpty) {
         await _startPhotoWatcher();
@@ -167,9 +189,28 @@ class AppServiceManager {
   // Update configuration and restart services if needed
   Future<void> updateConfig(ConfigModel config) async {
     final bool photosDirectoryChanged = _config?.photosDirectory != config.photosDirectory;
+    final bool minimizeToTrayChanged = _config?.minimizeToTray != config.minimizeToTray;
+    final bool startWithWindowsChanged = _config?.startWithWindows != config.startWithWindows;
 
     // Update the config
     _config = config;
+
+    // Update Windows-specific settings if needed
+    if (Platform.isWindows) {
+      // Update minimize to tray setting
+      if (minimizeToTrayChanged) {
+        _windowsService.updateMinimizeToTray(config.minimizeToTray);
+        developer.log('Updated minimize to tray setting: ${config.minimizeToTray}',
+            name: 'AppServiceManager');
+      }
+
+      // Update auto-start setting
+      if (startWithWindowsChanged) {
+        await _windowsService.setStartWithWindows(config.startWithWindows);
+        developer.log('Updated start with Windows setting: ${config.startWithWindows}',
+            name: 'AppServiceManager');
+      }
+    }
 
     // Restart photo watcher if photos directory changed
     if (photosDirectoryChanged) {
@@ -192,12 +233,73 @@ class AppServiceManager {
     _configStreamController.add(config);
   }
 
+  // Handle window close event
+  // Returns true if the app should be minimized to tray instead of closed
+  Future<bool> handleWindowClose({bool forceExit = false}) async {
+    if (Platform.isWindows) {
+      if (forceExit) {
+        // Force exit the app
+        developer.log('Force exiting application from AppServiceManager', name: 'AppServiceManager');
+
+        // Dispose all services first to ensure clean shutdown
+        developer.log('Disposing all services before exit', name: 'AppServiceManager');
+        await dispose();
+
+        // Exit the application
+        await _windowsService.exitApplication();
+        return false; // This line will never be reached
+      } else if (_config != null && _config!.minimizeToTray) {
+        // Minimize to tray if enabled
+        return await _windowsService.handleWindowClose();
+      }
+    }
+    return false;
+  }
+
   // Dispose all services
   Future<void> dispose() async {
-    photoWatcherService.dispose();
-    soundService.dispose();
-    await _configStreamController.close();
-    await _imageCacheService.clearCache();
+    developer.log('Disposing all services', name: 'AppServiceManager');
+
+    try {
+      // Stop foreground tasks first
+      developer.log('Stopping foreground tasks', name: 'AppServiceManager');
+      await FlutterForegroundTask.stopService();
+    } catch (e) {
+      developer.log('Error stopping foreground tasks: $e', name: 'AppServiceManager');
+    }
+
+    try {
+      await photoWatcherService.dispose();
+    } catch (e) {
+      developer.log('Error disposing photo watcher service: $e', name: 'AppServiceManager');
+    }
+
+    try {
+      soundService.dispose();
+    } catch (e) {
+      developer.log('Error disposing sound service: $e', name: 'AppServiceManager');
+    }
+
+    // Dispose Windows service if on Windows
+    if (Platform.isWindows) {
+      try {
+        _windowsService.dispose();
+      } catch (e) {
+        developer.log('Error disposing Windows service: $e', name: 'AppServiceManager');
+      }
+    }
+
+    try {
+      await _configStreamController.close();
+    } catch (e) {
+      developer.log('Error closing config stream controller: $e', name: 'AppServiceManager');
+    }
+
+    try {
+      await _imageCacheService.clearCache();
+    } catch (e) {
+      developer.log('Error clearing image cache: $e', name: 'AppServiceManager');
+    }
 
     // Logout from VRChat service if needed
     try {
@@ -205,5 +307,7 @@ class AppServiceManager {
     } catch (e) {
       developer.log('Error during VRChat logout on dispose: $e', name: 'AppServiceManager');
     }
+
+    developer.log('All services disposed', name: 'AppServiceManager');
   }
 }

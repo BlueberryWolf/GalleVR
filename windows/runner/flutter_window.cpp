@@ -28,12 +28,24 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+    bool start_minimized = false;
+    const auto& args = project_.dart_entrypoint_arguments();
+    for (const auto& arg : args) {
+      if (arg == "--start-minimized") {
+        start_minimized = true;
+        break;
+      }
+    }
+
+    if (!start_minimized) {
+      this->Show();
+    }
   });
 
   // Flutter can complete the first frame before the "show window" callback is
   // registered. The following call ensures a frame is pending to ensure the
   // window is shown. It is a no-op if the first frame hasn't completed yet.
+  // We still need to force a redraw even if we're starting minimized
   flutter_controller_->ForceRedraw();
 
   return true;

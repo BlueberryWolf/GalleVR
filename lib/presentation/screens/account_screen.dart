@@ -230,8 +230,8 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Future<void> _launchGallery() async {
-    if (_galleryUrl.isNotEmpty) {
-      final uri = Uri.parse(_galleryUrl);
+    if (_galleryUrl.isNotEmpty && _authData != null) {
+      final uri = Uri.parse('https://vr.blueberry.coffee/?auth=${_authData!.accessKey}');
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
@@ -241,6 +241,10 @@ class _AccountScreenState extends State<AccountScreen> {
           );
         }
       }
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Authentication data is missing')),
+      );
     }
   }
 
@@ -292,7 +296,7 @@ class _AccountScreenState extends State<AccountScreen> {
         Center(
           child: BlurrableQrCode(
             revealedData: _galleryUrl,
-            blurredData: 'https://i.redd.it/zch4bwo7q4zb1.gif', // secret message for sillies who try to unblur someone's QR code >:3 
+            blurredData: 'https://i.redd.it/zch4bwo7q4zb1.gif', // secret message for sillies who try to unblur someone's QR code >:3
             initiallyRevealed: _isQrCodeVisible,
             onVisibilityChanged: (isRevealed) {
               setState(() {

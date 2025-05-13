@@ -332,13 +332,36 @@ class PhotoWatcherService {
     PhotoEventService().notifyPhotoAdded(filePath);
   }
 
-  void dispose() async {
-    if (_useForegroundService && _isForegroundServiceRunning) {
-      await _stopForegroundService();
+  Future<void> dispose() async {
+    developer.log('Disposing PhotoWatcherService', name: 'PhotoWatcherService');
+
+    try {
+      developer.log('Stopping foreground service', name: 'PhotoWatcherService');
+      await FlutterForegroundTask.stopService();
+      _isForegroundServiceRunning = false;
+    } catch (e) {
+      developer.log('Error stopping foreground service: $e', name: 'PhotoWatcherService');
     }
 
-    FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
-    await _watcherSubscription?.cancel();
-    _photoStreamController.close();
+    try {
+      FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
+    } catch (e) {
+      developer.log('Error removing task data callback: $e', name: 'PhotoWatcherService');
+    }
+
+    try {
+      await _watcherSubscription?.cancel();
+      _watcherSubscription = null;
+    } catch (e) {
+      developer.log('Error cancelling watcher subscription: $e', name: 'PhotoWatcherService');
+    }
+
+    try {
+      await _photoStreamController.close();
+    } catch (e) {
+      developer.log('Error closing photo stream controller: $e', name: 'PhotoWatcherService');
+    }
+
+    developer.log('PhotoWatcherService disposed', name: 'PhotoWatcherService');
   }
 }

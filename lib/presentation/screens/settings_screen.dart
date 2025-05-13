@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:developer' as developer;
 import 'package:path/path.dart' as path;
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../data/repositories/config_repository.dart';
 import '../../data/models/config_model.dart';
@@ -26,6 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   ConfigModel? _config;
   bool _isLoading = true;
+  String _appVersion = '1.0.0'; // Default version
 
   bool _isSmallScreen(BuildContext context) {
     return MediaQuery.of(context).size.width < 600;
@@ -35,6 +37,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadConfig();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      setState(() {
+        _appVersion = packageInfo.version;
+      });
+      developer.log('App version loaded: $_appVersion', name: 'SettingsScreen');
+    } catch (e) {
+      developer.log(
+        'Error loading app version: $e',
+        name: 'SettingsScreen',
+        error: e,
+      );
+    }
   }
 
   @override
@@ -132,6 +151,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
     final sectionSpacing = isSmallScreen ? 12.0 : 16.0;
 
+    // Calculate item count based on platform
+    final int itemCount = Platform.isWindows ? 11 : 9;
+
     return RepaintBoundary(
       child: ListView.builder(
         controller: _scrollController,
@@ -139,7 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         addAutomaticKeepAlives: false,
         addRepaintBoundaries: true,
         cacheExtent: 500,
-        itemCount: 9,
+        itemCount: itemCount,
         itemBuilder: (context, index) {
           switch (index) {
             case 0:
@@ -157,9 +179,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             case 6:
               return _buildSharingSection(isSmallScreen);
             case 7:
-              return SizedBox(height: sectionSpacing * 2);
+              return SizedBox(height: sectionSpacing);
             case 8:
-              return _buildAboutSection(isSmallScreen);
+              return Platform.isWindows
+                  ? _buildWindowsSection(isSmallScreen)
+                  : _buildAboutSection(isSmallScreen);
+            case 9:
+              return Platform.isWindows
+                  ? SizedBox(height: sectionSpacing * 2)
+                  : const SizedBox.shrink();
+            case 10:
+              return Platform.isWindows
+                  ? _buildAboutSection(isSmallScreen)
+                  : const SizedBox.shrink();
             default:
               return const SizedBox.shrink();
           }
@@ -444,6 +476,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
               ),
+              RepaintBoundary(
+                child: SwitchListTile(
+                  dense: isSmallScreen,
+                  title: const Text('Auto-Copy Gallery URL'),
+                  subtitle: const Text('Automatically copy gallery URL to clipboard after upload'),
+                  value: _config!.autoCopyGalleryUrl,
+                  onChanged: _config!.uploadEnabled ? (value) {
+                    final updatedConfig = _config!.copyWith(
+                      autoCopyGalleryUrl: value,
+                    );
+                    _saveConfig(updatedConfig);
+                  } : null,
+                ),
+              ),
             ],
           ),
         ),
@@ -465,11 +511,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Text('About', style: Theme.of(context).textTheme.titleLarge),
               SizedBox(height: spacing),
-              const ListTile(
+              ListTile(
                 dense: true,
-                title: Text('GalleVR Flutter'),
-                subtitle: Text('Version 1.0.0'),
-                leading: Icon(Icons.info),
+                title: const Text('GalleVR Flutter'),
+                subtitle: Text('Version $_appVersion'),
+                leading: const Icon(Icons.info),
               ),
               ListTile(
                 dense: isSmallScreen,
@@ -760,5 +806,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
       default:
         return 'Unknown';
     }
+  }
+
+  Widget _buildWindowsSection([bool isSmallScreen = false]) {
+    final padding =
+        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
+    final spacing = isSmallScreen ? 12.0 : 16.0;
+
+    return RepaintBoundary(
+      child: Card(
+        child: Padding(
+          padding: padding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Windows Settings', style: Theme.of(context).textTheme.titleLarge),
+              SizedBox(height: spacing),
+              RepaintBoundary(
+                child: SwitchListTile(
+                  dense: isSmallScreen,
+                  title: const Text('Minimize to System Tray'),
+                  subtitle: const Text(
+                    'Keep the app running in the system tray when closed',
+                  ),
+                  value: _config!.minimizeToTray,
+                  onChanged: (value) {
+                    final updatedConfig = _config!.copyWith(
+                      minimizeToTray: value,
+                    );
+                    _saveConfig(updatedConfig);
+                  },
+                ),
+              ),
+              RepaintBoundary(
+                child: SwitchListTile(
+                  dense: isSmallScreen,
+                  title: const Text('Start with Windows'),
+                  subtitle: const Text(
+                    'Automatically start GalleVR when Windows starts',
+                  ),
+                  value: _config!.startWithWindows,
+                  onChanged: (value) {
+                    final updatedConfig = _config!.copyWith(
+                      startWithWindows: value,
+                    );
+                    _saveConfig(updatedConfig);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

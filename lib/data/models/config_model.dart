@@ -18,6 +18,15 @@ class ConfigModel {
   // Whether to enable automatic uploading
   final bool uploadEnabled;
 
+  // Whether to minimize to system tray instead of closing
+  final bool minimizeToTray;
+
+  // Whether to start the application when Windows starts
+  final bool startWithWindows;
+
+  // Whether to automatically copy gallery URL to clipboard after upload
+  final bool autoCopyGalleryUrl;
+
   // Default constructor
   ConfigModel({
     this.soundEnabled = true,
@@ -26,6 +35,9 @@ class ConfigModel {
     this.logsDirectory = '',
     this.compressionDelay = 0.5,
     this.uploadEnabled = true,
+    this.minimizeToTray = true,
+    this.startWithWindows = false,
+    this.autoCopyGalleryUrl = false,
   });
 
   // Create a ConfigModel from JSON
@@ -37,6 +49,9 @@ class ConfigModel {
       logsDirectory: json['logsDirectory'] ?? '',
       compressionDelay: (json['compressionDelay'] ?? 0.5).toDouble(),
       uploadEnabled: json['uploadEnabled'] ?? true,
+      minimizeToTray: json['minimizeToTray'] ?? true,
+      startWithWindows: json['startWithWindows'] ?? false,
+      autoCopyGalleryUrl: json['autoCopyGalleryUrl'] ?? false,
     );
   }
 
@@ -49,6 +64,9 @@ class ConfigModel {
       'logsDirectory': logsDirectory,
       'compressionDelay': compressionDelay,
       'uploadEnabled': uploadEnabled,
+      'minimizeToTray': minimizeToTray,
+      'startWithWindows': startWithWindows,
+      'autoCopyGalleryUrl': autoCopyGalleryUrl,
     };
   }
 
@@ -60,6 +78,9 @@ class ConfigModel {
     String? logsDirectory,
     double? compressionDelay,
     bool? uploadEnabled,
+    bool? minimizeToTray,
+    bool? startWithWindows,
+    bool? autoCopyGalleryUrl,
   }) {
     return ConfigModel(
       soundEnabled: soundEnabled ?? this.soundEnabled,
@@ -68,6 +89,9 @@ class ConfigModel {
       logsDirectory: logsDirectory ?? this.logsDirectory,
       compressionDelay: compressionDelay ?? this.compressionDelay,
       uploadEnabled: uploadEnabled ?? this.uploadEnabled,
+      minimizeToTray: minimizeToTray ?? this.minimizeToTray,
+      startWithWindows: startWithWindows ?? this.startWithWindows,
+      autoCopyGalleryUrl: autoCopyGalleryUrl ?? this.autoCopyGalleryUrl,
     );
   }
 }

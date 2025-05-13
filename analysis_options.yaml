@@ -23,6 +23,27 @@ linter:
   rules:
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+    unreachable_from_main: true
+
+# Configure analyzer for better performance
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - "**/*.mocks.dart"
+    - "lib/generated/**"
+  errors:
+    # Treat info level issues as warnings to catch them early
+    todo: warning
+  language:
+    strict-casts: false
+    strict-raw-types: true
+
+  # Enable faster analysis by disabling some expensive checks during development
+  # You can enable these for production builds
+  strong-mode:
+    implicit-casts: true
+    implicit-dynamic: true
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

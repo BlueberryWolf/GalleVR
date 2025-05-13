@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gallevr/presentation/screens/home_screen.dart';
@@ -77,6 +78,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         }
       }
     } catch (e) {
+      developer.log('Error initializing verification service: $e', name: 'VerificationScreen');
     } finally {
       setState(() {
         _isLoading = false;
