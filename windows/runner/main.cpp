@@ -45,7 +45,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   Win32Window::Point origin(centerX, centerY);
 
-  if (!window.Create(L"gallevr", origin, size)) {
+  if (!window.Create(L"GalleVR", origin, size)) {
     return EXIT_FAILURE;
   }
 
