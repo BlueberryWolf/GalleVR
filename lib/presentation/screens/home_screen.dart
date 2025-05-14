@@ -157,12 +157,25 @@ class _HomeScreenState extends State<HomeScreen>
           child: Row(
             children: [
               // Use square logo in mobile view
-              SizedBox(
-                height: 40,
-                width: 40,
-                child: Image.asset(
-                  'assets/images/square.png',
-                  fit: BoxFit.contain,
+              Container(
+                height: 48,
+                width: 48,
+                padding: const EdgeInsets.all(4),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(
+                    begin: 36,
+                    end: 38,
+                  ),
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, size, child) {
+                    return Image.asset(
+                      'assets/images/square.png',
+                      height: size,
+                      width: size,
+                      fit: BoxFit.contain,
+                    );
+                  },
                 ),
               ),
               const Spacer(),
@@ -263,10 +276,12 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildSidebarHeader() {
-    const double logoHeight = 60;
+
+    const double collapsedLogoSize = 48;
+    const double expandedLogoSize = 70;
 
     return Container(
-      height: 90,
+      height: 100,
       padding: EdgeInsets.zero,
       decoration: BoxDecoration(
         border: Border(
@@ -289,15 +304,26 @@ class _HomeScreenState extends State<HomeScreen>
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 280),
                       curve: Curves.easeOutCubic,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       transform: Matrix4.translationValues(
                         0,
                         _isSidebarCollapsed ? -5 : 0,
                         0,
                       ),
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        height: logoHeight,
-                        fit: BoxFit.contain,
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween<double>(
+                          begin: collapsedLogoSize,
+                          end: _isSidebarCollapsed ? collapsedLogoSize : expandedLogoSize,
+                        ),
+                        duration: const Duration(milliseconds: 280),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, size, child) {
+                          return Image.asset(
+                            'assets/images/logo.png',
+                            height: size,
+                            fit: BoxFit.contain,
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -309,16 +335,27 @@ class _HomeScreenState extends State<HomeScreen>
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 280),
                       curve: Curves.easeOutCubic,
+                      padding: const EdgeInsets.all(8),
                       transform: Matrix4.translationValues(
                         0,
                         _isSidebarCollapsed ? 0 : 5,
                         0,
                       ),
-                      child: Image.asset(
-                        'assets/images/square.png',
-                        height: logoHeight,
-                        width: logoHeight,
-                        fit: BoxFit.contain,
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween<double>(
+                          begin: expandedLogoSize,
+                          end: _isSidebarCollapsed ? collapsedLogoSize : expandedLogoSize,
+                        ),
+                        duration: const Duration(milliseconds: 280),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, size, child) {
+                          return Image.asset(
+                            'assets/images/square.png',
+                            height: size,
+                            width: size,
+                            fit: BoxFit.contain,
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -382,7 +419,9 @@ class _HomeScreenState extends State<HomeScreen>
           child: InkWell(
             onTap: () => _selectNavItem(index),
             borderRadius: BorderRadius.circular(8),
-            child: Container(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOutCubic,
               height: 48,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
@@ -392,39 +431,51 @@ class _HomeScreenState extends State<HomeScreen>
                         : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    item.icon,
-                    color: isSelected ? AppTheme.primaryColor : null,
-                    size: 24,
-                  ),
+              child: AnimatedAlign(
+                alignment: _isSidebarCollapsed ? Alignment.center : Alignment.centerLeft,
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutCubic,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Icon with fixed width container for consistent positioning
+                    Container(
+                      width: 24,
+                      alignment: Alignment.center,
+                      child: Icon(
+                        item.icon,
+                        color: isSelected ? AppTheme.primaryColor : null,
+                        size: 24,
+                      ),
+                    ),
 
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 280),
-                    curve: Curves.easeOutCubic,
-                    width: _isSidebarCollapsed ? 0 : 150,
-                    margin: EdgeInsets.only(left: _isSidebarCollapsed ? 0 : 16),
-                    child: ClipRect(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: _isSidebarCollapsed ? 0.0 : 1.0,
-                        child: Text(
-                          item.label,
-                          style: TextStyle(
-                            fontWeight:
-                                isSelected
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                            color: isSelected ? AppTheme.primaryColor : null,
+                    // Text that animates in and out
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                      width: _isSidebarCollapsed ? 0 : 150,
+                      margin: EdgeInsets.only(left: _isSidebarCollapsed ? 0 : 16),
+                      child: ClipRect(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: _isSidebarCollapsed ? 0.0 : 1.0,
+                          child: Text(
+                            item.label,
+                            style: TextStyle(
+                              fontWeight:
+                                  isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                              color: isSelected ? AppTheme.primaryColor : null,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
