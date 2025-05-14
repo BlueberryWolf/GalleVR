@@ -12,23 +12,23 @@ class PermissionService {
         final sdkInt = androidInfo.version.sdkInt;
 
         if (sdkInt >= 33) {
-          await Permission.photos.status;
-          await Permission.videos.status;
-          await Permission.audio.status;
-          final manageStorage = await Permission.manageExternalStorage.status;
+          // For Android 13+, check granular media permissions
+          final photos = await Permission.photos.status;
+          final videos = await Permission.videos.status;
 
-          return manageStorage.isGranted;
+          // We need both photos and videos permissions for the app to function properly
+          return photos.isGranted && videos.isGranted;
         } else if (sdkInt >= 30) {
-          final manageStorage = await Permission.manageExternalStorage.status;
-          return manageStorage.isGranted;
-        } else if (sdkInt == 29) {
+          // For Android 11-12, we need storage permission
           final storage = await Permission.storage.status;
           return storage.isGranted;
         } else {
+          // For Android 10 and below
           final storage = await Permission.storage.status;
           return storage.isGranted;
         }
       } else {
+        // Non-Android platforms don't need these permissions
         return true;
       }
     } catch (e) {
@@ -63,54 +63,34 @@ class PermissionService {
 
           final photos = await Permission.photos.request();
           final videos = await Permission.videos.request();
-          final audio = await Permission.audio.request();
+
+          // Also request documents permission if available
+          // Note: permission_handler doesn't have a direct READ_MEDIA_DOCUMENTS permission
+          // so we're using what's available for documents access
 
           developer.log(
-            'Media permissions results - Photos: $photos, Videos: $videos, Audio: $audio',
+            'Media permissions results - Photos: $photos, Videos: $videos',
             name: 'PermissionService',
           );
 
-          final manageResult = await Permission.manageExternalStorage.request();
-          developer.log(
-            'MANAGE_EXTERNAL_STORAGE permission result: $manageResult',
-            name: 'PermissionService',
-          );
-
-          return manageResult.isGranted;
+          // We need both photos and videos permissions for the app to function properly
+          return photos.isGranted && videos.isGranted;
         } else if (sdkInt >= 30) {
           developer.log(
-            'Requesting MANAGE_EXTERNAL_STORAGE for Android 11-12',
+            'Requesting storage permissions for Android 11-12',
             name: 'PermissionService',
           );
 
-          final manageResult = await Permission.manageExternalStorage.request();
+          final storageResult = await Permission.storage.request();
           developer.log(
-            'MANAGE_EXTERNAL_STORAGE permission result: $manageResult',
+            'Storage permission result: $storageResult',
             name: 'PermissionService',
           );
 
-          return manageResult.isGranted;
-        } else if (sdkInt == 29) {
-          developer.log(
-            'Requesting storage permissions for Android 10',
-            name: 'PermissionService',
-          );
-
-          final readResult = await Permission.storage.request();
-          developer.log(
-            'Storage permission result: $readResult',
-            name: 'PermissionService',
-          );
-
-          developer.log(
-            'Using requestLegacyExternalStorage for Android 10 compatibility',
-            name: 'PermissionService',
-          );
-
-          return readResult.isGranted;
+          return storageResult.isGranted;
         } else {
           developer.log(
-            'Requesting storage permissions for Android 9 and below',
+            'Requesting storage permissions for Android 10 and below',
             name: 'PermissionService',
           );
 
@@ -166,25 +146,23 @@ class PermissionService {
 
           final photos = await Permission.photos.request();
           final videos = await Permission.videos.request();
-          final audio = await Permission.audio.request();
+
+          // Also request documents permission if available
+          // Note: permission_handler doesn't have a direct READ_MEDIA_DOCUMENTS permission
+          // so we're using what's available for documents access
 
           developer.log(
-            'Media permissions results - Photos: $photos, Videos: $videos, Audio: $audio',
+            'Media permissions results - Photos: $photos, Videos: $videos',
             name: 'PermissionService',
           );
 
-          final manageResult = await Permission.manageExternalStorage.request();
-          developer.log(
-            'MANAGE_EXTERNAL_STORAGE permission result: $manageResult',
-            name: 'PermissionService',
-          );
-
-          if (manageResult.isPermanentlyDenied) {
+          // Check if any permissions were permanently denied
+          if (photos.isPermanentlyDenied || videos.isPermanentlyDenied) {
             if (context.mounted) {
               final shouldOpenSettings = await _showPermissionDialog(
                 context,
-                'Storage Permission Required',
-                'GalleVR needs full storage access to work with VRChat photos. Please grant "All files access" in the settings.',
+                'Media Permissions Required',
+                'GalleVR needs access to your photos and videos to work with VRChat content. Please grant these permissions in the settings.',
               );
 
               if (shouldOpenSettings) {
@@ -193,52 +171,20 @@ class PermissionService {
             }
           }
 
-          return manageResult.isGranted;
+          return photos.isGranted && videos.isGranted;
         } else if (sdkInt >= 30) {
           developer.log(
-            'Requesting MANAGE_EXTERNAL_STORAGE for Android 11-12',
+            'Requesting storage permissions for Android 11-12',
             name: 'PermissionService',
           );
 
-          final manageResult = await Permission.manageExternalStorage.request();
+          final storageResult = await Permission.storage.request();
           developer.log(
-            'MANAGE_EXTERNAL_STORAGE permission result: $manageResult',
+            'Storage permission result: $storageResult',
             name: 'PermissionService',
           );
 
-          if (manageResult.isPermanentlyDenied) {
-            if (context.mounted) {
-              final shouldOpenSettings = await _showPermissionDialog(
-                context,
-                'Storage Permission Required',
-                'GalleVR needs full storage access to work with VRChat photos. Please grant "All files access" in the settings.',
-              );
-
-              if (shouldOpenSettings) {
-                await openAppSettings();
-              }
-            }
-          }
-
-          return manageResult.isGranted;
-        } else if (sdkInt == 29) {
-          developer.log(
-            'Requesting storage permissions for Android 10',
-            name: 'PermissionService',
-          );
-
-          final readResult = await Permission.storage.request();
-          developer.log(
-            'Storage permission result: $readResult',
-            name: 'PermissionService',
-          );
-
-          developer.log(
-            'Using requestLegacyExternalStorage for Android 10 compatibility',
-            name: 'PermissionService',
-          );
-
-          if (readResult.isPermanentlyDenied) {
+          if (storageResult.isPermanentlyDenied) {
             if (context.mounted) {
               final shouldOpenSettings = await _showPermissionDialog(
                 context,
@@ -252,10 +198,10 @@ class PermissionService {
             }
           }
 
-          return readResult.isGranted;
+          return storageResult.isGranted;
         } else {
           developer.log(
-            'Requesting storage permissions for Android 9 and below',
+            'Requesting storage permissions for Android 10 and below',
             name: 'PermissionService',
           );
 
@@ -264,6 +210,20 @@ class PermissionService {
             'Storage permission result: $result',
             name: 'PermissionService',
           );
+
+          if (result.isPermanentlyDenied) {
+            if (context.mounted) {
+              final shouldOpenSettings = await _showPermissionDialog(
+                context,
+                'Storage Permission Required',
+                'GalleVR needs storage access to work with VRChat photos. Please grant storage permissions in the settings.',
+              );
+
+              if (shouldOpenSettings) {
+                await openAppSettings();
+              }
+            }
+          }
 
           return result.isGranted;
         }
