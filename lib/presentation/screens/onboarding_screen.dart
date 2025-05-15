@@ -201,9 +201,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         _isLoading = true;
       });
 
-      // Use the context-aware method to request permissions during onboarding
       final granted =
-          await _permissionService.requestStoragePermissions(context);
+          await _permissionService.requestStoragePermissionsOnStartup();
 
       if (mounted) {
         setState(() {
@@ -1520,7 +1519,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 16),
           const Text(
-            'GalleVR needs access to your photos, videos, and documents to find and organize your VR content. These permissions are only used to access your VRChat photos and related files.',
+            'GalleVR needs access to your storage to find and organize your VR photos.',
             style: TextStyle(
               fontSize: 14,
               color: Color.fromRGBO(255, 255, 255, 0.7),

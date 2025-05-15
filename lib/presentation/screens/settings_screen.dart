@@ -722,6 +722,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 name: 'SettingsScreen',
               );
               selectedDirectory = correctedPath;
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Fixed duplicated path segments'),
+                  ),
+                );
+              }
             }
           }
 
@@ -757,6 +765,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 name: 'SettingsScreen',
               );
               selectedDirectory = correctedPath;
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Fixed duplicated path segments'),
+                  ),
+                );
+              }
             }
           }
         }

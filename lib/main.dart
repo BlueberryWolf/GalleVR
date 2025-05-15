@@ -29,7 +29,7 @@ void main(List<String> args) async {
   if (Platform.isWindows) {
     await WindowsSingleInstance.ensureSingleInstance(
       args,
-      "gallevr-app",
+      "GalleVR-app",
       onSecondWindow: (args) {
         // When a second instance is launched, bring the existing window to front
         developer.log('Second instance detected with args: $args', name: 'GalleVRApp');

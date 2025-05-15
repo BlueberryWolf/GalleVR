@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/config_model.dart';
 import '../repositories/config_repository.dart';
 import '../../core/image/image_cache_service.dart';
+import '../../core/services/permission_service.dart';
 import '../../core/services/windows_service.dart';
 import '../../core/audio/sound_service.dart';
 import 'photo_watcher_service.dart';
@@ -41,6 +42,9 @@ class AppServiceManager {
 
   // Image cache service
   final ImageCacheService _imageCacheService = ImageCacheService();
+
+  // Permission service
+  final PermissionService _permissionService = PermissionService();
 
   // Sound service
   final SoundService soundService = SoundService();
@@ -120,6 +124,13 @@ class AppServiceManager {
     if (_isInitialized) return;
 
     try {
+      // Request permissions on Android at startup
+      if (Platform.isAndroid) {
+        developer.log('Requesting permissions at app startup', name: 'AppServiceManager');
+        final hasPermissions = await _permissionService.requestStoragePermissionsOnStartup();
+        developer.log('Permission request result: $hasPermissions', name: 'AppServiceManager');
+      }
+
       // Initialize image cache service
       await _imageCacheService.initialize();
       developer.log('Image cache service initialized', name: 'AppServiceManager');
