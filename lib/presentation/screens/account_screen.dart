@@ -71,7 +71,7 @@ class _AccountScreenState extends State<AccountScreen> {
           setState(() {
             _isVerified = true;
             _authData = authData;
-            _galleryUrl = 'https://vr.blueberry.coffee/?auth=${authData.accessKey}';
+            _galleryUrl = 'https://gallevr.app/?auth=${authData.accessKey}';
           });
         }
       } else {
@@ -194,7 +194,7 @@ class _AccountScreenState extends State<AccountScreen> {
                     setState(() {
                       _isVerified = true;
                       _authData = authData;
-                      _galleryUrl = 'https://vr.blueberry.coffee/?auth=${authData.accessKey}';
+                      _galleryUrl = 'https://gallevr.app/?auth=${authData.accessKey}';
                     });
 
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -231,7 +231,7 @@ class _AccountScreenState extends State<AccountScreen> {
 
   Future<void> _launchGallery() async {
     if (_galleryUrl.isNotEmpty && _authData != null) {
-      final uri = Uri.parse('https://vr.blueberry.coffee/?auth=${_authData!.accessKey}');
+      final uri = Uri.parse('https://gallevr.app/?auth=${_authData!.accessKey}');
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {

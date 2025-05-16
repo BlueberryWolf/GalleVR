@@ -201,8 +201,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         _isLoading = true;
       });
 
-      final granted =
-          await _permissionService.requestStoragePermissionsOnStartup();
+      final granted = await _permissionService.requestStoragePermissions(context);
 
       if (mounted) {
         setState(() {
@@ -633,7 +632,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             SizedBox(height: size.height * 0.02),
 
             Text(
-              'GalleVR needs access to your photos',
+              'GalleVR needs access to your media files',
               style: TextStyle(
                 fontSize: isSmallScreen ? 16 : 18,
                 color: Color.fromRGBO(255, 255, 255, 0.8),
@@ -1519,7 +1518,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 16),
           const Text(
-            'GalleVR needs access to your storage to find and organize your VR photos.',
+            'GalleVR needs access to your photos, videos, and documents to find and organize your VRChat photos and their metadata.',
             style: TextStyle(
               fontSize: 14,
               color: Color.fromRGBO(255, 255, 255, 0.7),

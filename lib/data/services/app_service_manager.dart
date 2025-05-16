@@ -124,13 +124,6 @@ class AppServiceManager {
     if (_isInitialized) return;
 
     try {
-      // Request permissions on Android at startup
-      if (Platform.isAndroid) {
-        developer.log('Requesting permissions at app startup', name: 'AppServiceManager');
-        final hasPermissions = await _permissionService.requestStoragePermissionsOnStartup();
-        developer.log('Permission request result: $hasPermissions', name: 'AppServiceManager');
-      }
-
       // Initialize image cache service
       await _imageCacheService.initialize();
       developer.log('Image cache service initialized', name: 'AppServiceManager');

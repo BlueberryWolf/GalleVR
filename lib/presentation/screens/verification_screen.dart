@@ -73,7 +73,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             _isVerified = true;
             _authData = authData;
             _galleryUrl =
-                'https://vr.blueberry.coffee/?auth=${authData.accessKey}';
+                'https://gallevr.app/?auth=${authData.accessKey}';
           });
         }
       }
@@ -136,7 +136,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               _isVerified = true;
               _authData = verificationResult.authData;
               _galleryUrl =
-                  'https://vr.blueberry.coffee/?auth=${verificationResult.authData!.accessKey}';
+                  'https://gallevr.app/?auth=${verificationResult.authData!.accessKey}';
             });
           } else {
             await Future.delayed(const Duration(seconds: 2));
@@ -149,7 +149,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 _isVerified = true;
                 _authData = verificationResult.authData;
                 _galleryUrl =
-                    'https://vr.blueberry.coffee/?auth=${verificationResult.authData!.accessKey}';
+                    'https://gallevr.app/?auth=${verificationResult.authData!.accessKey}';
               });
             } else {
               setState(() {
@@ -282,7 +282,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             setState(() {
               _isVerified = true;
               _galleryUrl =
-                  'https://vr.blueberry.coffee/?auth=${_authData!.accessKey}';
+                  'https://gallevr.app/?auth=${_authData!.accessKey}';
             });
           } else {
             await Future.delayed(const Duration(seconds: 3));
@@ -296,7 +296,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               setState(() {
                 _isVerified = true;
                 _galleryUrl =
-                    'https://vr.blueberry.coffee/?auth=${_authData!.accessKey}';
+                    'https://gallevr.app/?auth=${_authData!.accessKey}';
               });
             } else {
               setState(() {

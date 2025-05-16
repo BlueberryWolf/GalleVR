@@ -263,14 +263,14 @@ class PhotoMetadataPanel extends StatelessWidget {
   }
 
   void _launchVRChatWorldUrl(String worldId) async {
-    final url = Uri.parse('https://vr.blueberry.coffee/world/$worldId');
+    final url = Uri.parse('https://gallevr.app/world/$worldId');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
   }
 
   void _launchVRChatUserUrl(String userId) async {
-    final url = Uri.parse('https://vr.blueberry.coffee/user/$userId');
+    final url = Uri.parse('https://gallevr.app/user/$userId');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
