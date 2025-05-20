@@ -66,6 +66,7 @@ class _AccountScreenState extends State<AccountScreen> {
     final authData = await _vrchatService.loadAuthData();
     if (authData != null) {
       final isVerified = await _vrchatService.checkVerificationStatus(authData);
+
       if (isVerified) {
         if (mounted) {  // Check if still mounted
           setState(() {
@@ -123,9 +124,38 @@ class _AccountScreenState extends State<AccountScreen> {
         await _vrchatService.logout();
       }
 
-      // Clear verification data
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('gallevr_auth_data');
+      // Preserve age verification status while clearing other auth data
+      bool ageVerified = false;
+
+      // Get current auth data to preserve age verification status
+      if (_authData != null) {
+        ageVerified = _authData!.ageVerified;
+      } else {
+        // Try to load from shared preferences
+        final authData = await _vrchatService.loadAuthData();
+        if (authData != null) {
+          ageVerified = authData.ageVerified;
+        }
+      }
+
+      // Clear verification data but save age verification status
+      if (ageVerified) {
+        // Create a new AuthData with only age verification
+        final newAuthData = AuthData(
+          accessKey: '',     // Empty access key
+          userId: '',        // Empty user ID
+          ageVerified: true, // Preserve age verification
+        );
+
+        // Save the new auth data
+        await _vrchatService.saveAuthData(newAuthData);
+
+        developer.log('Preserved age verification status during logout', name: 'AccountScreen');
+      } else {
+        // If not age verified, remove auth data completely
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('gallevr_auth_data');
+      }
 
       setState(() {
         _isVerified = false;

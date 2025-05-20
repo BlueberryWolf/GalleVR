@@ -35,11 +35,15 @@ class VerificationResponse extends Equatable {
   // User ID
   final String userId;
 
+  // Whether the user is verified as over 13 years old
+  final bool ageVerified;
+
   // Default constructor
   const VerificationResponse({
     required this.token,
     required this.accessKey,
     required this.userId,
+    this.ageVerified = false,
   });
 
   // Create a VerificationResponse from JSON
@@ -48,6 +52,7 @@ class VerificationResponse extends Equatable {
       token: json['token'] as String,
       accessKey: json['accessKey'] as String,
       userId: json['userId'] as String,
+      ageVerified: json['ageVerified'] as bool? ?? false,
     );
   }
 
@@ -57,11 +62,12 @@ class VerificationResponse extends Equatable {
       'token': token,
       'accessKey': accessKey,
       'userId': userId,
+      'ageVerified': ageVerified,
     };
   }
 
   @override
-  List<Object?> get props => [token, accessKey, userId];
+  List<Object?> get props => [token, accessKey, userId, ageVerified];
 }
 
 // Authentication data for GalleVR
@@ -72,10 +78,14 @@ class AuthData extends Equatable {
   // User ID
   final String userId;
 
+  // Whether the user is verified as over 13 years old
+  final bool ageVerified;
+
   // Default constructor
   const AuthData({
     required this.accessKey,
     required this.userId,
+    this.ageVerified = false,
   });
 
   // Create an AuthData from JSON
@@ -83,6 +93,7 @@ class AuthData extends Equatable {
     return AuthData(
       accessKey: json['accessKey'] as String,
       userId: json['userId'] as String,
+      ageVerified: json['ageVerified'] as bool? ?? false,
     );
   }
 
@@ -91,11 +102,12 @@ class AuthData extends Equatable {
     return {
       'accessKey': accessKey,
       'userId': userId,
+      'ageVerified': ageVerified,
     };
   }
 
   @override
-  List<Object?> get props => [accessKey, userId];
+  List<Object?> get props => [accessKey, userId, ageVerified];
 }
 
 // Result of a verification attempt
@@ -115,6 +127,9 @@ class VerificationResult extends Equatable {
   // Verification token for manual verification
   final String? verificationToken;
 
+  // Whether the user is verified as over 13 years old
+  final bool ageVerified;
+
   // Default constructor
   const VerificationResult({
     required this.success,
@@ -122,6 +137,7 @@ class VerificationResult extends Equatable {
     this.authData,
     required this.status,
     this.verificationToken,
+    this.ageVerified = false,
   });
 
   // Create a success result
@@ -131,6 +147,7 @@ class VerificationResult extends Equatable {
       authData: authData,
       status: VerificationStatus.verified,
       verificationToken: verificationToken,
+      ageVerified: authData.ageVerified,
     );
   }
 
@@ -152,5 +169,5 @@ class VerificationResult extends Equatable {
   }
 
   @override
-  List<Object?> get props => [success, errorMessage, authData, status, verificationToken];
+  List<Object?> get props => [success, errorMessage, authData, status, verificationToken, ageVerified];
 }

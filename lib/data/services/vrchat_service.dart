@@ -406,7 +406,7 @@ class VRChatService {
     }
   }
 
-  Future<VerificationResult> startAutomaticVerification() async {
+  Future<VerificationResult> startAutomaticVerification({bool ageVerified = false}) async {
     if (!_isInitialized) {
       await initialize();
     }
@@ -463,7 +463,11 @@ class VRChatService {
         return VerificationResult.failure('Username is null');
       }
 
-      final verificationResponse = await _verifyWithServer(username, true);
+      final verificationResponse = await _verifyWithServer(
+        username,
+        true,
+        ageVerified: ageVerified,
+      );
 
       if (verificationResponse == null) {
         return VerificationResult.failure('Failed to get verification token');
@@ -477,6 +481,7 @@ class VRChatService {
       final authData = AuthData(
         accessKey: verificationResponse.accessKey,
         userId: verificationResponse.userId,
+        ageVerified: verificationResponse.ageVerified,
       );
 
       developer.log(
@@ -532,13 +537,20 @@ class VRChatService {
     }
   }
 
-  Future<VerificationResult> startManualVerification(String username) async {
+  Future<VerificationResult> startManualVerification(
+    String username, {
+    bool ageVerified = false,
+  }) async {
     if (!_isInitialized) {
       await initialize();
     }
 
     try {
-      final verificationResponse = await _verifyWithServer(username, true);
+      final verificationResponse = await _verifyWithServer(
+        username,
+        true,
+        ageVerified: ageVerified,
+      );
 
       if (verificationResponse == null) {
         return VerificationResult.failure('Failed to get verification token');
@@ -547,6 +559,7 @@ class VRChatService {
       final authData = AuthData(
         accessKey: verificationResponse.accessKey,
         userId: verificationResponse.userId,
+        ageVerified: verificationResponse.ageVerified,
       );
 
       return VerificationResult.success(
@@ -667,15 +680,18 @@ class VRChatService {
 
   Future<VerificationResponse?> _verifyWithServer(
     String userId,
-    bool isManual,
-  ) async {
+    bool isManual, {
+    bool ageVerified = false,
+  }) async {
     try {
       final endpoint =
           isManual
               ? 'https://api.blueberry.coffee/vrchat/verify/manual'
               : 'https://api.blueberry.coffee/vrchat/verify';
 
-      final body = isManual ? {'username': userId} : {'userId': userId};
+      final body = isManual
+          ? {'username': userId, 'ageVerified': ageVerified}
+          : {'userId': userId, 'ageVerified': ageVerified};
 
       developer.log(
         'Making verification request to $endpoint with body: ${json.encode(body)}',
@@ -727,6 +743,7 @@ class VRChatService {
                 token: responseData['token'],
                 accessKey: responseData['accessKey'],
                 userId: responseData['userId'],
+                ageVerified: responseData['ageVerified'] == true,
               );
             } catch (e) {
               developer.log(

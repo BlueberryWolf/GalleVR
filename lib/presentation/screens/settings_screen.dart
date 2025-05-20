@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -8,9 +9,12 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../data/repositories/config_repository.dart';
 import '../../data/models/config_model.dart';
 import '../../data/services/app_service_manager.dart';
+import '../../data/services/tos_service.dart';
 import '../../core/platform/platform_service.dart';
 import '../../core/platform/platform_service_factory.dart';
 import '../../core/services/permission_service.dart';
+import '../../core/services/update_service.dart';
+import '../widgets/tos_modal.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -24,10 +28,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final PlatformService _platformService =
       PlatformServiceFactory.getPlatformService();
   final ScrollController _scrollController = ScrollController();
+  final UpdateService _updateService = UpdateService();
+  final TOSService _tosService = TOSService();
 
   ConfigModel? _config;
   bool _isLoading = true;
   String _appVersion = '1.0.0'; // Default version
+  bool _updateAvailable = false;
+  String? _latestVersion;
+  bool _showTOSModal = false;
+
+  // Stream subscription for update status
+  late StreamSubscription<bool>? _updateSubscription;
 
   bool _isSmallScreen(BuildContext context) {
     return MediaQuery.of(context).size.width < 600;
@@ -38,6 +50,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadConfig();
     _loadAppVersion();
+    _checkForUpdates();
+
+    // Listen for update status changes
+    _updateSubscription = _updateService.updateAvailableStream.listen((hasUpdate) {
+      if (mounted) {
+        setState(() {
+          _updateAvailable = hasUpdate;
+          _latestVersion = _updateService.latestVersion;
+        });
+      }
+    });
+
+    // Listen for config changes from other parts of the app
+    AppServiceManager().configStream.listen((updatedConfig) {
+      if (mounted && _config != null && _config!.uploadEnabled != updatedConfig.uploadEnabled) {
+        setState(() {
+          _config = updatedConfig;
+        });
+      }
+    });
   }
 
   Future<void> _loadAppVersion() async {
@@ -56,9 +88,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Check for updates
+  Future<void> _checkForUpdates() async {
+    try {
+      final hasUpdate = await _updateService.checkForUpdates();
+      if (mounted) {
+        setState(() {
+          _updateAvailable = hasUpdate;
+          _latestVersion = _updateService.latestVersion;
+        });
+      }
+      developer.log('Update check completed. Update available: $_updateAvailable, Latest version: $_latestVersion',
+          name: 'SettingsScreen');
+    } catch (e) {
+      developer.log('Error checking for updates: $e', name: 'SettingsScreen');
+    }
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
+    _updateSubscription?.cancel();
     super.dispose();
   }
 
@@ -130,13 +180,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  void _handleTOSAccept() async {
+    setState(() {
+      _showTOSModal = false;
+    });
+
+    // Reset the global flag
+    AppServiceManager().isTOSModalVisible = false;
+
+    // Enable uploading
+    final updatedConfig = _config!.copyWith(uploadEnabled: true);
+    await _saveConfig(updatedConfig);
+
+    // Make sure the UI is updated
+    setState(() {
+      _config = updatedConfig;
+    });
+
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Terms of Service accepted. Photo uploading has been enabled.'),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 5),
+      ),
+    );
+  }
+
+  void _handleTOSDecline() {
+    setState(() {
+      _showTOSModal = false;
+    });
+
+    // Reset the global flag
+    AppServiceManager().isTOSModalVisible = false;
+
+    // Show warning message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('You must accept the Terms of Service to enable photo uploading.'),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 5),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body:
+      body: Stack(
+        children: [
           _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _buildSettingsForm(),
+
+          // TOS Modal
+          if (_showTOSModal)
+            TOSModal(
+              onAccept: _handleTOSAccept,
+              onDecline: _handleTOSDecline,
+              title: 'Terms of Service',
+            ),
+        ],
+      ),
     );
   }
 
@@ -467,7 +573,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: const Text('Upload Enabled'),
                   subtitle: const Text('Automatically upload processed photos'),
                   value: _config!.uploadEnabled,
-                  onChanged: (value) {
+                  onChanged: (value) async {
+                    // If trying to enable uploads, check TOS acceptance first
+                    if (value) {
+                      final needsToAcceptTOS = await _tosService.needsToAcceptTOS();
+                      if (needsToAcceptTOS) {
+                        // Check if a TOS modal is already visible
+                        if (AppServiceManager().isTOSModalVisible) {
+                          developer.log('TOS modal is already visible, skipping', name: 'SettingsScreen');
+
+                          // Show a message to the user
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please accept the Terms of Service to enable uploading.'),
+                              backgroundColor: Colors.orange,
+                              duration: Duration(seconds: 3),
+                            ),
+                          );
+                          return;
+                        }
+
+                        // Set the global flag
+                        AppServiceManager().isTOSModalVisible = true;
+
+                        // Show TOS modal instead of enabling uploads
+                        setState(() {
+                          _showTOSModal = true;
+                        });
+                        return;
+                      }
+                    }
+
+                    // If disabling uploads or TOS already accepted, proceed normally
                     final updatedConfig = _config!.copyWith(
                       uploadEnabled: value,
                     );
@@ -513,8 +650,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 dense: true,
                 title: const Text('GalleVR Flutter'),
-                subtitle: Text('Version $_appVersion'),
+                subtitle: _updateAvailable && _latestVersion != null
+                    ? RichText(
+                        text: TextSpan(
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          children: [
+                            TextSpan(
+                              text: 'Version $_appVersion',
+                            ),
+                            const TextSpan(
+                              text: ' • ',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            TextSpan(
+                              text: 'Update available: $_latestVersion',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Text('Version $_appVersion'),
                 leading: const Icon(Icons.info),
+                trailing: _updateAvailable
+                    ? ElevatedButton(
+                        onPressed: () {
+                          _updateService.openReleasesPage();
+                        },
+                        child: const Text('Update'),
+                      )
+                    : null,
               ),
               ListTile(
                 dense: isSmallScreen,
@@ -522,6 +691,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: Text(_getPlatformName()),
                 leading: const Icon(Icons.devices),
               ),
+              if (_updateAvailable && _latestVersion != null)
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.errorContainer.withAlpha(76), // 0.3 opacity = 76 alpha
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.system_update,
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Update Available',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'A new version ($_latestVersion) of GalleVR is available. You are currently using version $_appVersion.',
+                        ),
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            _updateService.openReleasesPage();
+                          },
+                          icon: const Icon(Icons.download),
+                          label: const Text('Download Update'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

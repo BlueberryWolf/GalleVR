@@ -9,6 +9,7 @@ import '../repositories/config_repository.dart';
 import '../../core/image/image_cache_service.dart';
 import '../../core/services/permission_service.dart';
 import '../../core/services/windows_service.dart';
+import '../../core/services/update_service.dart';
 import '../../core/audio/sound_service.dart';
 import 'photo_watcher_service.dart';
 import 'photo_event_service.dart';
@@ -55,6 +56,9 @@ class AppServiceManager {
   // Windows service for system tray and auto-start
   final WindowsService _windowsService = WindowsService();
 
+  // Update service for checking new versions
+  final UpdateService _updateService = UpdateService();
+
   // Stream controller for config changes
   final _configStreamController = StreamController<ConfigModel>.broadcast();
 
@@ -66,6 +70,18 @@ class AppServiceManager {
 
   // Get the current configuration
   ConfigModel? get config => _config;
+
+  // Track if a TOS modal is currently being shown
+  bool _isTOSModalVisible = false;
+
+  // Check if a TOS modal is currently visible
+  bool get isTOSModalVisible => _isTOSModalVisible;
+
+  // Set the TOS modal visibility
+  set isTOSModalVisible(bool value) {
+    _isTOSModalVisible = value;
+    developer.log('TOS modal visibility set to: $value', name: 'AppServiceManager');
+  }
 
   // Key for storing onboarding completion status
   static const String _onboardingCompleteKey = 'onboarding_complete';
@@ -138,7 +154,7 @@ class AppServiceManager {
       // Check verification status
       await checkVerificationStatus();
 
-      // Initialize Windows-specific services if on Windows
+      // Initialize platform-specific services
       if (Platform.isWindows && _config != null) {
         await _windowsService.initialize(
           minimizeToTray: _config!.minimizeToTray,
@@ -153,6 +169,20 @@ class AppServiceManager {
         }
 
         developer.log('Windows-specific services initialized', name: 'AppServiceManager');
+      }
+
+      // Initialize update service and check for updates (for both Windows and Android)
+      if (Platform.isWindows || Platform.isAndroid) {
+        try {
+          await _updateService.initialize();
+          // Check for updates in the background to not delay app startup
+          Future.delayed(Duration(seconds: 2), () async {
+            await _updateService.checkForUpdatesOnStartup();
+          });
+          developer.log('Update service initialized and check scheduled', name: 'AppServiceManager');
+        } catch (e) {
+          developer.log('Error initializing update service: $e', name: 'AppServiceManager');
+        }
       }
 
       // Start watching for photos if directory is set
@@ -299,6 +329,13 @@ class AppServiceManager {
       await _vrchatService.logout();
     } catch (e) {
       developer.log('Error during VRChat logout on dispose: $e', name: 'AppServiceManager');
+    }
+
+    // Dispose update service
+    try {
+      await _updateService.dispose();
+    } catch (e) {
+      developer.log('Error disposing update service: $e', name: 'AppServiceManager');
     }
 
     developer.log('All services disposed', name: 'AppServiceManager');

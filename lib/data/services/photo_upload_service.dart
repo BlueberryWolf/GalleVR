@@ -12,6 +12,7 @@ import '../repositories/photo_metadata_repository.dart';
 import '../../core/audio/sound_service.dart';
 import 'app_service_manager.dart';
 import 'photo_event_service.dart';
+import 'tos_service.dart';
 import 'vrchat_service.dart';
 
 // Service for uploading photos to the server
@@ -19,15 +20,18 @@ class PhotoUploadService {
   final VRChatService _vrchatService;
   final PhotoMetadataRepository _photoMetadataRepository;
   final SoundService _soundService;
+  final TOSService _tosService;
 
   PhotoUploadService({
     VRChatService? vrchatService,
     PhotoMetadataRepository? photoMetadataRepository,
     SoundService? soundService,
+    TOSService? tosService,
   }) : _vrchatService = vrchatService ?? VRChatService(),
        _photoMetadataRepository =
            photoMetadataRepository ?? PhotoMetadataRepository(),
-       _soundService = soundService ?? AppServiceManager().soundService;
+       _soundService = soundService ?? AppServiceManager().soundService,
+       _tosService = tosService ?? TOSService();
 
   Future<bool> uploadPhoto(
     String photoPath,
@@ -69,6 +73,20 @@ class PhotoUploadService {
         PhotoEventService().notifyError('upload', error, photoPath: photoPath);
 
         await _vrchatService.logout();
+        return false;
+      }
+
+      // Check if user needs to accept TOS
+      developer.log(
+        'Checking TOS acceptance status before upload',
+        name: 'PhotoUploadService',
+      );
+      final needsToAcceptTOS = await _tosService.needsToAcceptTOS();
+      if (needsToAcceptTOS) {
+        final error =
+            'You need to accept the Terms of Service before uploading photos.';
+        developer.log(error, name: 'PhotoUploadService');
+        PhotoEventService().notifyError('upload', error, photoPath: photoPath);
         return false;
       }
 

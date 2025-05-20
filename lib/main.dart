@@ -10,6 +10,7 @@ import 'data/services/app_service_manager.dart';
 import 'presentation/screens/home_screen.dart';
 import 'presentation/screens/onboarding_screen.dart';
 import 'presentation/theme/app_theme.dart';
+import 'presentation/widgets/app_wrapper.dart';
 import 'core/services/windows_service.dart';
 
 // Command line arguments
@@ -124,17 +125,18 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
       theme: AppTheme.getLightTheme(),
       darkTheme: AppTheme.getDarkTheme(),
       themeMode: ThemeMode.dark,
-      home: KeyboardListener(
-        focusNode: FocusNode(),
-        autofocus: true,
-        onKeyEvent: (keyEvent) async {
-          if (keyEvent is KeyDownEvent) {
-            if (keyEvent.logicalKey == LogicalKeyboardKey.f4 &&
-                HardwareKeyboard.instance.isAltPressed) {
-              // exit the app completely
-              if (Platform.isWindows) {
-                // force exit the app when Alt+F4 is pressed
-                developer.log('Alt+F4 detected, exiting application', name: 'GalleVRApp');
+      home: AppWrapper(
+        child: KeyboardListener(
+          focusNode: FocusNode(),
+          autofocus: true,
+          onKeyEvent: (keyEvent) async {
+            if (keyEvent is KeyDownEvent) {
+              if (keyEvent.logicalKey == LogicalKeyboardKey.f4 &&
+                  HardwareKeyboard.instance.isAltPressed) {
+                // exit the app completely
+                if (Platform.isWindows) {
+                  // force exit the app when Alt+F4 is pressed
+                  developer.log('Alt+F4 detected, exiting application', name: 'GalleVRApp');
 
                 try {
                   // try to stop any foreground tasks directly
@@ -159,8 +161,9 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
               }
             }
           }
-        },
-        child: home,
+          },
+          child: home,
+        ),
       ),
       debugShowCheckedModeBanner: false,
     );

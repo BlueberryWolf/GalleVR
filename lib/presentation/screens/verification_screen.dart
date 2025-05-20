@@ -28,6 +28,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
   bool _isVerified = false;
   bool _showTotpField = false;
   bool _showQrCode = false;
+  bool _isAgeVerified = false;
+  bool _showDateOfBirthInput = false;
   String _errorMessage = '';
   String _statusMessage = '';
   VerificationMethod _selectedMethod = VerificationMethod.automatic;
@@ -35,6 +37,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
   AuthData? _authData;
   String _galleryUrl = '';
   String _verificationToken = '';
+  DateTime? _selectedDate;
 
   @override
   void initState() {
@@ -61,19 +64,29 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
       final authData = await _vrchatService.loadAuthData();
       if (authData != null) {
+        // Check if the user is already age verified, even if not fully verified
+        if (authData.ageVerified) {
+          setState(() {
+            _isAgeVerified = true;
+          });
+
+          developer.log('User is already age verified', name: 'VerificationScreen');
+        }
+
         setState(() {
           _statusMessage = 'Checking verification status...';
         });
 
+        // Check if the user is fully verified (has valid VRChat verification)
         final isVerified = await _vrchatService.checkVerificationStatus(
           authData,
         );
+
         if (isVerified) {
           setState(() {
             _isVerified = true;
             _authData = authData;
-            _galleryUrl =
-                'https://gallevr.app/?auth=${authData.accessKey}';
+            _galleryUrl = 'https://gallevr.app/?auth=${authData.accessKey}';
           });
         }
       }
@@ -122,7 +135,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
         });
 
         final verificationResult =
-            await _vrchatService.startAutomaticVerification();
+            await _vrchatService.startAutomaticVerification(
+              ageVerified: _isAgeVerified,
+            );
 
         if (verificationResult.success && verificationResult.authData != null) {
           await _vrchatService.saveAuthData(verificationResult.authData!);
@@ -204,6 +219,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
       try {
         final verificationResult = await _vrchatService.startManualVerification(
           _usernameController.text,
+          ageVerified: _isAgeVerified,
         );
 
         if (verificationResult.success && verificationResult.authData != null) {
@@ -337,6 +353,45 @@ class _VerificationScreenState extends State<VerificationScreen> {
     }
   }
 
+  bool _isOver13() {
+    if (_selectedDate == null) return false;
+
+    final now = DateTime.now();
+    final difference = now.difference(_selectedDate!);
+    final age = difference.inDays ~/ 365;
+    return age >= 13;
+  }
+
+  void _showDatePicker() async {
+    final initialDate = DateTime.now().subtract(const Duration(days: 365 * 13));
+    final firstDate = DateTime.now().subtract(const Duration(days: 365 * 100));
+    final lastDate = DateTime.now();
+
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      helpText: 'Select your date of birth',
+      cancelText: 'Cancel',
+      confirmText: 'Confirm',
+    );
+
+    if (pickedDate != null) {
+      setState(() {
+        _selectedDate = pickedDate;
+        // Only check if over 13, but don't set _isAgeVerified yet
+        // We'll set it when the user clicks the verify button
+        if (!_isOver13()) {
+          _errorMessage = 'You must be at least 13 years old to use this app.';
+        } else {
+          _errorMessage = '';
+        }
+      });
+    }
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -344,52 +399,51 @@ class _VerificationScreenState extends State<VerificationScreen> {
         title: const Text('VRChat Verification'),
         backgroundColor: AppTheme.backgroundColor,
       ),
-      body:
-          _isVerified
-              ? _buildVerifiedView()
-              : Stack(
-                children: [
-                  SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildMethodSelector(),
-                        const SizedBox(height: 16),
-                        _selectedMethod == VerificationMethod.automatic
-                            ? _buildAutomaticVerificationView()
-                            : _buildManualVerificationView(),
-                      ],
-                    ),
-                  ),
+      body: _isVerified
+          ? _buildVerifiedView()
+          : Stack(
+            children: [
+              SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildMethodSelector(),
+                    const SizedBox(height: 16),
+                    _selectedMethod == VerificationMethod.automatic
+                        ? _buildAutomaticVerificationView()
+                        : _buildManualVerificationView(),
+                  ],
+                ),
+              ),
 
-                  if (_isLoading)
-                    Container(
-                      color: Colors.black.withAlpha(76),
-                      child: Center(
-                        child: Card(
-                          elevation: 4,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const CircularProgressIndicator(),
-                                const SizedBox(height: 16),
-                                Text(
-                                  _statusMessage.isNotEmpty
-                                      ? _statusMessage
-                                      : 'Processing...',
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
+              if (_isLoading)
+                Container(
+                  color: Colors.black.withAlpha(76),
+                  child: Center(
+                    child: Card(
+                      elevation: 4,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(),
+                            const SizedBox(height: 16),
+                            Text(
+                              _statusMessage.isNotEmpty
+                                  ? _statusMessage
+                                  : 'Processing...',
+                              textAlign: TextAlign.center,
                             ),
-                          ),
+                          ],
                         ),
                       ),
                     ),
-                ],
-              ),
+                  ),
+                ),
+            ],
+          ),
     );
   }
 
@@ -491,6 +545,58 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 onSubmitted: (_) => _login(),
               ),
             ],
+            if (!_isAgeVerified) ...[
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                'Age Verification',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'You must be at least 13 years old to use this app. Please enter your date of birth:',
+              ),
+              const SizedBox(height: 16),
+              InkWell(
+                onTap: _showDatePicker,
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Date of Birth',
+                    prefixIcon: Icon(Icons.calendar_today),
+                    border: OutlineInputBorder(),
+                  ),
+                  child: Text(
+                    _selectedDate != null
+                        ? '${_selectedDate!.month}/${_selectedDate!.day}/${_selectedDate!.year}'
+                        : 'Select Date',
+                  ),
+                ),
+              ),
+              if (_selectedDate != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      _isOver13() ? Icons.check_circle : Icons.error,
+                      color: _isOver13() ? Colors.green : Colors.red,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isOver13()
+                          ? 'Age verified'
+                          : 'You must be at least 13 years old',
+                      style: TextStyle(
+                        color: _isOver13() ? Colors.green : Colors.red,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+
             if (_errorMessage.isNotEmpty) ...[
               const SizedBox(height: 16),
               Text(
@@ -504,7 +610,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
               children: [
                 const Spacer(),
                 ElevatedButton(
-                  onPressed: _isLoading ? null : _login,
+                  onPressed: (_isAgeVerified || (_selectedDate != null && _isOver13())) && !_isLoading
+                      ? () {
+                          // Only set _isAgeVerified to true if the user is over 13 and not already verified
+                          if (!_isAgeVerified && _selectedDate != null && _isOver13()) {
+                            setState(() {
+                              _isAgeVerified = true;
+                            });
+                          }
+                          _login();
+                        }
+                      : null,
                   child: const Text('Verify'),
                 ),
               ],
@@ -548,6 +664,59 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _startManualVerification(),
               ),
+
+              // Date of birth input
+              if (!_isAgeVerified) ...[
+                const SizedBox(height: 24),
+                const Divider(),
+                const SizedBox(height: 8),
+                Text(
+                  'Age Verification',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'You must be at least 13 years old to use this app. Please enter your date of birth:',
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: _showDatePicker,
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Date of Birth',
+                      prefixIcon: Icon(Icons.calendar_today),
+                      border: OutlineInputBorder(),
+                    ),
+                    child: Text(
+                      _selectedDate != null
+                          ? '${_selectedDate!.month}/${_selectedDate!.day}/${_selectedDate!.year}'
+                          : 'Select Date',
+                    ),
+                  ),
+                ),
+                if (_selectedDate != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        _isOver13() ? Icons.check_circle : Icons.error,
+                        color: _isOver13() ? Colors.green : Colors.red,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _isOver13()
+                            ? 'Age verified'
+                            : 'You must be at least 13 years old',
+                        style: TextStyle(
+                          color: _isOver13() ? Colors.green : Colors.red,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
             ] else if (_manualVerificationStep == 1) ...[
               const Text('Add GalleVR as a friend in VRChat:'),
               const SizedBox(height: 16),
@@ -716,7 +885,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
               children: [
                 const Spacer(),
                 ElevatedButton(
-                  onPressed: _isLoading ? null : _startManualVerification,
+                  onPressed: (_manualVerificationStep == 0 && !_isAgeVerified && (_selectedDate == null || !_isOver13()) || _isLoading)
+                      ? null
+                      : () {
+                          // Only set _isAgeVerified to true if the user is over 13, we're on step 0, and not already verified
+                          if (_manualVerificationStep == 0 && !_isAgeVerified && _selectedDate != null && _isOver13()) {
+                            setState(() {
+                              _isAgeVerified = true;
+                            });
+                          }
+                          _startManualVerification();
+                        },
                   child: Text(() {
                     switch (_manualVerificationStep) {
                       case 0:
