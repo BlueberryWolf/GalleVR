@@ -6,9 +6,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/models/verification_models.dart';
 import '../../data/services/vrchat_service.dart';
+import '../../data/services/tos_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/blurrable_qr_code.dart';
 import '../widgets/step_indicator.dart';
+import '../widgets/tos_modal.dart';
 
 // Screen for VRChat verification
 class VerificationScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class VerificationScreen extends StatefulWidget {
 
 class _VerificationScreenState extends State<VerificationScreen> {
   final VRChatService _vrchatService = VRChatService();
+  final TOSService _tosService = TOSService();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _totpController = TextEditingController();
@@ -29,7 +32,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
   bool _showTotpField = false;
   bool _showQrCode = false;
   bool _isAgeVerified = false;
-  bool _showDateOfBirthInput = false;
+  bool _showTOSModal = false;
   String _errorMessage = '';
   String _statusMessage = '';
   VerificationMethod _selectedMethod = VerificationMethod.automatic;
@@ -88,6 +91,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
             _authData = authData;
             _galleryUrl = 'https://gallevr.app/?auth=${authData.accessKey}';
           });
+
+          // Check if user needs to accept TOS if they're already verified
+          await _checkTOSStatus();
         }
       }
     } catch (e) {
@@ -153,6 +159,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
               _galleryUrl =
                   'https://gallevr.app/?auth=${verificationResult.authData!.accessKey}';
             });
+
+            // Check if user needs to accept TOS after successful verification
+            await _checkTOSStatus();
           } else {
             await Future.delayed(const Duration(seconds: 2));
             final retryVerified = await _vrchatService.checkVerificationStatus(
@@ -166,6 +175,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 _galleryUrl =
                     'https://gallevr.app/?auth=${verificationResult.authData!.accessKey}';
               });
+
+              // Check if user needs to accept TOS after successful verification
+              await _checkTOSStatus();
             } else {
               setState(() {
                 _errorMessage =
@@ -314,6 +326,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 _galleryUrl =
                     'https://gallevr.app/?auth=${_authData!.accessKey}';
               });
+
+              // Check if user needs to accept TOS after successful verification
+              await _checkTOSStatus();
             } else {
               setState(() {
                 _errorMessage =
@@ -392,6 +407,53 @@ class _VerificationScreenState extends State<VerificationScreen> {
   }
 
 
+  /// Check if the user needs to accept the TOS
+  Future<void> _checkTOSStatus() async {
+    try {
+      // Check if user needs to accept TOS
+      final needsToAcceptTOS = await _tosService.needsToAcceptTOS();
+
+      if (needsToAcceptTOS && mounted) {
+        setState(() {
+          _showTOSModal = true;
+        });
+      }
+    } catch (e) {
+      developer.log('Error checking TOS status: $e', name: 'VerificationScreen');
+    }
+  }
+
+  /// Handle TOS acceptance
+  void _handleTOSAccept() {
+    setState(() {
+      _showTOSModal = false;
+    });
+
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Terms of Service accepted. You can now use the app.'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  /// Handle TOS decline
+  void _handleTOSDecline() {
+    setState(() {
+      _showTOSModal = false;
+    });
+
+    // Show warning message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('You can still use the app, but some features may be limited.'),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 5),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -399,51 +461,64 @@ class _VerificationScreenState extends State<VerificationScreen> {
         title: const Text('VRChat Verification'),
         backgroundColor: AppTheme.backgroundColor,
       ),
-      body: _isVerified
-          ? _buildVerifiedView()
-          : Stack(
-            children: [
-              SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Stack(
+        children: [
+          // Main content
+          _isVerified
+              ? _buildVerifiedView()
+              : Stack(
                   children: [
-                    _buildMethodSelector(),
-                    const SizedBox(height: 16),
-                    _selectedMethod == VerificationMethod.automatic
-                        ? _buildAutomaticVerificationView()
-                        : _buildManualVerificationView(),
-                  ],
-                ),
-              ),
-
-              if (_isLoading)
-                Container(
-                  color: Colors.black.withAlpha(76),
-                  child: Center(
-                    child: Card(
-                      elevation: 4,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const CircularProgressIndicator(),
-                            const SizedBox(height: 16),
-                            Text(
-                              _statusMessage.isNotEmpty
-                                  ? _statusMessage
-                                  : 'Processing...',
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
+                    SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildMethodSelector(),
+                          const SizedBox(height: 16),
+                          _selectedMethod == VerificationMethod.automatic
+                              ? _buildAutomaticVerificationView()
+                              : _buildManualVerificationView(),
+                        ],
                       ),
                     ),
-                  ),
+
+                    if (_isLoading)
+                      Container(
+                        color: Colors.black.withAlpha(76),
+                        child: Center(
+                          child: Card(
+                            elevation: 4,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const CircularProgressIndicator(),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _statusMessage.isNotEmpty
+                                        ? _statusMessage
+                                        : 'Processing...',
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
+
+          // TOS Modal
+          if (_showTOSModal)
+            TOSModal(
+              onAccept: _handleTOSAccept,
+              onDecline: _handleTOSDecline,
+              title: 'Terms of Service',
+            ),
+        ],
+      ),
     );
   }
 
