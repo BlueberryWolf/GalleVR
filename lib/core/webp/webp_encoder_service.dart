@@ -15,44 +15,75 @@ class WebpEncoderService {
   ///
   /// Ensures the output is under 150KB by progressively reducing quality
   /// if needed, making up to 5 attempts with decreasing quality.
+  /// On Windows, uses cwebp's built-in resizing capability.
   Future<Uint8List> encodeToWebP(
     img.Image image, {
     int quality = 85,
     int method = 6,
+    bool useResizing = true,
   }) async {
+    // Store original dimensions for Windows resizing
+    final originalWidth = image.width;
+    final originalHeight = image.height;
+
     if (Platform.isWindows) {
       try {
+        // For Windows, we'll pass the original image and let cwebp handle resizing
         return await _encodeWithSizeConstraint(
           image,
           initialQuality: quality,
           method: method,
-          encoder: (img, q, m) => _encodeWithCwebp(img, quality: q, method: m),
+          originalWidth: originalWidth,
+          originalHeight: originalHeight,
+          useResizing: useResizing,
+          encoder: (img, q, m, w, h, resize) => _encodeWithCwebp(
+            img,
+            quality: q,
+            method: m,
+            targetWidth: resize ? w : null,
+            targetHeight: resize ? h : null,
+          ),
         );
       } catch (e) {
         developer.log(
           'Error using cwebp.exe, falling back to image package: $e',
           name: 'WebpEncoderService',
         );
+        // For fallback, we'll use the resized image
+        final resizedImage = await _resizeImageIfNeeded(image);
         return await _encodeWithSizeConstraint(
-          image,
+          resizedImage,
           initialQuality: quality,
           method: method,
-          encoder: (img, q, _) => _encodeWithImagePackage(img, quality: q),
+          originalWidth: originalWidth,
+          originalHeight: originalHeight,
+          useResizing: false, // Already resized
+          encoder: (img, q, m, _, __, ___) => _encodeWithImagePackage(img, quality: q),
         );
       }
     } else if (Platform.isAndroid) {
+      // For Android, resize the image first
+      final resizedImage = await _resizeImageIfNeeded(image);
       return await _encodeWithSizeConstraint(
-        image,
+        resizedImage,
         initialQuality: quality,
         method: method,
-        encoder: (img, q, _) => _encodeWithFlutterImageCompress(img, quality: q),
+        originalWidth: originalWidth,
+        originalHeight: originalHeight,
+        useResizing: false, // Already resized
+        encoder: (img, q, m, _, __, ___) => _encodeWithFlutterImageCompress(img, quality: q),
       );
     } else {
+      // For other platforms, resize the image first
+      final resizedImage = await _resizeImageIfNeeded(image);
       return await _encodeWithSizeConstraint(
-        image,
+        resizedImage,
         initialQuality: quality,
         method: method,
-        encoder: (img, q, _) => _encodeWithImagePackage(img, quality: q),
+        originalWidth: originalWidth,
+        originalHeight: originalHeight,
+        useResizing: false, // Already resized
+        encoder: (img, q, m, _, __, ___) => _encodeWithImagePackage(img, quality: q),
       );
     }
   }
@@ -60,19 +91,67 @@ class WebpEncoderService {
   /// Encodes an image with size constraints by progressively reducing quality
   ///
   /// Makes multiple attempts to encode the image, reducing quality each time
-  /// until the file size is under MAX_SIZE_KB (150KB).
+  /// until the file size is under maxSizeKb (150KB).
   Future<Uint8List> _encodeWithSizeConstraint(
     img.Image image, {
     required int initialQuality,
     required int method,
-    required Future<Uint8List> Function(img.Image image, int quality, int method) encoder,
+    required Future<Uint8List> Function(
+      img.Image image,
+      int quality,
+      int method,
+      int? targetWidth,
+      int? targetHeight,
+      bool useResizing
+    ) encoder,
+    int? originalWidth,
+    int? originalHeight,
+    bool useResizing = true,
   }) async {
     int currentQuality = initialQuality;
     int attempts = 0;
     Uint8List result;
 
+    // Calculate target dimensions for 1080p
+    int? targetWidth;
+    int? targetHeight;
+
+    if (originalWidth != null && originalHeight != null && useResizing) {
+      const maxDimension = 1080;
+
+      if (originalWidth > originalHeight) {
+        if (originalHeight > maxDimension) {
+          targetHeight = maxDimension;
+          targetWidth = (originalWidth * (maxDimension / originalHeight)).round();
+        } else {
+          targetWidth = originalWidth;
+          targetHeight = originalHeight;
+        }
+      } else {
+        if (originalWidth > maxDimension) {
+          targetWidth = maxDimension;
+          targetHeight = (originalHeight * (maxDimension / originalWidth)).round();
+        } else {
+          targetWidth = originalWidth;
+          targetHeight = originalHeight;
+        }
+      }
+
+      developer.log(
+        'Target dimensions: ${targetWidth}x${targetHeight} (original: ${originalWidth}x${originalHeight})',
+        name: 'WebpEncoderService',
+      );
+    }
+
     do {
-      result = await encoder(image, currentQuality, method);
+      result = await encoder(
+        image,
+        currentQuality,
+        method,
+        targetWidth,
+        targetHeight,
+        useResizing,
+      );
       final sizeKB = result.length / 1024;
 
       developer.log(
@@ -116,10 +195,50 @@ class WebpEncoderService {
     return result;
   }
 
+  /// Resizes an image to fit within 1080p dimensions while maintaining aspect ratio
+  Future<img.Image> _resizeImageIfNeeded(img.Image image) async {
+    const maxDimension = 1080;
+
+    if (image.width <= maxDimension && image.height <= maxDimension) {
+      return image;
+    }
+
+    return await compute((img.Image image) {
+      int newWidth, newHeight;
+
+      if (image.width > image.height) {
+        if (image.height > maxDimension) {
+          newHeight = maxDimension;
+          newWidth = (image.width * (maxDimension / image.height)).round();
+        } else {
+          newWidth = image.width;
+          newHeight = image.height;
+        }
+      } else {
+        if (image.width > maxDimension) {
+          newWidth = maxDimension;
+          newHeight = (image.height * (maxDimension / image.width)).round();
+        } else {
+          newWidth = image.width;
+          newHeight = image.height;
+        }
+      }
+
+      return img.copyResize(
+        image,
+        width: newWidth,
+        height: newHeight,
+        interpolation: img.Interpolation.cubic,
+      );
+    }, image);
+  }
+
   Future<Uint8List> _encodeWithCwebp(
     img.Image image, {
     int quality = 85,
     int method = 6,
+    int? targetWidth,
+    int? targetHeight,
   }) async {
     final tempDir = await getTemporaryDirectory();
     final inputPath = path.join(
@@ -137,15 +256,33 @@ class WebpEncoderService {
 
       final cwebpPath = await _getCwebpPath();
 
-      final result = await Process.run(cwebpPath, [
+      final args = [
         '-q',
         quality.toString(),
         '-m',
         method.toString(),
         '-o',
         outputPath,
-        inputPath,
-      ]);
+      ];
+
+      // Add resize parameters if provided
+      if (targetWidth != null && targetHeight != null) {
+        args.addAll([
+          '-resize',
+          targetWidth.toString(),
+          targetHeight.toString(),
+        ]);
+      }
+
+      // Add input path at the end
+      args.add(inputPath);
+
+      developer.log(
+        'Running cwebp with args: $args',
+        name: 'WebpEncoderService',
+      );
+
+      final result = await Process.run(cwebpPath, args);
 
       if (result.exitCode != 0) {
         throw Exception('cwebp.exe failed: ${result.stderr}');

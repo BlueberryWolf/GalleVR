@@ -4,10 +4,10 @@ import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/photo_metadata.dart';
+import '../services/vrcx_metadata_service.dart';
 
 class PhotoMetadataRepository {
   static const String _photoIdsKey = 'gallevr_photo_ids';
-
   static const String _photoMetadataKeyPrefix = 'gallevr_photo_';
 
   Future<bool> savePhotoMetadata(PhotoMetadata metadata) async {
@@ -249,6 +249,42 @@ class PhotoMetadataRepository {
       }
 
       developer.log(
+        'No GalleVR metadata found for $filename, checking for VRCX metadata',
+        name: 'PhotoMetadataRepository',
+      );
+
+      // Check for VRCX metadata in the image file
+      final vrcxService = VrcxMetadataService();
+      final vrcxMetadata = await vrcxService.extractVrcxMetadata(filePath);
+
+      if (vrcxMetadata != null) {
+        developer.log(
+          'Found VRCX metadata for $filename, saving to GalleVR format',
+          name: 'PhotoMetadataRepository',
+        );
+
+        // Save the converted metadata to GalleVR's storage
+        final saveResult = await savePhotoMetadata(vrcxMetadata);
+
+        if (saveResult) {
+          developer.log(
+            'Successfully saved VRCX metadata for $filename',
+            name: 'PhotoMetadataRepository',
+          );
+
+          // Successfully processed this file
+
+          // Return the saved metadata
+          return vrcxMetadata;
+        } else {
+          developer.log(
+            'Failed to save VRCX metadata for $filename',
+            name: 'PhotoMetadataRepository',
+          );
+        }
+      }
+
+      developer.log(
         'No metadata found for $filename',
         name: 'PhotoMetadataRepository',
       );
@@ -282,5 +318,18 @@ class PhotoMetadataRepository {
       );
       return false;
     }
+  }
+
+  /// Resets the VRCX metadata cache
+  ///
+  /// This allows the app to check for VRCX metadata again for files that have already been checked
+  void resetVrcxMetadataCache() {
+    developer.log(
+      'Clearing VRCX metadata cache',
+      name: 'PhotoMetadataRepository',
+    );
+
+    // Clear the VRCX service cache
+    VrcxMetadataService().clearCache();
   }
 }
