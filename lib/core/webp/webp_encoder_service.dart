@@ -8,6 +8,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 
 class WebpEncoderService {
+  static const int maxSizeKb = 150;
+  static const int maxAttempts = 5;
+
+  /// Encodes an image to WebP format with size constraints
+  ///
+  /// Ensures the output is under 150KB by progressively reducing quality
+  /// if needed, making up to 5 attempts with decreasing quality.
   Future<Uint8List> encodeToWebP(
     img.Image image, {
     int quality = 85,
@@ -15,19 +22,98 @@ class WebpEncoderService {
   }) async {
     if (Platform.isWindows) {
       try {
-        return await _encodeWithCwebp(image, quality: quality, method: method);
+        return await _encodeWithSizeConstraint(
+          image,
+          initialQuality: quality,
+          method: method,
+          encoder: (img, q, m) => _encodeWithCwebp(img, quality: q, method: m),
+        );
       } catch (e) {
         developer.log(
           'Error using cwebp.exe, falling back to image package: $e',
           name: 'WebpEncoderService',
         );
-        return await _encodeWithImagePackage(image, quality: quality);
+        return await _encodeWithSizeConstraint(
+          image,
+          initialQuality: quality,
+          method: method,
+          encoder: (img, q, _) => _encodeWithImagePackage(img, quality: q),
+        );
       }
     } else if (Platform.isAndroid) {
-      return await _encodeWithFlutterImageCompress(image, quality: quality);
+      return await _encodeWithSizeConstraint(
+        image,
+        initialQuality: quality,
+        method: method,
+        encoder: (img, q, _) => _encodeWithFlutterImageCompress(img, quality: q),
+      );
     } else {
-      return await _encodeWithImagePackage(image, quality: quality);
+      return await _encodeWithSizeConstraint(
+        image,
+        initialQuality: quality,
+        method: method,
+        encoder: (img, q, _) => _encodeWithImagePackage(img, quality: q),
+      );
     }
+  }
+
+  /// Encodes an image with size constraints by progressively reducing quality
+  ///
+  /// Makes multiple attempts to encode the image, reducing quality each time
+  /// until the file size is under MAX_SIZE_KB (150KB).
+  Future<Uint8List> _encodeWithSizeConstraint(
+    img.Image image, {
+    required int initialQuality,
+    required int method,
+    required Future<Uint8List> Function(img.Image image, int quality, int method) encoder,
+  }) async {
+    int currentQuality = initialQuality;
+    int attempts = 0;
+    Uint8List result;
+
+    do {
+      result = await encoder(image, currentQuality, method);
+      final sizeKB = result.length / 1024;
+
+      developer.log(
+        'Encoding attempt ${attempts + 1}: quality=$currentQuality, size=${sizeKB.toStringAsFixed(2)}KB',
+        name: 'WebpEncoderService',
+      );
+
+      if (sizeKB <= maxSizeKb) {
+        developer.log(
+          'Successfully encoded image under ${maxSizeKb}KB (${sizeKB.toStringAsFixed(2)}KB)',
+          name: 'WebpEncoderService',
+        );
+        return result;
+      }
+
+      // Calculate new quality based on how far we are from target size
+      // More aggressive reduction for larger files
+      final ratio = maxSizeKb / sizeKB;
+      int qualityReduction;
+
+      if (ratio < 0.5) {
+        qualityReduction = 25; // Very large file, reduce by 25
+      } else if (ratio < 0.7) {
+        qualityReduction = 15; // Large file, reduce by 15
+      } else if (ratio < 0.9) {
+        qualityReduction = 10; // Medium file, reduce by 10
+      } else {
+        qualityReduction = 5; // Close to target, reduce by 5
+      }
+
+      currentQuality = (currentQuality - qualityReduction).clamp(5, 100);
+      attempts++;
+
+    } while (attempts < maxAttempts);
+
+    developer.log(
+      'Failed to reduce image size below ${maxSizeKb}KB after $maxAttempts attempts. Using best result.',
+      name: 'WebpEncoderService',
+    );
+
+    return result;
   }
 
   Future<Uint8List> _encodeWithCwebp(
@@ -52,8 +138,8 @@ class WebpEncoderService {
       final cwebpPath = await _getCwebpPath();
 
       final result = await Process.run(cwebpPath, [
-        '-size',
-        '150000',
+        '-q',
+        quality.toString(),
         '-m',
         method.toString(),
         '-o',
@@ -120,6 +206,10 @@ class WebpEncoderService {
     img.Image image, {
     int quality = 85,
   }) async {
+    developer.log(
+      'Using PNG encoding as fallback (image package lacks WebP quality control)',
+      name: 'WebpEncoderService',
+    );
     return await compute((EncoderParams params) {
       return Uint8List.fromList(img.encodePng(params.image));
     }, EncoderParams(image, quality));
@@ -144,7 +234,7 @@ class WebpEncoderService {
 
       final result = await FlutterImageCompress.compressWithFile(
         inputPath,
-        quality: 20,
+        quality: quality,
         format: CompressFormat.webp,
       );
 
