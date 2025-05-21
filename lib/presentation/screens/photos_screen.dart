@@ -6,6 +6,7 @@ import 'package:path/path.dart' as path;
 import 'dart:developer' as developer;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart';
+import 'package:pasteboard/pasteboard.dart';
 
 import '../../data/repositories/config_repository.dart';
 import '../../data/models/config_model.dart';
@@ -544,16 +545,11 @@ class _PhotosScreenState extends State<PhotosScreen> {
   }
 
   void _showPhotoOptions(FileSystemEntity entity) {
-    showModalBottomSheet(
+    showStyledBottomSheet(
       context: context,
-      backgroundColor: AppTheme.surfaceColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder:
-          (context) => FutureBuilder<PhotoMetadata?>(
-            future: _getMetadataFuture(entity.path),
-            builder: (context, snapshot) {
+      builder: (context) => FutureBuilder<PhotoMetadata?>(
+        future: _getMetadataFuture(entity.path),
+        builder: (context, snapshot) {
               final metadata = snapshot.data;
               final hasMetadata =
                   metadata != null &&
@@ -600,6 +596,39 @@ class _PhotosScreenState extends State<PhotosScreen> {
                         _openPhotoDetails(entity);
                       },
                     ),
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.copy),
+                    title: const Text('Copy Photo Link'),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final metadata = snapshot.data;
+
+                      if (metadata?.galleryUrl != null) {
+                        await copyToClipboard(
+                          text: metadata!.galleryUrl!,
+                          context: context,
+                          successMessage: 'Gallery link copied to clipboard',
+                          loggerName: 'PhotosScreen',
+                        );
+                      } else {
+                        await copyToClipboard(
+                          text: entity.path,
+                          context: context,
+                          successMessage: 'Photo path copied to clipboard (no gallery link available)',
+                          loggerName: 'PhotosScreen',
+                        );
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.folder_open),
+                    title: const Text('Show in File Explorer'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      showFileInExplorer(entity.path, context);
+                    },
+                  ),
                 ],
               );
             },
@@ -981,29 +1010,42 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
             ),
             onPressed: () async {
               if (_metadata?.galleryUrl != null) {
-                final galleryUrl = _metadata!.galleryUrl!;
-                final scaffoldMessenger = ScaffoldMessenger.of(context);
-
-                await Clipboard.setData(ClipboardData(text: galleryUrl));
-
-                if (mounted) {
-                  scaffoldMessenger.showSnackBar(
-                    SnackBar(
-                      content: const Text('Gallery URL copied to clipboard'),
-                      action: SnackBarAction(
-                        label: 'Open',
-                        onPressed: () => _openInGallery(),
-                      ),
-                    ),
-                  );
-                }
-
-                developer.log(
-                  'Copied gallery URL to clipboard: $galleryUrl',
-                  name: 'PhotoDetailScreen',
+                await copyToClipboard(
+                  text: _metadata!.galleryUrl!,
+                  context: context,
+                  successMessage: 'Gallery URL copied to clipboard',
+                  loggerName: 'PhotoDetailScreen',
+                  onSuccess: _openInGallery,
                 );
               }
             },
+            tooltip: 'Copy gallery link',
+          ),
+          // Copy image button
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black.withAlpha(100),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.copy, color: Colors.white),
+            ),
+            onPressed: _copyImageToClipboard,
+            tooltip: 'Copy image to clipboard',
+          ),
+          // Show in file explorer button
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black.withAlpha(100),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.folder_open, color: Colors.white),
+            ),
+            onPressed: _showInFileExplorer,
+            tooltip: 'Show in File Explorer',
           ),
           IconButton(
             icon: Container(
@@ -1015,14 +1057,9 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
               child: const Icon(Icons.more_vert_rounded, color: Colors.white),
             ),
             onPressed: () {
-              showModalBottomSheet(
+              showStyledBottomSheet(
                 context: context,
-                backgroundColor: AppTheme.surfaceColor,
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-                builder:
-                    (context) => Column(
+                builder: (context) => Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         ListTile(
@@ -1031,6 +1068,30 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
                           onTap: () {
                             Navigator.pop(context);
                             _toggleMetadataPanel();
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.share_rounded),
+                          title: const Text('Copy Gallery Link'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _copyPhotoLinkToClipboard();
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.copy),
+                          title: const Text('Copy Image to Clipboard'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _copyImageToClipboard();
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.folder_open),
+                          title: const Text('Show in File Explorer'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showInFileExplorer();
                           },
                         ),
                       ],
@@ -1341,33 +1402,103 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
       return;
     }
 
+    await openUrl(_metadata!.galleryUrl!, context, loggerName: 'PhotoDetailScreen');
+  }
+
+  Future<void> _copyPhotoLinkToClipboard() async {
+    if (_metadata?.galleryUrl != null) {
+      final String galleryUrl = _metadata!.galleryUrl!;
+
+      await copyToClipboard(
+        text: galleryUrl,
+        context: context,
+        successMessage: 'Gallery link copied to clipboard',
+        loggerName: 'PhotoDetailScreen',
+        onSuccess: _openInGallery,
+      );
+    } else {
+      final String fallbackMessage = 'No gallery link available for this photo.';
+
+      await copyToClipboard(
+        text: fallbackMessage,
+        context: context,
+        successMessage: 'No gallery link available for this photo',
+        loggerName: 'PhotoDetailScreen',
+      );
+    }
+  }
+
+  Future<void> _showInFileExplorer() async {
+    await showFileInExplorer(widget.entity.path, context);
+  }
+
+  Future<void> _copyImageToClipboard() async {
     try {
-      final uri = Uri.parse(_metadata!.galleryUrl!);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        developer.log(
-          'Opened gallery URL: ${_metadata!.galleryUrl}',
-          name: 'PhotoDetailScreen',
-        );
-      } else {
+      final filePath = widget.entity.path;
+      final file = File(filePath);
+
+      if (!await file.exists()) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not open gallery link')),
+            const SnackBar(content: Text('Image file not found')),
           );
         }
-        developer.log(
-          'Could not launch URL: ${_metadata!.galleryUrl}',
-          name: 'PhotoDetailScreen',
-        );
+        return;
+      }
+
+      final result = await Pasteboard.writeFiles([filePath]);
+
+      if (mounted) {
+        if (result) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Image copied to clipboard')),
+          );
+
+          developer.log(
+            'Copied image to clipboard: $filePath',
+            name: 'PhotoDetailScreen',
+          );
+        } else {
+          // Try an alternative method if the first one failed
+          try {
+            // Try to use the image data directly
+            final bytes = await File(filePath).readAsBytes();
+            await Pasteboard.writeImage(bytes);
+
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Image copied to clipboard')),
+              );
+
+              developer.log(
+                'Copied image data to clipboard: $filePath',
+                name: 'PhotoDetailScreen',
+              );
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to copy image to clipboard: $e')),
+              );
+            }
+
+            developer.log(
+              'Error copying image data to clipboard: $e',
+              name: 'PhotoDetailScreen',
+              error: e,
+            );
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error opening gallery: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error copying image: $e')),
+        );
       }
+
       developer.log(
-        'Error opening gallery URL: $e',
+        'Error copying image to clipboard: $e',
         name: 'PhotoDetailScreen',
         error: e,
       );
@@ -1387,5 +1518,189 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
     } else {
       return '${date.day}/${date.month}/${date.year}';
     }
+  }
+}
+
+/// Utility function to copy text to clipboard and show a snackbar
+Future<void> copyToClipboard({
+  required String text,
+  required BuildContext context,
+  required String successMessage,
+  String? fallbackText,
+  String? fallbackMessage,
+  String loggerName = 'ClipboardUtil',
+  VoidCallback? onSuccess,
+}) async {
+  final bool isContextMounted = context.mounted;
+
+  try {
+    await Clipboard.setData(ClipboardData(text: text));
+
+    if (isContextMounted && context.mounted) {
+      final snackBar = SnackBar(
+        content: Text(successMessage),
+        action: onSuccess != null ? SnackBarAction(
+          label: 'Open',
+          onPressed: onSuccess,
+        ) : null,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    }
+
+    developer.log(
+      'Copied to clipboard: $text',
+      name: loggerName,
+    );
+  } catch (e) {
+    if (fallbackText != null) {
+      try {
+        await Clipboard.setData(ClipboardData(text: fallbackText));
+
+        if (isContextMounted && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(fallbackMessage ?? 'Fallback text copied to clipboard')),
+          );
+        }
+
+        developer.log(
+          'Copied fallback text to clipboard: $fallbackText',
+          name: loggerName,
+        );
+      } catch (e) {
+        if (isContextMounted && context.mounted) {
+          _handleClipboardError(e, context, loggerName);
+        } else {
+          _handleClipboardError(e, null, loggerName);
+        }
+      }
+    } else {
+      if (isContextMounted && context.mounted) {
+        _handleClipboardError(e, context, loggerName);
+      } else {
+        _handleClipboardError(e, null, loggerName);
+      }
+    }
+  }
+}
+
+/// Helper function to handle clipboard errors
+void _handleClipboardError(dynamic error, BuildContext? context, String loggerName) {
+  if (context != null && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error copying to clipboard: $error')),
+    );
+  }
+
+  developer.log(
+    'Error copying to clipboard: $error',
+    name: loggerName,
+    error: error,
+  );
+}
+
+/// Shows a modal bottom sheet with consistent styling
+void showStyledBottomSheet({
+  required BuildContext context,
+  required Widget Function(BuildContext) builder,
+}) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: AppTheme.surfaceColor,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: builder,
+  );
+}
+
+/// Utility function to open a URL in the default browser
+Future<void> openUrl(String url, BuildContext context, {String loggerName = 'UrlOpener'}) async {
+  try {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+      developer.log(
+        'Opened URL: $url',
+        name: loggerName,
+      );
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open URL')),
+        );
+      }
+
+      developer.log(
+        'Could not launch URL: $url',
+        name: loggerName,
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error opening URL: $e')),
+      );
+    }
+
+    developer.log(
+      'Error opening URL: $e',
+      name: loggerName,
+      error: e,
+    );
+  }
+}
+
+/// Utility function to show a file in the system's file explorer
+Future<void> showFileInExplorer(String filePath, BuildContext context) async {
+  try {
+    final uri = Uri.parse('file:${filePath.replaceAll('\\', '/')}');
+
+    if (Platform.isWindows) {
+      await Process.run(
+        'explorer.exe',
+        ['/select,$filePath'],
+        runInShell: true,
+      );
+
+      // Note: explorer.exe often returns exit code 1 even when successful,
+      // so we don't check the exit code here
+      developer.log(
+        'Opened file explorer and selected file: $filePath',
+        name: 'FileExplorerUtil',
+      );
+    } else if (await canLaunchUrl(uri)) {
+      final directoryPath = path.dirname(filePath);
+      final directoryUri = Uri.parse('file:$directoryPath');
+      await launchUrl(directoryUri);
+
+      developer.log(
+        'Opened file explorer at: $directoryPath',
+        name: 'FileExplorerUtil',
+      );
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open file explorer')),
+        );
+      }
+
+      developer.log(
+        'Could not open file explorer for path: $filePath',
+        name: 'FileExplorerUtil',
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error opening file explorer: $e')),
+      );
+    }
+
+    developer.log(
+      'Error opening file explorer: $e',
+      name: 'FileExplorerUtil',
+      error: e,
+    );
   }
 }
