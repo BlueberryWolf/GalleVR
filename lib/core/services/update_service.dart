@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
-import 'dart:io';
+import 'dart:io' show Platform;
 
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
+
+import 'notification_service.dart';
 
 /// Service for checking for app updates from GitHub releases
 class UpdateService {
@@ -27,10 +27,6 @@ class UpdateService {
   static const String _githubRepo = 'GalleVR';
   static const String _githubApiUrl = 'https://api.github.com/repos/$_githubOwner/$_githubRepo/releases/latest';
   static const String _releasesUrl = 'https://github.com/$_githubOwner/$_githubRepo/releases';
-
-  // Notification service
-  final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
 
   // Flag to track if service has been initialized
   bool _isInitialized = false;
@@ -53,8 +49,15 @@ class UpdateService {
 
   // Last check timestamp key for shared preferences
   static const String _lastCheckKey = 'update_last_check_time';
-  // Minimum interval between checks (24 hours in milliseconds)
-  static const int _checkIntervalMs = 24 * 60 * 60 * 1000;
+
+  // Timer for periodic update checks
+  Timer? _periodicUpdateTimer;
+
+  // Interval for periodic update checks (30 minutes)
+  static const int _periodicUpdateIntervalMinutes = 30;
+
+  // Minimum time between update checks (15 minutes)
+  static const int _minimumTimeBetweenChecksMinutes = 15;
 
   /// Initialize the update service
   Future<void> initialize() async {
@@ -64,82 +67,35 @@ class UpdateService {
       developer.log('Starting update service initialization',
           name: 'UpdateService');
 
-      if (Platform.isWindows) {
-        const WindowsInitializationSettings initializationSettingsWindows =
-            WindowsInitializationSettings(
-          appName: 'GalleVR',
-          appUserModelId: '{6D809377-6AF0-444B-8957-A3773F02200E}\\GalleVR\\gallevr.exe',
-          guid: '2fc54373-926e-545c-883a-dabcd36b229f',
-        );
-
-        developer.log('Windows initialization settings created',
-            name: 'UpdateService');
-
-        // Initialize the plugin with platform-specific settings for Windows
-        final InitializationSettings initializationSettings =
-            InitializationSettings(
-          windows: initializationSettingsWindows,
-        );
-
-        developer.log('Calling initialize on flutter_local_notifications plugin for Windows',
-            name: 'UpdateService');
-
-        final bool? initResult = await _flutterLocalNotificationsPlugin.initialize(
-          initializationSettings,
-          onDidReceiveNotificationResponse: (NotificationResponse response) {
-            developer.log('Update notification tapped: ${response.payload}',
-                name: 'UpdateService');
-
-            // Open the releases page when notification is tapped
-            if (response.payload == 'update') {
-              _openReleasesPage();
-            }
-          },
-        );
-
-        developer.log('Initialize result for Windows: $initResult',
-            name: 'UpdateService');
-      }
-      else if (Platform.isAndroid) {
-        // Android initialization settings
-        const AndroidInitializationSettings initializationSettingsAndroid =
-            AndroidInitializationSettings('@mipmap/ic_launcher');
-
-        developer.log('Android initialization settings created',
-            name: 'UpdateService');
-
-        // Initialize the plugin with platform-specific settings for Android
-        final InitializationSettings initializationSettings =
-            InitializationSettings(
-          android: initializationSettingsAndroid,
-        );
-
-        developer.log('Calling initialize on flutter_local_notifications plugin for Android',
-            name: 'UpdateService');
-
-        final bool? initResult = await _flutterLocalNotificationsPlugin.initialize(
-          initializationSettings,
-          onDidReceiveNotificationResponse: (NotificationResponse response) {
-            developer.log('Update notification tapped: ${response.payload}',
-                name: 'UpdateService');
-
-            // Open the releases page when notification is tapped
-            if (response.payload == 'update') {
-              _openReleasesPage();
-            }
-          },
-        );
-
-        developer.log('Initialize result for Android: $initResult',
-            name: 'UpdateService');
-      }
+      // Start periodic update checks
+      _startPeriodicUpdateChecks();
 
       _isInitialized = true;
-      developer.log('Update service initialized', name: 'UpdateService');
+      developer.log('Update service initialized (using shared notification service)',
+          name: 'UpdateService');
     } catch (e) {
       developer.log('Error initializing update service: $e',
           name: 'UpdateService');
     }
+  }
+
+  /// Start periodic update checks
+  void _startPeriodicUpdateChecks() {
+    // Cancel any existing timer
+    _periodicUpdateTimer?.cancel();
+
+    // Create a new timer that checks for updates every 30 minutes
+    _periodicUpdateTimer = Timer.periodic(
+      Duration(minutes: _periodicUpdateIntervalMinutes),
+      (_) async {
+        developer.log('Periodic update check triggered',
+            name: 'UpdateService');
+        await checkForUpdates();
+      }
+    );
+
+    developer.log('Periodic update checks scheduled every $_periodicUpdateIntervalMinutes minutes',
+        name: 'UpdateService');
   }
 
   /// Check for updates on app startup
@@ -213,12 +169,75 @@ class UpdateService {
   }
 
   /// Check for updates and return whether an update is available
+  /// Now uses forceCheckForUpdates to ensure update check happens every time
   Future<bool> checkForUpdates() async {
     try {
-      await checkForUpdatesOnStartup();
-      return _updateAvailable;
+      return await forceCheckForUpdates();
     } catch (e) {
       developer.log('Error in checkForUpdates: $e', name: 'UpdateService');
+      return false;
+    }
+  }
+
+  /// Force check for updates regardless of when the last check was performed
+  /// This is useful for manual update checks or when you want to ensure an update check happens
+  Future<bool> forceCheckForUpdates() async {
+    try {
+      // Initialize if not already initialized
+      if (!_isInitialized) {
+        await initialize();
+      }
+
+      developer.log('Forcing update check', name: 'UpdateService');
+
+      // Get current app version
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+
+      developer.log('Current version: $currentVersion', name: 'UpdateService');
+
+      // Get latest release version from GitHub
+      final latestVersion = await _getLatestReleaseVersion();
+
+      if (latestVersion == null) {
+        developer.log('Failed to get latest version', name: 'UpdateService');
+        return false;
+      }
+
+      developer.log('Latest version: $latestVersion', name: 'UpdateService');
+
+      // Store the latest version
+      _latestVersion = latestVersion;
+
+      // Compare versions
+      final hasUpdate = _isNewerVersion(currentVersion, latestVersion);
+      if (hasUpdate) {
+        developer.log('New version available: $latestVersion', name: 'UpdateService');
+
+        // Update the update status
+        _updateAvailable = true;
+
+        // Notify listeners about the update
+        _updateStreamController.add(true);
+
+        // Show update notification
+        await _showUpdateNotification(latestVersion);
+      } else {
+        developer.log('App is up to date', name: 'UpdateService');
+
+        // Update the update status
+        _updateAvailable = false;
+
+        // Notify listeners about the update status
+        _updateStreamController.add(false);
+      }
+
+      // Update last check time
+      await _updateLastCheckTime();
+
+      return _updateAvailable;
+    } catch (e) {
+      developer.log('Error forcing update check: $e', name: 'UpdateService');
       return false;
     }
   }
@@ -289,6 +308,12 @@ class UpdateService {
     }
   }
 
+  // Track if we've shown a notification for the current version
+  String? _lastNotifiedVersion;
+
+  // Reference to the shared notification service
+  final NotificationService _notificationService = NotificationService();
+
   /// Show update notification
   Future<void> _showUpdateNotification(String newVersion) async {
     if (!_isInitialized) {
@@ -297,43 +322,28 @@ class UpdateService {
       return;
     }
 
+    // Check if we've already shown a notification for this version
+    if (_lastNotifiedVersion == newVersion) {
+      developer.log('Already showed notification for version $newVersion, skipping',
+          name: 'UpdateService');
+      return;
+    }
+
     try {
       developer.log('Showing update notification for version $newVersion',
           name: 'UpdateService');
 
-      final int notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
+      // Use the shared notification service to show the notification for both Windows and Android
+      await _notificationService.showUpdateNotification(
+        'GalleVR Update Available',
+        'Version $newVersion is now available. Tap to download.',
+      );
 
-      if (Platform.isWindows) {
-        await _flutterLocalNotificationsPlugin.show(
-          notificationId,
-          'GalleVR Update Available',
-          'Version $newVersion is now available. Tap to download.',
-          NotificationDetails(
-            windows: WindowsNotificationDetails(),
-          ),
-          payload: 'update',
-        );
-      }
-      else if (Platform.isAndroid) {
-        const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-          'update_channel',
-          'App Updates',
-          channelDescription: 'Notifications for new app versions',
-          importance: Importance.high,
-          priority: Priority.high,
-          showWhen: true,
-        );
+      // Also show an in-app notification using a global key
+      _showInAppUpdateNotification(newVersion);
 
-        await _flutterLocalNotificationsPlugin.show(
-          notificationId,
-          'GalleVR Update Available',
-          'Version $newVersion is now available. Tap to download.',
-          NotificationDetails(
-            android: androidDetails,
-          ),
-          payload: 'update',
-        );
-      }
+      // Remember that we've shown a notification for this version
+      _lastNotifiedVersion = newVersion;
 
       developer.log('Update notification shown successfully',
           name: 'UpdateService');
@@ -343,12 +353,32 @@ class UpdateService {
     }
   }
 
-  /// Open the GitHub releases page (private method used by notification)
-  Future<void> _openReleasesPage() async {
+  /// Show an in-app update notification using a SnackBar
+  void _showInAppUpdateNotification(String newVersion) {
     try {
-      final Uri url = Uri.parse(_releasesUrl);
-      await launchUrl(url);
-      developer.log('Opened releases page: $_releasesUrl',
+      // This will be handled by the AppWrapper widget
+      developer.log('Broadcasting in-app update notification request',
+          name: 'UpdateService');
+
+      // We'll use the stream to notify the app about the update
+      _updateStreamController.add(true);
+    } catch (e) {
+      developer.log('Error showing in-app update notification: $e',
+          name: 'UpdateService');
+    }
+  }
+
+  /// Open the GitHub releases page
+  /// This is a public method that can be called from other parts of the app
+  Future<void> openReleasesPage() async {
+    try {
+      developer.log('Attempting to open releases page: $_releasesUrl',
+          name: 'UpdateService');
+
+      // Use the shared notification service to open the releases page
+      await _notificationService.openReleasesPage();
+
+      developer.log('Successfully opened releases page using NotificationService',
           name: 'UpdateService');
     } catch (e) {
       developer.log('Error opening releases page: $e',
@@ -356,20 +386,29 @@ class UpdateService {
     }
   }
 
-  /// Open the GitHub releases page (public method for UI)
-  Future<void> openReleasesPage() async {
-    await _openReleasesPage();
-  }
-
   /// Check if we should check for updates based on last check time
+  /// Returns true if enough time has passed since the last check
   Future<bool> _shouldCheckForUpdates() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final lastCheckTime = prefs.getInt(_lastCheckKey) ?? 0;
       final currentTime = DateTime.now().millisecondsSinceEpoch;
 
+      // Calculate time since last check in minutes
+      final timeSinceLastCheckMs = currentTime - lastCheckTime;
+      final timeSinceLastCheckMinutes = timeSinceLastCheckMs / 1000 / 60;
+
+      developer.log('Time since last update check: ${timeSinceLastCheckMinutes.toStringAsFixed(1)} minutes',
+          name: 'UpdateService');
+
       // Check if enough time has passed since the last check
-      return (currentTime - lastCheckTime) >= _checkIntervalMs;
+      if (timeSinceLastCheckMinutes < _minimumTimeBetweenChecksMinutes) {
+        developer.log('Not enough time has passed since last check (minimum: $_minimumTimeBetweenChecksMinutes minutes)',
+            name: 'UpdateService');
+        return false;
+      }
+
+      return true;
     } catch (e) {
       developer.log('Error checking last update time: $e',
           name: 'UpdateService');
@@ -391,6 +430,11 @@ class UpdateService {
   /// Dispose resources
   Future<void> dispose() async {
     try {
+      // Stop periodic update checks
+      _periodicUpdateTimer?.cancel();
+      _periodicUpdateTimer = null;
+      developer.log('Periodic update checks stopped', name: 'UpdateService');
+
       await _updateStreamController.close();
       developer.log('Update service disposed', name: 'UpdateService');
     } catch (e) {

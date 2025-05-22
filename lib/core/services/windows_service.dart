@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
 
+import 'package:flutter/services.dart' show MethodChannel, BasicMessageChannel, StringCodec;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:win32_registry/win32_registry.dart';
@@ -14,9 +15,12 @@ class WindowsService {
       r'Software\Microsoft\Windows\CurrentVersion\Run';
   static const String _appRegistryKey = 'GalleVR';
 
+  static const String _windowChannelName = 'gallevr/window';
+
   final SystemTray _systemTray = SystemTray();
   final AppWindow _appWindow = AppWindow();
   final NotificationService _notificationService = NotificationService();
+  final MethodChannel _windowChannel = const MethodChannel(_windowChannelName);
 
   bool _isInitialized = false;
   bool _minimizeToTray = true;
@@ -54,6 +58,9 @@ class WindowsService {
 
       // Initialize system tray
       await _initSystemTray(appTitle ?? 'GalleVR');
+
+      // Set up window event channel handler
+      _setupWindowEventChannel();
 
       _isInitialized = true;
       developer.log('Windows service initialized', name: 'WindowsService');
@@ -346,6 +353,38 @@ class WindowsService {
       developer.log('Error disposing Windows service: $e',
           name: 'WindowsService');
     }
+  }
+
+  /// Set up the window event channel to listen for window events from native code
+  void _setupWindowEventChannel() {
+    _windowChannel.setMethodCallHandler((call) async {
+      developer.log('Received window event: ${call.method}', name: 'WindowsService');
+
+      // The native code sends a message when the window is closed (hidden)
+      if (call.method == 'onWindowHidden') {
+        // Show notification that the app is still running
+        await _showMinimizedNotification();
+      }
+
+      return null;
+    });
+
+    // Also set up a basic message handler for the platform message
+    const BasicMessageChannel<String> basicChannel = BasicMessageChannel<String>(
+      _windowChannelName,
+      StringCodec(),
+    );
+
+    basicChannel.setMessageHandler((message) async {
+      developer.log('Received window message: $message', name: 'WindowsService');
+
+      // Show notification that the app is still running
+      await _showMinimizedNotification();
+
+      return 'Notification shown';
+    });
+
+    developer.log('Window event channel set up', name: 'WindowsService');
   }
 }
 

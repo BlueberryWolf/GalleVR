@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../data/models/config_model.dart';
 import '../../data/repositories/config_repository.dart';
 import '../../data/services/app_service_manager.dart';
 import '../../data/services/tos_service.dart';
 import '../../data/services/vrchat_service.dart';
+import '../../core/services/update_service.dart';
 import '../widgets/tos_modal.dart';
 
 /// A widget that wraps the entire app and handles global functionality
@@ -27,10 +30,17 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   final VRChatService _vrchatService = VRChatService();
   final ConfigRepository _configRepository = ConfigRepository();
   final AppServiceManager _appServiceManager = AppServiceManager();
+  final UpdateService _updateService = UpdateService();
 
   bool _showTOSModal = false;
   bool _isCheckingTOS = false;
   bool _isAuthenticated = false;
+
+  // Update notification related fields
+  String? _appVersion;
+  String? _latestVersion;
+  bool _updateAvailable = false;
+  StreamSubscription<bool>? _updateSubscription;
 
   // Track the previous upload setting before TOS check
   bool _previousUploadEnabled = true;
@@ -49,12 +59,85 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       }
     });
 
+    // Listen for update notifications
+    _updateSubscription = _updateService.updateAvailableStream.listen((hasUpdate) {
+      if (mounted) {
+        setState(() {
+          _updateAvailable = hasUpdate;
+          _latestVersion = _updateService.latestVersion;
+        });
+
+        // Show in-app notification when update is available
+        if (hasUpdate && _latestVersion != null) {
+          _showUpdateNotification();
+        }
+      }
+    });
+
+    // Load app version
+    _loadAppVersion();
+
     _checkTOSStatus();
+  }
+
+  /// Load the current app version
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() {
+          _appVersion = packageInfo.version;
+        });
+      }
+      developer.log('App version loaded: $_appVersion', name: 'AppWrapper');
+    } catch (e) {
+      developer.log('Error loading app version: $e', name: 'AppWrapper');
+    }
+  }
+
+  // Track the last version we showed a notification for
+  String? _lastNotifiedVersion;
+
+  /// Show an in-app notification about available updates
+  void _showUpdateNotification() {
+    if (!mounted) return;
+
+    // Check if we've already shown a notification for this version
+    if (_lastNotifiedVersion == _latestVersion) {
+      developer.log('Already showed in-app notification for version $_latestVersion, skipping',
+          name: 'AppWrapper');
+      return;
+    }
+
+    // Remember this version
+    _lastNotifiedVersion = _latestVersion;
+
+    // Show a snackbar with the update notification
+    final snackBar = SnackBar(
+      content: Text('A new version ($_latestVersion) is available!'),
+      backgroundColor: Theme.of(context).colorScheme.primary,
+      duration: const Duration(seconds: 8),
+      action: SnackBarAction(
+        label: 'DOWNLOAD',
+        textColor: Colors.white,
+        onPressed: () async {
+          if (mounted) {
+            await _updateService.openReleasesPage();
+            developer.log('Download button clicked in in-app notification', name: 'AppWrapper');
+          }
+        },
+      ),
+    );
+
+    // Show the snackbar
+    ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    developer.log('Showed in-app notification for version $_latestVersion', name: 'AppWrapper');
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _updateSubscription?.cancel();
     super.dispose();
   }
 

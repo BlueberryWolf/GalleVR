@@ -50,7 +50,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadConfig();
     _loadAppVersion();
-    _checkForUpdates();
 
     // Listen for update status changes
     _updateSubscription = _updateService.updateAvailableStream.listen((hasUpdate) {
@@ -89,9 +88,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// Check for updates
+  /// Now uses forceCheckForUpdates to ensure update check happens every time
   Future<void> _checkForUpdates() async {
     try {
-      final hasUpdate = await _updateService.checkForUpdates();
+      developer.log('Manually checking for updates...', name: 'SettingsScreen');
+      final hasUpdate = await _updateService.forceCheckForUpdates();
       if (mounted) {
         setState(() {
           _updateAvailable = hasUpdate;
@@ -102,6 +103,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
           name: 'SettingsScreen');
     } catch (e) {
       developer.log('Error checking for updates: $e', name: 'SettingsScreen');
+    }
+  }
+
+  /// Check for updates with UI feedback
+  Future<void> _checkForUpdatesWithFeedback() async {
+    // Show loading indicator
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Checking for updates...'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
+
+    // Check for updates
+    await _checkForUpdates();
+
+    // Show result
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: _updateAvailable
+            ? Text('Update available! Version $_latestVersion is ready to download.')
+            : const Text('You have the latest version.'),
+          backgroundColor: _updateAvailable
+            ? Theme.of(context).colorScheme.primary
+            : Colors.green,
+          duration: const Duration(seconds: 3),
+          action: _updateAvailable ? SnackBarAction(
+            label: 'DOWNLOAD',
+            textColor: Colors.white,
+            onPressed: () {
+              _updateService.openReleasesPage();
+            },
+          ) : null,
+        ),
+      );
     }
   }
 
@@ -198,13 +237,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Terms of Service accepted. Photo uploading has been enabled.'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 5),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Terms of Service accepted. Photo uploading has been enabled.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 5),
+        ),
+      );
+    }
   }
 
   void _handleTOSDecline() {
@@ -583,13 +624,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           developer.log('TOS modal is already visible, skipping', name: 'SettingsScreen');
 
                           // Show a message to the user
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Please accept the Terms of Service to enable uploading.'),
-                              backgroundColor: Colors.orange,
-                              duration: Duration(seconds: 3),
-                            ),
-                          );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please accept the Terms of Service to enable uploading.'),
+                                backgroundColor: Colors.orange,
+                                duration: Duration(seconds: 3),
+                              ),
+                            );
+                          }
                           return;
                         }
 
@@ -647,98 +690,123 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Text('About', style: Theme.of(context).textTheme.titleLarge),
               SizedBox(height: spacing),
-              ListTile(
-                dense: true,
-                title: const Text('GalleVR Flutter'),
-                subtitle: _updateAvailable && _latestVersion != null
-                    ? RichText(
-                        text: TextSpan(
-                          style: Theme.of(context).textTheme.bodyMedium,
-                          children: [
-                            TextSpan(
-                              text: 'Version $_appVersion',
+
+              // Version and update status in a single component
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _updateAvailable
+                    ? Theme.of(context).colorScheme.errorContainer.withAlpha(50)
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Left side - App info
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _updateAvailable ? Icons.system_update : Icons.info_outline,
+                            color: _updateAvailable
+                              ? Theme.of(context).colorScheme.error
+                              : Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'GalleVR',
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
+                                RichText(
+                                  text: TextSpan(
+                                    style: Theme.of(context).textTheme.bodyMedium,
+                                    children: [
+                                      TextSpan(
+                                        text: 'Version $_appVersion',
+                                      ),
+                                      if (_updateAvailable && _latestVersion != null) ...[
+                                        const TextSpan(
+                                          text: ' • ',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        TextSpan(
+                                          text: 'Update: $_latestVersion',
+                                          style: TextStyle(
+                                            color: Theme.of(context).colorScheme.error,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                            const TextSpan(
-                              text: ' • ',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            TextSpan(
-                              text: 'Update available: $_latestVersion',
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.error,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Right side - Buttons
+                    if (_updateAvailable && _latestVersion != null) ...[
+                      TextButton(
+                        onPressed: () async {
+                          await _checkForUpdatesWithFeedback();
+                        },
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: const Size(0, 36),
                         ),
-                      )
-                    : Text('Version $_appVersion'),
-                leading: const Icon(Icons.info),
-                trailing: _updateAvailable
-                    ? ElevatedButton(
+                        child: const Text('Check Again'),
+                      ),
+                      const SizedBox(width: 4),
+                      ElevatedButton.icon(
                         onPressed: () {
                           _updateService.openReleasesPage();
                         },
-                        child: const Text('Update'),
-                      )
-                    : null,
+                        icon: const Icon(Icons.download, size: 16),
+                        label: const Text('Download'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(context).colorScheme.primary,
+                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: const Size(0, 36),
+                        ),
+                      ),
+                    ] else
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('Check for Updates'),
+                        onPressed: () async {
+                          await _checkForUpdatesWithFeedback();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: const Size(0, 36),
+                        ),
+                      ),
+                  ],
+                ),
               ),
+
+              const SizedBox(height: 16),
+
+              // Platform information
               ListTile(
                 dense: isSmallScreen,
                 title: const Text('Platform'),
                 subtitle: Text(_getPlatformName()),
                 leading: const Icon(Icons.devices),
               ),
-              if (_updateAvailable && _latestVersion != null)
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.errorContainer.withAlpha(76), // 0.3 opacity = 76 alpha
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.system_update,
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Update Available',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.error,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'A new version ($_latestVersion) of GalleVR is available. You are currently using version $_appVersion.',
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            _updateService.openReleasesPage();
-                          },
-                          icon: const Icon(Icons.download),
-                          label: const Text('Download Update'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(context).colorScheme.primary,
-                            foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
             ],
           ),
         ),

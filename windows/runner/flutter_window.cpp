@@ -3,6 +3,8 @@
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "flutter/method_channel.h"
+#include "flutter/standard_method_codec.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -76,6 +78,26 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   switch (message) {
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
+      break;
+    case WM_CLOSE:
+      // Check if Alt key is pressed (same logic as in win32_window.cpp)
+      if (GetAsyncKeyState(VK_MENU) & 0x8000) {
+        // Let the default handler handle it (quit the app)
+        break;
+      }
+
+      // Send a message to Flutter to show a notification
+      // We'll use the method channel mechanism that's already set up
+      if (flutter_controller_ && flutter_controller_->engine()) {
+        // Create a method channel to communicate with Flutter
+        flutter::MethodChannel<> channel(
+            flutter_controller_->engine()->messenger(),
+            "gallevr/window",
+            &flutter::StandardMethodCodec::GetInstance());
+
+        // Invoke a method on the channel
+        channel.InvokeMethod("onWindowHidden", nullptr);
+      }
       break;
   }
 

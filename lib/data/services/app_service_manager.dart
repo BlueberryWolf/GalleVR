@@ -176,10 +176,13 @@ class AppServiceManager {
         try {
           await _updateService.initialize();
           // Check for updates in the background to not delay app startup
+          // Using forceCheckForUpdates to ensure update check happens on every app launch
           Future.delayed(Duration(seconds: 2), () async {
-            await _updateService.checkForUpdatesOnStartup();
+            final hasUpdate = await _updateService.forceCheckForUpdates();
+            developer.log('Update check completed. Update available: $hasUpdate, Latest version: ${_updateService.latestVersion}',
+                name: 'AppServiceManager');
           });
-          developer.log('Update service initialized and check scheduled', name: 'AppServiceManager');
+          developer.log('Update service initialized and force check scheduled', name: 'AppServiceManager');
         } catch (e) {
           developer.log('Error initializing update service: $e', name: 'AppServiceManager');
         }
