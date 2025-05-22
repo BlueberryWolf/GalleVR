@@ -1,20 +1,69 @@
 # GalleVR
-GalleVR is a comprehensive solution for organizing, viewing, and sharing your VR photos and memories!
-## Overview
-GalleVR helps you manage your VRChat photos through:
-- **Automatic organization** by world, friends, and events
-- **Cross-platform access** to your memories
-- **Seamless sharing** with friends and community
 
-> This repository contains the Flutter companion app that integrates with [GalleVR](https://gallevr.app).
-## Features
-- **Local photo management**: Browse and organize VR photos stored on your device
-- **VRChat account integration**: No need to sign up for another account! Integrate with VRChat and sleep easy!
-- **Web synchronization**: Access your photos from any device through the GalleVR web platform
-- **Automatic metadata extraction**: Smart organization based on world data and people in your photos
-## Getting Started
-1. Download the app from [releases](https://github.com/BlueberryWolf/GalleVR/releases)
-2. Install and launch GalleVR. Follow the onboarding process to get set up
-3. Connect your device to the web platform via the link or the QR code
-## GalleVR Site
-Visit the [GalleVR site](https://gallevr.app) for the full experience!
+**GalleVR** is the easiest way to organize, explore, and share your VRChat memories — across devices.
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/56d8355c-022f-4518-bee0-401667ac11a4" alt="logo" width="300" />
+</div>
+
+---
+
+## What It Does
+* Automatically sorts photos by world, friends, and soon, events!
+* Private by default
+* Tags everything smartly — it's a breeze
+* Syncs across devices via the web
+* Lets you share galleries and create profiles
+* Works on **Windows**, **Quest**, and **Pico**
+
+---
+
+## Two Ways to Use
+
+### Native App (Windows & Android)
+
+Manage your local photos, sync to the web, and browse offline.
+
+> [silly2.webm](https://github.com/user-attachments/assets/7af1b7a3-a5d7-424c-9fdd-b938540e852b)
+
+
+### Web Platform
+
+Access your full gallery, customize your profile, and share your moments.
+
+> [silly.webm](https://github.com/user-attachments/assets/3908a093-b31c-43fb-9837-ee0899f6a0e4)
+
+
+---
+
+## Photo Privacy
+
+Your photos are **private by default**.  
+Only you can see them until you create a gallery and make it public.
+
+---
+
+## Free to Use, Donations Welcome!
+
+GalleVR is completely **free to use** — no hidden fees or subscriptions.  
+If you love the app and want to support its development, you can donate via Ko-fi:
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FF813F?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/BlueberryWolfi)
+
+Every little bit helps keep the project alive and growing!
+
+---
+
+## Get Started
+
+1. [Download the app](https://github.com/BlueberryWolf/GalleVR/releases)  
+2. Install and follow the setup  
+3. Visit [gallevr.app](https://gallevr.app) to explore and share
+
+---
+
+## More
+
+* No signup needed — log in with your VRChat account  
+* Built with Flutter, native and no webview  
+* Open source & community-friendly
