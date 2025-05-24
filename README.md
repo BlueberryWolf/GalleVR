@@ -10,10 +10,10 @@
 
 ## What It Does
 * Automatically sorts photos by world, friends, and soon, events!
-* Private by default
-* Tags everything smartly — it's a breeze
-* Syncs across devices via the web
-* Lets you share galleries and create profiles
+* Private by default — you’re in control
+* Smart tagging — it's a breeze
+* Works across devices via the web or native app
+* Create galleries, customize your profile, and share your favorites
 * Works on **Windows**, **Quest**, and **Pico**
 
 ---
@@ -22,14 +22,14 @@
 
 ### Native App (Windows & Android)
 
-Manage your local photos, sync to the web, and browse offline.
+Manage local photos, sync online, and browse offline.
 
 > [silly2.webm](https://github.com/user-attachments/assets/7af1b7a3-a5d7-424c-9fdd-b938540e852b)
 
 
 ### Web Platform
 
-Access your full gallery, customize your profile, and share your moments.
+View your gallery, share moments, and update your profile from anywhere.
 
 > [silly.webm](https://github.com/user-attachments/assets/3908a093-b31c-43fb-9837-ee0899f6a0e4)
 
@@ -38,32 +38,32 @@ Access your full gallery, customize your profile, and share your moments.
 
 ## Photo Privacy
 
-Your photos are **private by default**.  
-Only you can see them until you create a gallery and make it public.
+Your photos stay **private by default**.  
+You choose what to share, and when.
 
 ---
 
-## Free to Use, Donations Welcome!
+## 100% Free — Support Welcome!
 
-GalleVR is completely **free to use** — no hidden fees or subscriptions.  
-If you love the app and want to support its development, you can donate via Ko-fi:
+GalleVR is free — no ads or hidden fees.
+If you’d like to help keep it growing, consider donating:
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FF813F?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/BlueberryWolfi)
 
-Every little bit helps keep the project alive and growing!
+Every donation helps support development, keeping it up, and my coffee addiction.
 
 ---
 
 ## Get Started
 
-1. [Download the app](https://github.com/BlueberryWolf/GalleVR/releases)  
+1. [Download GalleVR](https://github.com/BlueberryWolf/GalleVR/releases)  
 2. Install and follow the setup  
-3. Visit [gallevr.app](https://gallevr.app) to explore and share
+3. Visit [gallevr.app](https://gallevr.app) to browse and share
 
 ---
 
-## More
+## Good to Know
 
-* No signup needed — log in with your VRChat account  
+* No account setup — just log in with VRChat
 * Built with Flutter, native and no webview  
-* Open source & community-friendly
+* Open source and made for the community
