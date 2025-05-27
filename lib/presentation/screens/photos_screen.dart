@@ -14,6 +14,7 @@ import '../../data/models/photo_metadata.dart';
 import '../../data/repositories/photo_metadata_repository.dart';
 import '../../data/services/photo_event_service.dart';
 import '../../core/image/image_cache_service.dart';
+import '../../core/image/thumbnail_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/photo_metadata_panel.dart';
 import '../widgets/cached_image.dart';
@@ -55,8 +56,23 @@ class _PhotosScreenState extends State<PhotosScreen> {
 
     _scrollController.addListener(_scrollListener);
 
+    _configureImageCacheSettings();
+
+
     _loadConfig();
     _subscribeToPhotoEvents();
+  }
+
+  void _configureImageCacheSettings() {
+    // Set balanced image cache limits for good performance and loading
+    PaintingBinding.instance.imageCache.maximumSize = 100; // Reasonable cache size
+    PaintingBinding.instance.imageCache.maximumSizeBytes =
+        20 * 1024 * 1024; // 20MB limit
+
+    developer.log(
+      'Configured balanced image cache limits: 100 images, 20MB max',
+      name: 'PhotosScreen',
+    );
   }
 
   @override
@@ -64,16 +80,38 @@ class _PhotosScreenState extends State<PhotosScreen> {
     _photoAddedSubscription?.cancel();
     _scrollController.removeListener(_scrollListener);
     _scrollController.dispose();
+
+    // Clear image caches to prevent memory leaks
+    _clearImageCaches();
+
     super.dispose();
   }
 
+  void _clearImageCaches() {
+    try {
+      // Clear Flutter's image cache
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+
+      // Clear thumbnail provider cache
+      final thumbnailProvider = ThumbnailProvider();
+      thumbnailProvider.clearThumbnails();
+
+      developer.log('Cleared image caches on dispose', name: 'PhotosScreen');
+    } catch (e) {
+      developer.log('Error clearing image caches: $e', name: 'PhotosScreen');
+    }
+  }
+
   void _scrollListener() {
+    // Only load more photos when near the end
     if (_scrollController.position.pixels >
-            _scrollController.position.maxScrollExtent - 500 &&
+            _scrollController.position.maxScrollExtent - 1000 &&
         !_isLoadingMore &&
         _displayedPhotos.length < _allPhotos.length) {
       _loadMorePhotos();
     }
+    // Removed periodic cache cleanup - it was causing scroll jank
   }
 
   void _subscribeToPhotoEvents() {
@@ -202,20 +240,6 @@ class _PhotosScreenState extends State<PhotosScreen> {
 
       final nextPagePhotos = _allPhotos.sublist(start, end);
 
-      await Future.microtask(() async {
-        if (end < _allPhotos.length) {
-          final preloadStartIndex = end;
-          final preloadEndIndex =
-              (preloadStartIndex + _pageSize < _allPhotos.length)
-                  ? preloadStartIndex + _pageSize
-                  : _allPhotos.length;
-
-          for (var i = preloadStartIndex; i < preloadEndIndex; i++) {
-            final entity = _allPhotos[i];
-            _preloadThumbnail(entity.path);
-          }
-        }
-      });
 
       if (!mounted) return;
 
@@ -236,15 +260,6 @@ class _PhotosScreenState extends State<PhotosScreen> {
           _isLoadingMore = false;
         });
       }
-    }
-  }
-
-  Future<void> _preloadThumbnail(String filePath) async {
-    try {
-      final imageCacheService = ImageCacheService();
-      await imageCacheService.getThumbnail(filePath, size: 200);
-    } catch (e) {
-      developer.log('Error preloading thumbnail: $e', name: 'PhotosScreen');
     }
   }
 
@@ -330,53 +345,40 @@ class _PhotosScreenState extends State<PhotosScreen> {
             onRefresh: _loadPhotos,
             color: AppTheme.primaryColor,
             backgroundColor: AppTheme.surfaceColor,
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (ScrollNotification scrollInfo) {
-                if (scrollInfo is ScrollEndNotification) {
-                  if (scrollInfo.metrics.pixels >
-                      scrollInfo.metrics.maxScrollExtent - 500) {
-                    _loadMorePhotos();
-                  }
-                }
-                return false;
-              },
-              child: GridView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(16),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount:
-                      MediaQuery.of(context).size.width > 600 ? 3 : 2,
-                  childAspectRatio: 16 / 9,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                addAutomaticKeepAlives: false,
-                addRepaintBoundaries: true,
-                cacheExtent: 1000,
-                itemCount:
-                    _displayedPhotos.length +
-                    (_isLoadingMore ||
-                            _displayedPhotos.length < _allPhotos.length
-                        ? 1
-                        : 0),
-                itemBuilder: (context, index) {
-                  if (index >= _displayedPhotos.length) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2.0),
-                        ),
-                      ),
-                    );
-                  }
-
-                  final photo = _displayedPhotos[index];
-                  return _buildPhotoItem(photo);
-                },
+            child: GridView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+                childAspectRatio: 16 / 9,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
               ),
+              addAutomaticKeepAlives: false,
+              addRepaintBoundaries: false,
+              cacheExtent: 500,
+              itemCount:
+                  _displayedPhotos.length +
+                  (_isLoadingMore || _displayedPhotos.length < _allPhotos.length
+                      ? 1
+                      : 0),
+              itemBuilder: (context, index) {
+                if (index >= _displayedPhotos.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2.0),
+                      ),
+                    ),
+                  );
+                }
+
+                final photo = _displayedPhotos[index];
+                return _buildPhotoItem(photo);
+              },
             ),
           ),
         ),
@@ -402,154 +404,138 @@ class _PhotosScreenState extends State<PhotosScreen> {
   }
 
   Widget _buildPhotoItem(FileSystemEntity entity) {
-    return RepaintBoundary(
-      child: FutureBuilder<PhotoMetadata?>(
-        future: _getMetadataFuture(entity.path),
-        builder: (context, snapshot) {
-          final metadata = snapshot.data;
-          final hasWorld = metadata?.world != null;
-          final hasPlayers = metadata?.players.isNotEmpty == true;
+    return FutureBuilder<PhotoMetadata?>(
+      future: _getMetadataFuture(entity.path),
+      builder: (context, snapshot) {
+        final metadata = snapshot.data;
+        final hasWorld = metadata?.world != null;
+        final hasPlayers = metadata?.players.isNotEmpty == true;
 
-          return Hero(
-            tag: entity.path,
-            createRectTween: (begin, end) {
-              return RectTween(begin: begin, end: end);
-            },
-            child: Card(
-              clipBehavior: Clip.antiAlias,
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: AppTheme.cardBorderColor),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _openPhotoDetails(entity),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _buildPhotoImage(entity),
+        return Card(
+          clipBehavior: Clip.antiAlias,
+          elevation: 2,
+          margin: EdgeInsets.zero,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _openPhotoDetails(entity),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _buildPhotoImage(entity),
 
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: Container(
-                          height: 48,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent,
-                                Colors.black.withAlpha(180),
-                              ],
-                            ),
-                          ),
+                  // Bottom overlay with filename
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: Container(
+                      height: 32,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.transparent, Colors.black.withAlpha(120)],
                         ),
                       ),
-
-                      Positioned(
-                        bottom: 8,
-                        left: 12,
-                        right: 12,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         child: Text(
                           metadata?.filename ?? path.basename(entity.path),
-                          style: TextStyle(
-                            color: AppTheme.textColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w400,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-
-                      if (hasWorld || hasPlayers)
-                        Positioned(
-                          top: 8,
-                          left: 8,
-                          child: Row(
-                            children: [
-                              if (hasWorld)
-                                Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.withAlpha(150),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.public,
-                                    color: Colors.white,
-                                    size: 12,
-                                  ),
-                                ),
-                              if (hasWorld && hasPlayers)
-                                const SizedBox(width: 4),
-                              if (hasPlayers)
-                                Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withAlpha(150),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.people,
-                                    color: Colors.white,
-                                    size: 12,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: AppTheme.surfaceColor.withAlpha(150),
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            icon: const Icon(Icons.more_vert_rounded, size: 16),
-                            onPressed: () => _showPhotoOptions(entity),
-                            tooltip: 'Options',
-                            padding: const EdgeInsets.all(4),
-                            constraints: const BoxConstraints(),
-                            iconSize: 16,
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+
+                  // Metadata indicators
+                  if (hasWorld || hasPlayers)
+                    Positioned(
+                      top: 4,
+                      left: 4,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (hasWorld)
+                            Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: const BoxDecoration(
+                                color: Colors.blue,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.public,
+                                color: Colors.white,
+                                size: 8,
+                              ),
+                            ),
+                          if (hasWorld && hasPlayers) const SizedBox(width: 2),
+                          if (hasPlayers)
+                            Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: const BoxDecoration(
+                                color: Colors.green,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.people,
+                                color: Colors.white,
+                                size: 8,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+
+                  // Options button
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withAlpha(100),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.more_vert, size: 12),
+                        color: Colors.white,
+                        onPressed: () => _showPhotoOptions(entity),
+                        padding: const EdgeInsets.all(2),
+                        constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildPhotoImage(FileSystemEntity entity) {
-    return RepaintBoundary(
-      child: CachedImage(
-        filePath: entity.path,
-        fit: BoxFit.cover,
-        thumbnailSize: 600,
-        highQuality: false,
-      ),
+    return CachedImage(
+      filePath: entity.path,
+      fit: BoxFit.cover,
+      thumbnailSize: 400, // Increased slightly for better loading reliability
+      highQuality: false,
     );
   }
 
   void _showPhotoOptions(FileSystemEntity entity) {
     showStyledBottomSheet(
       context: context,
-      builder: (context) => FutureBuilder<PhotoMetadata?>(
-        future: _getMetadataFuture(entity.path),
-        builder: (context, snapshot) {
+      builder:
+          (context) => FutureBuilder<PhotoMetadata?>(
+            future: _getMetadataFuture(entity.path),
+            builder: (context, snapshot) {
               final metadata = snapshot.data;
               final hasMetadata =
                   metadata != null &&
@@ -615,7 +601,8 @@ class _PhotosScreenState extends State<PhotosScreen> {
                         await copyToClipboard(
                           text: entity.path,
                           context: context,
-                          successMessage: 'Photo path copied to clipboard (no gallery link available)',
+                          successMessage:
+                              'Photo path copied to clipboard (no gallery link available)',
                           loggerName: 'PhotosScreen',
                         );
                       }
@@ -999,28 +986,28 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
               tooltip: 'Show metadata',
             ),
           if (_metadata?.galleryUrl != null)
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.black.withAlpha(100),
-                shape: BoxShape.circle,
+            IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withAlpha(100),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.share_rounded, color: Colors.white),
               ),
-              child: const Icon(Icons.share_rounded, color: Colors.white),
+              onPressed: () async {
+                if (_metadata?.galleryUrl != null) {
+                  await copyToClipboard(
+                    text: _metadata!.galleryUrl!,
+                    context: context,
+                    successMessage: 'Gallery URL copied to clipboard',
+                    loggerName: 'PhotoDetailScreen',
+                    onSuccess: _openInGallery,
+                  );
+                }
+              },
+              tooltip: 'Copy gallery link',
             ),
-            onPressed: () async {
-              if (_metadata?.galleryUrl != null) {
-                await copyToClipboard(
-                  text: _metadata!.galleryUrl!,
-                  context: context,
-                  successMessage: 'Gallery URL copied to clipboard',
-                  loggerName: 'PhotoDetailScreen',
-                  onSuccess: _openInGallery,
-                );
-              }
-            },
-            tooltip: 'Copy gallery link',
-          ),
           // Copy image button
           IconButton(
             icon: Container(
@@ -1059,7 +1046,8 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
             onPressed: () {
               showStyledBottomSheet(
                 context: context,
-                builder: (context) => Column(
+                builder:
+                    (context) => Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         ListTile(
@@ -1384,8 +1372,7 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
                   ),
                 ),
                 onPressed: () => _openInGallery(),
-              )
-
+              ),
           ],
         ),
       ),
@@ -1402,7 +1389,11 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
       return;
     }
 
-    await openUrl(_metadata!.galleryUrl!, context, loggerName: 'PhotoDetailScreen');
+    await openUrl(
+      _metadata!.galleryUrl!,
+      context,
+      loggerName: 'PhotoDetailScreen',
+    );
   }
 
   Future<void> _copyPhotoLinkToClipboard() async {
@@ -1417,7 +1408,8 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
         onSuccess: _openInGallery,
       );
     } else {
-      final String fallbackMessage = 'No gallery link available for this photo.';
+      final String fallbackMessage =
+          'No gallery link available for this photo.';
 
       await copyToClipboard(
         text: fallbackMessage,
@@ -1439,9 +1431,9 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
 
       if (!await file.exists()) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Image file not found')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Image file not found')));
         }
         return;
       }
@@ -1478,7 +1470,9 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
           } catch (e) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Failed to copy image to clipboard: $e')),
+                SnackBar(
+                  content: Text('Failed to copy image to clipboard: $e'),
+                ),
               );
             }
 
@@ -1492,9 +1486,9 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error copying image: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error copying image: $e')));
       }
 
       developer.log(
@@ -1539,18 +1533,15 @@ Future<void> copyToClipboard({
     if (isContextMounted && context.mounted) {
       final snackBar = SnackBar(
         content: Text(successMessage),
-        action: onSuccess != null ? SnackBarAction(
-          label: 'Open',
-          onPressed: onSuccess,
-        ) : null,
+        action:
+            onSuccess != null
+                ? SnackBarAction(label: 'Open', onPressed: onSuccess)
+                : null,
       );
       ScaffoldMessenger.of(context).showSnackBar(snackBar);
     }
 
-    developer.log(
-      'Copied to clipboard: $text',
-      name: loggerName,
-    );
+    developer.log('Copied to clipboard: $text', name: loggerName);
   } catch (e) {
     if (fallbackText != null) {
       try {
@@ -1558,7 +1549,11 @@ Future<void> copyToClipboard({
 
         if (isContextMounted && context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(fallbackMessage ?? 'Fallback text copied to clipboard')),
+            SnackBar(
+              content: Text(
+                fallbackMessage ?? 'Fallback text copied to clipboard',
+              ),
+            ),
           );
         }
 
@@ -1584,7 +1579,11 @@ Future<void> copyToClipboard({
 }
 
 /// Helper function to handle clipboard errors
-void _handleClipboardError(dynamic error, BuildContext? context, String loggerName) {
+void _handleClipboardError(
+  dynamic error,
+  BuildContext? context,
+  String loggerName,
+) {
   if (context != null && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Error copying to clipboard: $error')),
@@ -1614,40 +1613,34 @@ void showStyledBottomSheet({
 }
 
 /// Utility function to open a URL in the default browser
-Future<void> openUrl(String url, BuildContext context, {String loggerName = 'UrlOpener'}) async {
+Future<void> openUrl(
+  String url,
+  BuildContext context, {
+  String loggerName = 'UrlOpener',
+}) async {
   try {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
 
-      developer.log(
-        'Opened URL: $url',
-        name: loggerName,
-      );
+      developer.log('Opened URL: $url', name: loggerName);
     } else {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open URL')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Could not open URL')));
       }
 
-      developer.log(
-        'Could not launch URL: $url',
-        name: loggerName,
-      );
+      developer.log('Could not launch URL: $url', name: loggerName);
     }
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error opening URL: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error opening URL: $e')));
     }
 
-    developer.log(
-      'Error opening URL: $e',
-      name: loggerName,
-      error: e,
-    );
+    developer.log('Error opening URL: $e', name: loggerName, error: e);
   }
 }
 
@@ -1657,11 +1650,9 @@ Future<void> showFileInExplorer(String filePath, BuildContext context) async {
     final uri = Uri.parse('file:${filePath.replaceAll('\\', '/')}');
 
     if (Platform.isWindows) {
-      await Process.run(
-        'explorer.exe',
-        ['/select,$filePath'],
-        runInShell: true,
-      );
+      await Process.run('explorer.exe', [
+        '/select,$filePath',
+      ], runInShell: true);
 
       // Note: explorer.exe often returns exit code 1 even when successful,
       // so we don't check the exit code here

@@ -6,6 +6,7 @@ import 'dart:developer' as developer;
 
 import '../../core/platform/platform_service.dart';
 import '../../core/platform/platform_service_factory.dart';
+import '../../core/utils/log_file_watcher.dart';
 import '../models/config_model.dart';
 import 'photo_event_service.dart';
 import 'photo_watcher_task_handler.dart';
@@ -20,15 +21,29 @@ class PhotoWatcherService {
   final Set<String> _handledPhotos = {};
 
   StreamSubscription<FileSystemEvent>? _watcherSubscription;
+  StreamSubscription<String>? _logWatcherSubscription;
+  LogFileWatcher? _logFileWatcher;
 
   bool _isForegroundServiceRunning = false;
 
   bool _useForegroundService = false;
 
+  // Regex pattern to match VRChat screenshot filenames
+  // Pattern: VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT.png
+  static final RegExp _vrchatScreenshotPattern = RegExp(
+    r'^VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}_\d+x\d+\.png$',
+  );
+
   PhotoWatcherService({PlatformService? platformService})
     : _platformService =
           platformService ?? PlatformServiceFactory.getPlatformService() {
     FlutterForegroundTask.addTaskDataCallback(_onReceiveTaskData);
+  }
+
+  /// Checks if a filename matches the VRChat screenshot pattern
+  bool _isVRChatScreenshot(String filePath) {
+    final filename = path.basename(filePath);
+    return _vrchatScreenshotPattern.hasMatch(filename);
   }
 
   Future<void> _initForegroundTask() async {
@@ -74,7 +89,7 @@ class PhotoWatcherService {
     if (await FlutterForegroundTask.isRunningService) {
       await FlutterForegroundTask.updateService(
         notificationTitle: 'GalleVR Photo Watcher',
-        notificationText: 'Watching ${config.photosDirectory} for new photos',
+        notificationText: 'Watching VRChat logs for new screenshots',
       );
 
       FlutterForegroundTask.sendDataToTask({
@@ -88,7 +103,7 @@ class PhotoWatcherService {
       try {
         await FlutterForegroundTask.startService(
           notificationTitle: 'GalleVR Photo Watcher',
-          notificationText: 'Watching ${config.photosDirectory} for new photos',
+          notificationText: 'Watching VRChat logs for new screenshots',
           callback: startPhotoWatcherCallback,
         );
 
@@ -137,30 +152,29 @@ class PhotoWatcherService {
 
     await _watcherSubscription?.cancel();
     _watcherSubscription = null;
+    await _logWatcherSubscription?.cancel();
+    _logWatcherSubscription = null;
+    await _logFileWatcher?.stopWatching();
+    _logFileWatcher = null;
 
-    final photosDir = config.photosDirectory;
-    if (photosDir.isEmpty) {
-      final error = 'Photos directory is not set';
+    final logsDir = config.logsDirectory;
+    if (logsDir.isEmpty) {
+      final error = 'Logs directory is not set';
       developer.log(error, name: 'PhotoWatcherService');
       PhotoEventService().notifyError('watcher', error);
       throw Exception(error);
     }
 
-    final directory = Directory(photosDir);
+    final directory = Directory(logsDir);
     try {
       if (!await directory.exists()) {
-        developer.log(
-          'Creating photos directory: $photosDir',
-          name: 'PhotoWatcherService',
-        );
-        await directory.create(recursive: true);
-        PhotoEventService().notifyError(
-          'info',
-          'Created photos directory: $photosDir',
-        );
+        final error = 'Logs directory does not exist: $logsDir';
+        developer.log(error, name: 'PhotoWatcherService');
+        PhotoEventService().notifyError('watcher', error);
+        throw Exception(error);
       }
     } catch (e) {
-      final error = 'Failed to create photos directory: $e';
+      final error = 'Failed to access logs directory: $e';
       developer.log(error, name: 'PhotoWatcherService');
       PhotoEventService().notifyError('watcher', error);
       throw Exception(error);
@@ -190,39 +204,33 @@ class PhotoWatcherService {
       }
     } else {
       developer.log(
-        'Using in-app watcher for photo watching',
+        'Using in-app log watcher for photo watching',
         name: 'PhotoWatcherService',
       );
 
       try {
-        await _scanExistingPhotos(photosDir, '.png');
-      } catch (e) {
-        final error = 'Error scanning existing photos: $e';
-        developer.log(error, name: 'PhotoWatcherService');
-        PhotoEventService().notifyError('watcher', error);
-      }
+        _logFileWatcher = LogFileWatcher(logsDir);
+        await _logFileWatcher!.startWatching();
 
-      try {
-        _watcherSubscription = _platformService
-            .watchDirectory(photosDir)
-            .listen(
-              (event) => _handleFileEvent(event, config),
-              onError: (e) {
-                final error = 'Error in directory watcher: $e';
-                developer.log(error, name: 'PhotoWatcherService');
-                PhotoEventService().notifyError('watcher', error);
-              },
-            );
+        _logWatcherSubscription = _logFileWatcher!.screenshotStream.listen(
+          (screenshotPath) => _handleScreenshotFromLog(screenshotPath, config),
+          onError: (e) {
+            final error = 'Error in log file watcher: $e';
+            developer.log(error, name: 'PhotoWatcherService');
+            PhotoEventService().notifyError('watcher', error);
+          },
+        );
+
         developer.log(
-          'Directory watcher started successfully',
+          'Log file watcher started successfully',
           name: 'PhotoWatcherService',
         );
         PhotoEventService().notifyError(
           'info',
-          'Directory watcher started successfully',
+          'Log file watcher started successfully',
         );
       } catch (e) {
-        final error = 'Failed to start directory watcher: $e';
+        final error = 'Failed to start log file watcher: $e';
         developer.log(error, name: 'PhotoWatcherService');
         PhotoEventService().notifyError('watcher', error);
         throw Exception(error);
@@ -242,95 +250,54 @@ class PhotoWatcherService {
 
     await _watcherSubscription?.cancel();
     _watcherSubscription = null;
+
+    await _logWatcherSubscription?.cancel();
+    _logWatcherSubscription = null;
+
+    await _logFileWatcher?.stopWatching();
+    _logFileWatcher = null;
   }
 
-  Future<void> _scanExistingPhotos(String directory, String extension) async {
-    try {
-      final dir = Directory(directory);
-      if (!await dir.exists()) {
-        developer.log(
-          'Directory does not exist: $directory',
-          name: 'PhotoWatcherService',
-        );
-        PhotoEventService().notifyError(
-          'watcher',
-          'Directory does not exist: $directory',
-        );
-        return;
-      }
-
+  void _handleScreenshotFromLog(String screenshotPath, ConfigModel config) {
+    // Verify the file exists and is a VRChat screenshot
+    final file = File(screenshotPath);
+    if (!file.existsSync()) {
       developer.log(
-        'Scanning for existing photos in $directory',
-        name: 'PhotoWatcherService',
-      );
-      int count = 0;
-
-      await for (final entity in dir.list(recursive: true)) {
-        if (entity is File &&
-            path.extension(entity.path).toLowerCase() ==
-                extension.toLowerCase()) {
-          _handledPhotos.add(entity.path);
-          count++;
-        }
-      }
-
-      developer.log(
-        'Found $count existing photos in $directory',
-        name: 'PhotoWatcherService',
-      );
-      if (count > 0) {
-        PhotoEventService().notifyError(
-          'info',
-          'Found $count existing photos in directory',
-        );
-      }
-    } catch (e) {
-      final error = 'Error scanning existing photos: $e';
-      developer.log(error, name: 'PhotoWatcherService');
-      PhotoEventService().notifyError('watcher', error);
-      rethrow;
-    }
-  }
-
-  void _handleFileEvent(FileSystemEvent event, ConfigModel config) {
-    final filePath = event.path;
-
-    if (event.type != FileSystemEvent.create &&
-        event.type != FileSystemEvent.modify) {
-      developer.log(
-        'Ignoring non-create/modify event: ${event.type} for $filePath',
+        'Screenshot file does not exist: $screenshotPath',
         name: 'PhotoWatcherService',
       );
       return;
     }
 
-    if (path.extension(filePath).toLowerCase() != '.png') {
+    if (!_isVRChatScreenshot(screenshotPath)) {
       developer.log(
-        'Ignoring non-PNG file: $filePath',
+        'Ignoring non-VRChat screenshot: $screenshotPath',
         name: 'PhotoWatcherService',
       );
       return;
     }
 
-    if (_handledPhotos.contains(filePath)) {
+    if (_handledPhotos.contains(screenshotPath)) {
       developer.log(
-        'Ignoring already handled photo: $filePath',
+        'Ignoring already handled photo: $screenshotPath',
         name: 'PhotoWatcherService',
       );
       return;
     }
 
-    _handledPhotos.add(filePath);
+    _handledPhotos.add(screenshotPath);
 
-    developer.log('New photo detected: $filePath', name: 'PhotoWatcherService');
+    developer.log('New screenshot detected from log: $screenshotPath', name: 'PhotoWatcherService');
     PhotoEventService().notifyError(
       'info',
-      'New photo detected: ${path.basename(filePath)}',
+      'New screenshot detected: ${path.basename(screenshotPath)}',
     );
 
-    _photoStreamController.add(filePath);
-    PhotoEventService().notifyPhotoAdded(filePath);
+    _photoStreamController.add(screenshotPath);
+    PhotoEventService().notifyPhotoAdded(screenshotPath);
   }
+
+
 
   Future<void> dispose() async {
     developer.log('Disposing PhotoWatcherService', name: 'PhotoWatcherService');
@@ -354,6 +321,21 @@ class PhotoWatcherService {
       _watcherSubscription = null;
     } catch (e) {
       developer.log('Error cancelling watcher subscription: $e', name: 'PhotoWatcherService');
+    }
+
+    try {
+      await _logWatcherSubscription?.cancel();
+      _logWatcherSubscription = null;
+    } catch (e) {
+      developer.log('Error cancelling log watcher subscription: $e', name: 'PhotoWatcherService');
+    }
+
+    try {
+      await _logFileWatcher?.stopWatching();
+      _logFileWatcher?.dispose();
+      _logFileWatcher = null;
+    } catch (e) {
+      developer.log('Error disposing log file watcher: $e', name: 'PhotoWatcherService');
     }
 
     try {

@@ -176,7 +176,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
           _ProcessingEvent(
             type: _EventType.info,
             message:
-                'Started watching for photos in ${_config!.photosDirectory}',
+                'Started watching VRChat logs for new screenshots',
             timestamp: DateTime.now(),
           ),
         );

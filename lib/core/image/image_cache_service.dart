@@ -18,9 +18,9 @@ class ImageCacheService {
 
   int _currentCacheSize = 0;
 
-  static const int _maxCacheEntries = 100;
+  static const int _maxCacheEntries = 50; // Balanced for performance and loading
 
-  static const int _maxMemoryCacheSize = 50 * 1024 * 1024;
+  static const int _maxMemoryCacheSize = 25 * 1024 * 1024; // 25MB for better loading
 
   Directory? _cacheDir;
 
@@ -243,16 +243,18 @@ Uint8List? _decodeThumbnail(ThumbnailParams params) {
       width = (params.size * image.width / image.height).round();
     }
 
+    // Use faster linear interpolation for better performance
     final resized = img.copyResize(
       image,
       width: width,
       height: height,
-      interpolation: img.Interpolation.average,
+      interpolation: img.Interpolation.linear, // Changed from average to linear for speed
     );
 
-    final pngBytes = img.encodePng(resized);
+    // Use JPEG encoding for smaller file size and faster processing
+    final jpegBytes = img.encodeJpg(resized, quality: 85);
 
-    return pngBytes;
+    return jpegBytes;
   } catch (e) {
     debugPrint('Error in _decodeThumbnail: $e');
   }

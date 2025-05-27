@@ -6,6 +6,7 @@ import 'package:path/path.dart' as path;
 
 import '../../core/platform/platform_service.dart';
 import '../../core/platform/platform_service_factory.dart';
+import '../../core/utils/log_file_watcher.dart';
 import '../models/config_model.dart';
 import '../repositories/config_repository.dart';
 
@@ -35,31 +36,45 @@ class PhotoWatcherTaskHandler extends TaskHandler {
   // Stream subscription for file system events on platforms that support it
   StreamSubscription<FileSystemEvent>? _watcherSubscription;
 
+  // Log file watcher and subscription for monitoring VRChat logs
+  LogFileWatcher? _logFileWatcher;
+  StreamSubscription<String>? _logWatcherSubscription;
+
+  // Regex pattern to match VRChat screenshot filenames
+  // Pattern: VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT.png
+  static final RegExp _vrchatScreenshotPattern = RegExp(
+    r'^VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}_\d+x\d+\.png$',
+  );
+
+  /// Checks if a filename matches the VRChat screenshot pattern
+  bool _isVRChatScreenshot(String filePath) {
+    final filename = path.basename(filePath);
+    return _vrchatScreenshotPattern.hasMatch(filename);
+  }
+
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     // Load configuration
     _config = await _configRepository.loadConfig();
 
-    if (_config == null || _config!.photosDirectory.isEmpty) {
+    if (_config == null || _config!.logsDirectory.isEmpty) {
       return;
     }
 
-    // Ensure the directory exists
-    final directory = Directory(_config!.photosDirectory);
+    // Ensure the logs directory exists
+    final directory = Directory(_config!.logsDirectory);
     if (!await directory.exists()) {
-      await directory.create(recursive: true);
+      developer.log('Logs directory does not exist: ${_config!.logsDirectory}', name: 'PhotoWatcherTaskHandler');
+      return;
     }
 
-    // Always scan for existing photos with hardcoded extension
-    await _scanExistingPhotos(_config!.photosDirectory, '.png');
-
-    // Start watching the directory
+    // Start watching the log files
     await _startWatching(_config!);
 
     // Update notification with current status
     FlutterForegroundTask.updateService(
       notificationTitle: 'GalleVR Photo Watcher',
-      notificationText: 'Watching ${_config!.photosDirectory} for new photos',
+      notificationText: 'Watching VRChat logs for new screenshots',
     );
   }
 
@@ -68,7 +83,7 @@ class PhotoWatcherTaskHandler extends TaskHandler {
     if (_config != null) {
       FlutterForegroundTask.updateService(
         notificationTitle: 'GalleVR Photo Watcher',
-        notificationText: 'Watching ${_config!.photosDirectory} for new photos',
+        notificationText: 'Watching VRChat logs for new screenshots',
       );
     }
   }
@@ -77,6 +92,13 @@ class PhotoWatcherTaskHandler extends TaskHandler {
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
     await _watcherSubscription?.cancel();
     _watcherSubscription = null;
+
+    await _logWatcherSubscription?.cancel();
+    _logWatcherSubscription = null;
+
+    await _logFileWatcher?.stopWatching();
+    _logFileWatcher?.dispose();
+    _logFileWatcher = null;
 
     _pollingTimer?.cancel();
     _pollingTimer = null;
@@ -104,6 +126,12 @@ class PhotoWatcherTaskHandler extends TaskHandler {
         await _watcherSubscription?.cancel();
         _watcherSubscription = null;
 
+        await _logWatcherSubscription?.cancel();
+        _logWatcherSubscription = null;
+
+        await _logFileWatcher?.stopWatching();
+        _logFileWatcher = null;
+
         _pollingTimer?.cancel();
         _pollingTimer = null;
 
@@ -111,65 +139,65 @@ class PhotoWatcherTaskHandler extends TaskHandler {
 
         FlutterForegroundTask.updateService(
           notificationTitle: 'GalleVR Photo Watcher',
-          notificationText: 'Watching ${_config!.photosDirectory} for new photos',
+          notificationText: 'Watching VRChat logs for new screenshots',
         );
       }
     }
   }
 
-  // Start watching for new photos
+  // Start watching for new screenshots from log files
   Future<void> _startWatching(ConfigModel config) async {
-    final photosDir = config.photosDirectory;
-    if (photosDir.isEmpty) {
+    final logsDir = config.logsDirectory;
+    if (logsDir.isEmpty) {
       return;
     }
 
-    // Start watching the directory using the platform service
-    _watcherSubscription = _platformService
-        .watchDirectory(photosDir)
-        .listen((event) => _handleFileEvent(event, config));
-  }
-
-  // Scan for existing photos
-  Future<void> _scanExistingPhotos(String directory, String extension) async {
     try {
-      final dir = Directory(directory);
-      if (!await dir.exists()) return;
+      _logFileWatcher = LogFileWatcher(logsDir);
+      await _logFileWatcher!.startWatching();
 
-      await for (final entity in dir.list(recursive: true)) {
-        if (entity is File &&
-            path.extension(entity.path).toLowerCase() == extension.toLowerCase()) {
-          _handledPhotos.add(entity.path);
-        }
-      }
+      _logWatcherSubscription = _logFileWatcher!.screenshotStream.listen(
+        (screenshotPath) => _handleScreenshotFromLog(screenshotPath, config),
+      );
     } catch (e) {
-      developer.log('Error scanning existing photos: $e', name: 'PhotoWatcherTaskHandler');
+      developer.log('Error starting log file watcher: $e', name: 'PhotoWatcherTaskHandler');
     }
   }
 
-  // Handle file system events
-  void _handleFileEvent(FileSystemEvent event, ConfigModel config) {
-    if (event.type != FileSystemEvent.create &&
-        event.type != FileSystemEvent.modify) {
+  // Handle screenshot detected from log file
+  void _handleScreenshotFromLog(String screenshotPath, ConfigModel config) {
+    // Verify the file exists and is a VRChat screenshot
+    final file = File(screenshotPath);
+    if (!file.existsSync()) {
+      developer.log(
+        'Screenshot file does not exist: $screenshotPath',
+        name: 'PhotoWatcherTaskHandler',
+      );
       return;
     }
 
-    final filePath = event.path;
-
-    if (path.extension(filePath).toLowerCase() != '.png') {
+    if (!_isVRChatScreenshot(screenshotPath)) {
+      developer.log(
+        'Ignoring non-VRChat screenshot: $screenshotPath',
+        name: 'PhotoWatcherTaskHandler',
+      );
       return;
     }
 
-    if (_handledPhotos.contains(filePath)) {
+    if (_handledPhotos.contains(screenshotPath)) {
+      developer.log(
+        'Ignoring already handled photo: $screenshotPath',
+        name: 'PhotoWatcherTaskHandler',
+      );
       return;
     }
 
-    _handledPhotos.add(filePath);
-    FlutterForegroundTask.sendDataToMain({'newPhoto': filePath});
+    _handledPhotos.add(screenshotPath);
+    FlutterForegroundTask.sendDataToMain({'newPhoto': screenshotPath});
 
     FlutterForegroundTask.updateService(
       notificationTitle: 'GalleVR Photo Watcher',
-      notificationText: 'New photo detected: ${path.basename(filePath)}',
+      notificationText: 'New screenshot detected: ${path.basename(screenshotPath)}',
     );
   }
 }
