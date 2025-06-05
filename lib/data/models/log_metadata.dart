@@ -27,6 +27,9 @@ class WorldInfo {
   // Whether users can request invites
   final bool? canRequestInvite;
 
+  // Whether the instance is invite only
+  final bool? inviteOnly;
+
   // Default constructor
   WorldInfo({
     required this.name,
@@ -38,6 +41,7 @@ class WorldInfo {
     this.groupId,
     this.groupAccessType,
     this.canRequestInvite,
+    this.inviteOnly,
   });
 
   // Create a WorldInfo from JSON
@@ -52,6 +56,7 @@ class WorldInfo {
       groupId: json['groupId'] as String?,
       groupAccessType: json['groupAccessType'] as String?,
       canRequestInvite: json['canRequestInvite'] as bool?,
+      inviteOnly: json['inviteOnly'] as bool?,
     );
   }
 
@@ -67,6 +72,7 @@ class WorldInfo {
       if (groupId != null) 'groupId': groupId,
       if (groupAccessType != null) 'groupAccessType': groupAccessType,
       if (canRequestInvite != null) 'canRequestInvite': canRequestInvite,
+      if (inviteOnly != null) 'inviteOnly': inviteOnly,
     };
   }
 }

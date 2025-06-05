@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../../core/services/permission_service.dart';
 import '../../core/services/vrchat_registry_service.dart';
+import '../../core/platform/platform_service_factory.dart';
 import '../../data/services/app_service_manager.dart';
 import '../../data/services/vrchat_service.dart';
 import 'home_screen.dart';
@@ -24,6 +25,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   final AppServiceManager _appServiceManager = AppServiceManager();
   final VRChatService _vrchatService = VRChatService();
   final VRChatRegistryService _vrchatRegistryService = VRChatRegistryService();
+  final _platformService = PlatformServiceFactory.getPlatformService();
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -35,6 +37,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   bool _isEnablingLogging = false;
   bool _isVRChatRunning = false;
   bool _justEnabledLogging = false;
+
+  // VRChat logging status (Non-Windows platforms)
+  bool _isLogsDirectoryAvailable = false;
+  bool _isCheckingLogsDirectory = false;
 
   // Windows settings
   bool _minimizeToTray = true;
@@ -80,6 +86,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     // Check VRChat logging status on Windows
     if (Platform.isWindows) {
       _checkVRChatLoggingStatus();
+    } else {
+      // Check logs directory availability on non-Windows platforms
+      _checkLogsDirectoryAvailability();
     }
   }
 
@@ -107,6 +116,156 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         'Error checking VRChat logging status: $e',
         name: 'OnboardingScreen',
       );
+    }
+  }
+
+  Future<void> _checkLogsDirectoryAvailability() async {
+    if (Platform.isWindows) return; // Only for non-Windows platforms
+
+    developer.log(
+      'Checking VRChat logs directory and file content',
+      name: 'OnboardingScreen',
+    );
+
+    setState(() {
+      _isCheckingLogsDirectory = true;
+    });
+
+    try {
+      final logsDirectory = await _platformService.getLogsDirectory();
+
+      developer.log(
+        'Logs directory path: $logsDirectory',
+        name: 'OnboardingScreen',
+      );
+
+      bool hasValidLogs = false;
+
+      if (logsDirectory.isNotEmpty) {
+        final logsDir = Directory(logsDirectory);
+        final exists = await logsDir.exists();
+
+        developer.log(
+          'Logs directory exists: $exists',
+          name: 'OnboardingScreen',
+        );
+
+        if (exists) {
+          // Check for log files with content
+          hasValidLogs = await _checkForValidLogFiles(logsDir);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _isLogsDirectoryAvailable = hasValidLogs;
+          _isCheckingLogsDirectory = false;
+        });
+      }
+    } catch (e) {
+      developer.log(
+        'Error checking logs directory availability: $e',
+        name: 'OnboardingScreen',
+      );
+
+      if (mounted) {
+        setState(() {
+          _isLogsDirectoryAvailable = false;
+          _isCheckingLogsDirectory = false;
+        });
+      }
+    }
+  }
+
+  Future<bool> _checkForValidLogFiles(Directory logsDir) async {
+    try {
+      developer.log(
+        'Checking for valid log files in: ${logsDir.path}',
+        name: 'OnboardingScreen',
+      );
+
+      // Look for VRChat log files (output_log_*.txt pattern)
+      const logPattern = 'output_log_';
+      bool foundValidLog = false;
+      int totalLogFiles = 0;
+      int emptyLogFiles = 0;
+
+      await for (final entity in logsDir.list()) {
+        if (entity is File) {
+          final fileName = entity.path.split(Platform.pathSeparator).last;
+
+          if (fileName.startsWith(logPattern) && fileName.endsWith('.txt')) {
+            totalLogFiles++;
+
+            try {
+              final fileSize = await entity.length();
+              developer.log(
+                'Found log file: $fileName, size: $fileSize bytes',
+                name: 'OnboardingScreen',
+              );
+
+              if (fileSize > 0) {
+                // Check if the file is recent (not just old cached content)
+                final isRecent = await _isLogFileRecent(entity);
+                if (isRecent) {
+                  foundValidLog = true;
+                  developer.log(
+                    'Valid log file found: $fileName (size: $fileSize bytes)',
+                    name: 'OnboardingScreen',
+                  );
+                  break; // Found at least one valid log file
+                }
+              } else {
+                emptyLogFiles++;
+                developer.log(
+                  'Empty log file found: $fileName',
+                  name: 'OnboardingScreen',
+                );
+              }
+            } catch (e) {
+              developer.log(
+                'Error checking log file $fileName: $e',
+                name: 'OnboardingScreen',
+              );
+            }
+          }
+        }
+      }
+
+      developer.log(
+        'Log file summary - Total: $totalLogFiles, Empty: $emptyLogFiles, Valid: $foundValidLog',
+        name: 'OnboardingScreen',
+      );
+
+      return foundValidLog;
+    } catch (e) {
+      developer.log(
+        'Error checking for valid log files: $e',
+        name: 'OnboardingScreen',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> _isLogFileRecent(File logFile) async {
+    try {
+      // Check if the file is recent (not just old cached content)
+      final now = DateTime.now();
+      final fileModified = await logFile.lastModified();
+      final isRecent = now.difference(fileModified).inDays < 7; // Modified within last week
+
+      developer.log(
+        'Log file recency check - Recent: $isRecent, Modified: $fileModified',
+        name: 'OnboardingScreen',
+      );
+
+      return isRecent;
+    } catch (e) {
+      developer.log(
+        'Error checking log file recency: $e',
+        name: 'OnboardingScreen',
+      );
+      return false;
     }
   }
 
@@ -219,8 +378,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   void _nextStep() {
-    // For Windows, add extra steps for VRChat logging and Windows settings
-    final maxStep = Platform.isAndroid ? 2 : (Platform.isWindows ? 3 : 1);
+    // All platforms now have logging step: Android (3 steps), Windows (4 steps), Others (3 steps)
+    final maxStep = Platform.isAndroid ? 3 : (Platform.isWindows ? 4 : 3);
     if (_currentStep < maxStep) {
       setState(() {
         _currentStep++;
@@ -376,6 +535,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 ? [
                     _buildWelcomeStep(size, isSmallScreen),
                     _buildPermissionsStep(size, isSmallScreen),
+                    _buildNonWindowsLoggingStep(size, isSmallScreen),
                     _buildConnectionStep(size, isSmallScreen),
                   ]
                 : Platform.isWindows
@@ -387,6 +547,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     ]
                   : [
                       _buildWelcomeStep(size, isSmallScreen),
+                      _buildNonWindowsLoggingStep(size, isSmallScreen),
                       _buildConnectionStep(size, isSmallScreen),
                     ],
             ),
@@ -947,6 +1108,41 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
             _buildLoggingCard(),
 
+            // Show message when logging is not enabled
+            if (!_isVRChatLoggingEnabled) ...[
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color.fromRGBO(255, 152, 0, 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color.fromRGBO(255, 152, 0, 0.3),
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      color: Colors.orange,
+                      size: 20,
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'VRChat full logging is required to process and organize your photos. Please enable it to continue.',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             SizedBox(height: size.height * 0.06),
 
             Row(
@@ -973,10 +1169,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   child: SizedBox(
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: _nextStep,
+                      onPressed: _isVRChatLoggingEnabled ? _nextStep : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primaryColor,
                         foregroundColor: Colors.white,
+                        disabledBackgroundColor: AppTheme.primaryColor
+                            .withAlpha(77),
+                        disabledForegroundColor: const Color.fromRGBO(
+                          255,
+                          255,
+                          255,
+                          0.5,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -1056,16 +1260,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 16),
           const Text(
-            'GalleVR needs VRChat\'s full logging enabled to extract detailed information about your photos, including world names and player lists.',
+            'Without VRChat full logging enabled, GalleVR cannot process your photos or extract metadata like world names and player lists. Your photos will remain unorganized.',
             style: TextStyle(
               fontSize: 14,
               color: Color.fromRGBO(255, 255, 255, 0.7),
             ),
           ),
           const SizedBox(height: 12),
-          _buildBenefitItem('Enables automatic world name detection'),
-          _buildBenefitItem('Enables player tagging in photos'),
-          _buildBenefitItem('Enhances search capabilities'),
+          _buildBenefitItem('Required for automatic world name detection'),
+          _buildBenefitItem('Required for player tagging in photos'),
+          _buildBenefitItem('Required for enhanced search capabilities'),
           const SizedBox(height: 20),
           if (!_isVRChatLoggingEnabled)
             SizedBox(
@@ -1571,6 +1775,408 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         ],
       ),
     );
+  }
+
+  Widget _buildNonWindowsLoggingStep(Size size, bool isSmallScreen) {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: isSmallScreen ? 24 : 48,
+          vertical: 24,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(height: size.height * 0.05),
+
+            ShaderMask(
+              shaderCallback:
+                  (bounds) => LinearGradient(
+                    colors: [
+                      AppTheme.primaryLightColor,
+                      AppTheme.primaryColor,
+                      AppTheme.primaryDarkColor,
+                    ],
+                  ).createShader(bounds),
+              child: Text(
+                'VRChat Logging',
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 28 : 36,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+
+            SizedBox(height: size.height * 0.02),
+
+            Text(
+              'Enable full logging for photo metadata tagging',
+              style: TextStyle(
+                fontSize: isSmallScreen ? 16 : 18,
+                color: Color.fromRGBO(255, 255, 255, 0.8),
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+
+            SizedBox(height: size.height * 0.06),
+
+            _buildNonWindowsLoggingCard(),
+
+            // Show message when logs directory is not available
+            if (!_isLogsDirectoryAvailable && !_isCheckingLogsDirectory) ...[
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color.fromRGBO(255, 152, 0, 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color.fromRGBO(255, 152, 0, 0.3),
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      color: Colors.orange,
+                      size: 20,
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Please enable VRChat full logging to continue with the setup.',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            SizedBox(height: size.height * 0.06),
+
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 56,
+                    child: OutlinedButton(
+                      onPressed: _previousStep,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white30),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text('Back'),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+
+                Expanded(
+                  child: SizedBox(
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _isLogsDirectoryAvailable ? _nextStep : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: AppTheme.primaryColor
+                            .withAlpha(77),
+                        disabledForegroundColor: const Color.fromRGBO(
+                          255,
+                          255,
+                          255,
+                          0.5,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text('Next'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // Small skip button
+            if (!_isLogsDirectoryAvailable && !_isCheckingLogsDirectory) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 32,
+                child: TextButton(
+                  onPressed: _showSkipLoggingDialog,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white54,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('Skip (Not Recommended)'),
+                ),
+              ),
+            ],
+
+            SizedBox(height: size.height * 0.04),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNonWindowsLoggingCard() {
+    final loggingColor =
+        _isLogsDirectoryAvailable
+            ? const Color.fromRGBO(0, 128, 0, 0.1)
+            : const Color.fromRGBO(0, 0, 0, 0.2);
+
+    final borderColor =
+        _isLogsDirectoryAvailable
+            ? const Color.fromRGBO(0, 128, 0, 0.3)
+            : AppTheme.cardBorderColor;
+
+    final iconBgColor =
+        _isLogsDirectoryAvailable
+            ? const Color.fromRGBO(0, 128, 0, 0.1)
+            : AppTheme.primaryColor.withAlpha(25);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: loggingColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: iconBgColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  _isLogsDirectoryAvailable
+                      ? Icons.check_circle_rounded
+                      : _isCheckingLogsDirectory
+                          ? Icons.refresh_rounded
+                          : Icons.settings_rounded,
+                  color:
+                      _isLogsDirectoryAvailable
+                          ? Colors.green
+                          : AppTheme.primaryColor,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Text(
+                  'VRChat Full Logging',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'GalleVR needs VRChat\'s full logging enabled to extract detailed information about your photos, including world names and player lists. We check for recent log files with content (not just empty files).',
+            style: TextStyle(
+              fontSize: 14,
+              color: Color.fromRGBO(255, 255, 255, 0.7),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildBenefitItem('Enables automatic world name detection'),
+          _buildBenefitItem('Enables player tagging in photos'),
+          _buildBenefitItem('Enhances search capabilities'),
+          const SizedBox(height: 20),
+
+          // Manual instructions
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color.fromRGBO(0, 0, 0, 0.3),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppTheme.primaryColor.withAlpha(77),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      color: AppTheme.primaryColor,
+                      size: 20,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Manual Setup Required',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'To enable full logging in VRChat:',
+                  style: TextStyle(
+                    color: Color.fromRGBO(255, 255, 255, 0.8),
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _buildInstructionStep('1. Open VRChat'),
+                _buildInstructionStep('2. Go to Settings'),
+                _buildInstructionStep('3. Navigate to Debug'),
+                _buildInstructionStep('4. Set Logging to "Full"'),
+                _buildInstructionStep('5. Restart VRChat'),
+                _buildInstructionStep('6. Use VRChat briefly to generate logs'),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isCheckingLogsDirectory ? null : _recheckLogsDirectory,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    child: _isCheckingLogsDirectory
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'Check Again',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          if (_isLogsDirectoryAvailable)
+            const Padding(
+              padding: EdgeInsets.only(top: 16),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle_outline, color: Colors.green),
+                  SizedBox(width: 8),
+                  Text(
+                    'Full logging detected with recent content',
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInstructionStep(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '  • ',
+            style: TextStyle(
+              color: AppTheme.primaryColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Color.fromRGBO(255, 255, 255, 0.7),
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _recheckLogsDirectory() async {
+    await _checkLogsDirectoryAvailability();
+  }
+
+  Future<void> _showSkipLoggingDialog() async {
+    final shouldSkip = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color.fromRGBO(20, 20, 30, 1),
+        title: const Text(
+          'Skip Logging Setup?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Without VRChat full logging enabled, GalleVR will not be able to:\n\n'
+          '• Automatically detect world names\n'
+          '• Tag players in photos\n'
+          '• Provide enhanced search capabilities\n\n'
+          'You can enable logging later in VRChat settings.\n\n'
+          'Are you sure you want to continue?',
+          style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.8)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Skip Anyway'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldSkip == true) {
+      _nextStep();
+    }
   }
 }
 

@@ -52,6 +52,19 @@ class LogParserService {
       ),
     ),
     _WorldPattern(
+      regex: RegExp(r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~group\(([^)]+)\)~groupAccessType\(([^)]+)\)~inviteOnly~region\(([^)]+)\)'),
+      handler: (matches, roomName) => WorldInfo(
+        name: roomName,
+        id: matches[1]!,
+        instanceId: matches[2],
+        accessType: 'group',
+        groupId: matches[3],
+        groupAccessType: matches[4],
+        region: matches[5],
+        inviteOnly: true,
+      ),
+    ),
+    _WorldPattern(
       regex: RegExp(r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~region\(([^)]+)\)'),
       handler: (matches, roomName) => WorldInfo(
         name: roomName,
@@ -115,6 +128,18 @@ class LogParserService {
           worldInfo = pattern.handler(groups, roomName);
           break;
         }
+      }
+
+      // Furality hotfix
+      // If no world info was found but we have a room name, create a basic WorldInfo
+      if (worldInfo == null && roomName.isNotEmpty) {
+        final worldIdMatch = RegExp(r'Joining (wrld_[^:]+):').firstMatch(relevantLog);
+        final worldId = worldIdMatch?.group(1) ?? '';
+        
+        worldInfo = WorldInfo(
+          name: roomName,
+          id: worldId,
+        );
       }
 
       // Extract players

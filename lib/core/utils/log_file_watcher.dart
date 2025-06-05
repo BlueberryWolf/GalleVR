@@ -12,9 +12,11 @@ class LogFileWatcher {
 
   final String _logsDirectory;
   final StreamController<String> _screenshotController = StreamController<String>.broadcast();
-  
+
   Timer? _pollingTimer;
+  Timer? _logFileCheckTimer;
   String? _currentLogFile;
+  DateTime? _currentLogFileModified;
   int _lastPosition = 0;
   final Set<String> _processedScreenshots = <String>{};
 
@@ -26,28 +28,33 @@ class LogFileWatcher {
   /// Start watching for screenshot events in the log files
   Future<void> startWatching() async {
     developer.log('Starting log file watcher for directory: $_logsDirectory', name: 'LogFileWatcher');
-    
+
     await stopWatching();
-    
+
     // Find the current log file
     await _findCurrentLogFile();
-    
+
     if (_currentLogFile == null) {
       developer.log('No log file found in $_logsDirectory', name: 'LogFileWatcher');
       return;
     }
 
     developer.log('Watching log file: $_currentLogFile', name: 'LogFileWatcher');
-    
+
     // Start polling for changes
     _pollingTimer = Timer.periodic(const Duration(milliseconds: 500), (_) => _checkForUpdates());
+
+    _logFileCheckTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkForNewerLogFile());
   }
 
   /// Stop watching for screenshot events
   Future<void> stopWatching() async {
     _pollingTimer?.cancel();
     _pollingTimer = null;
+    _logFileCheckTimer?.cancel();
+    _logFileCheckTimer = null;
     _currentLogFile = null;
+    _currentLogFileModified = null;
     _lastPosition = 0;
     _processedScreenshots.clear();
     developer.log('Stopped log file watcher', name: 'LogFileWatcher');
@@ -86,6 +93,7 @@ class LogFileWatcher {
 
       if (latestLogFile != null) {
         _currentLogFile = latestLogFile.path;
+        _currentLogFileModified = latestModified;
         // Start from the end of the file to only catch new entries
         final stat = await latestLogFile.stat();
         _lastPosition = stat.size;
@@ -142,10 +150,56 @@ class LogFileWatcher {
     }
   }
 
+  Future<void> _checkForNewerLogFile() async {
+    try {
+      final logsDir = Directory(_logsDirectory);
+      if (!await logsDir.exists()) {
+        return;
+      }
+
+      File? latestLogFile;
+      DateTime? latestModified;
+
+      await for (final entity in logsDir.list()) {
+        if (entity is File) {
+          final fileName = path.basename(entity.path);
+          if (fileName.startsWith(_logPattern)) {
+            final stat = await entity.stat();
+            if (latestModified == null || stat.modified.isAfter(latestModified)) {
+              latestModified = stat.modified;
+              latestLogFile = entity;
+            }
+          }
+        }
+      }
+
+      if (latestLogFile != null &&
+          latestModified != null &&
+          _currentLogFileModified != null &&
+          latestModified.isAfter(_currentLogFileModified!)) {
+
+        developer.log(
+          'Found newer log file: ${latestLogFile.path} (modified: $latestModified vs current: $_currentLogFileModified)',
+          name: 'LogFileWatcher'
+        );
+
+        _currentLogFile = latestLogFile.path;
+        _currentLogFileModified = latestModified;
+
+        final stat = await latestLogFile.stat();
+        _lastPosition = stat.size;
+
+        developer.log('Switched to newer log file: $_currentLogFile (size: $_lastPosition)', name: 'LogFileWatcher');
+      }
+    } catch (e) {
+      developer.log('Error checking for newer log file: $e', name: 'LogFileWatcher');
+    }
+  }
+
   /// Process new content from the log file for screenshot events
   void _processNewContent(String content) {
     final lines = content.split('\n');
-    
+
     for (final line in lines) {
       final match = _screenshotRegex.firstMatch(line);
       if (match != null && match.groupCount >= 1) {

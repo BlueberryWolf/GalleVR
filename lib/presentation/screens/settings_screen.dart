@@ -14,6 +14,7 @@ import '../../core/platform/platform_service.dart';
 import '../../core/platform/platform_service_factory.dart';
 import '../../core/services/permission_service.dart';
 import '../../core/services/update_service.dart';
+import '../../core/services/vrchat_registry_service.dart';
 import '../widgets/tos_modal.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -30,6 +31,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final ScrollController _scrollController = ScrollController();
   final UpdateService _updateService = UpdateService();
   final TOSService _tosService = TOSService();
+  final VRChatRegistryService _vrchatRegistryService = VRChatRegistryService();
 
   ConfigModel? _config;
   bool _isLoading = true;
@@ -431,7 +433,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Padding(
                               padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                               child: Text(
-                                '${_config!.compressionDelay} seconds',
+                                '${_config!.compressionDelay.toStringAsFixed(1)} seconds',
                                 style: Theme.of(context).textTheme.bodyMedium,
                               ),
                             ),
@@ -457,7 +459,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         : ListTile(
                           title: const Text('Compression Delay'),
                           subtitle: Text(
-                            '${_config!.compressionDelay} seconds',
+                            '${_config!.compressionDelay.toStringAsFixed(1)} seconds',
                           ),
                           trailing: SizedBox(
                             width: sliderWidth,
@@ -615,8 +617,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: const Text('Automatically upload processed photos'),
                   value: _config!.uploadEnabled,
                   onChanged: (value) async {
-                    // If trying to enable uploads, check TOS acceptance first
+                    // If trying to enable uploads, check VRChat logging and TOS acceptance first
                     if (value) {
+                      // Check VRChat logging status on Windows
+                      if (Platform.isWindows) {
+                        try {
+                          final isLoggingEnabled = await _vrchatRegistryService.isFullLoggingEnabled();
+                          if (!isLoggingEnabled) {
+                            // Show warning toast about VRChat logging
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('VRChat full logging must be enabled to upload photos. Your photos cannot be processed without logging enabled.'),
+                                  backgroundColor: Colors.orange,
+                                  duration: Duration(seconds: 5),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                        } catch (e) {
+                          developer.log('Error checking VRChat logging status: $e', name: 'SettingsScreen');
+                          // Continue with upload enabling if we can't check logging status
+                        }
+                      }
+
                       final needsToAcceptTOS = await _tosService.needsToAcceptTOS();
                       if (needsToAcceptTOS) {
                         // Check if a TOS modal is already visible
@@ -647,7 +672,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       }
                     }
 
-                    // If disabling uploads or TOS already accepted, proceed normally
+                    // If disabling uploads or all checks passed, proceed normally
                     final updatedConfig = _config!.copyWith(
                       uploadEnabled: value,
                     );
