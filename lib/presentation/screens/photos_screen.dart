@@ -13,6 +13,7 @@ import '../../data/models/config_model.dart';
 import '../../data/models/photo_metadata.dart';
 import '../../data/repositories/photo_metadata_repository.dart';
 import '../../data/services/photo_event_service.dart';
+import '../../data/services/manual_upload_service.dart';
 import '../../core/image/image_cache_service.dart';
 import '../../core/image/thumbnail_provider.dart';
 import '../theme/app_theme.dart';
@@ -403,6 +404,16 @@ class _PhotosScreenState extends State<PhotosScreen> {
     return _metadataCache[filePath]!;
   }
 
+  void _refreshMetadataCache(String filePath) {
+    // Remove the cached future completely
+    _metadataCache.remove(filePath);
+    
+    // Trigger a rebuild of the photo grid which will create a new future
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Widget _buildPhotoItem(FileSystemEntity entity) {
     return FutureBuilder<PhotoMetadata?>(
       future: _getMetadataFuture(entity.path),
@@ -493,6 +504,13 @@ class _PhotosScreenState extends State<PhotosScreen> {
                       ),
                     ),
 
+                  // Upload status indicator
+                  Positioned(
+                    top: 4,
+                    right: 36,
+                    child: _buildUploadStatusIndicator(metadata),
+                  ),
+
                   // Options button
                   Positioned(
                     top: 4,
@@ -526,6 +544,53 @@ class _PhotosScreenState extends State<PhotosScreen> {
       fit: BoxFit.cover,
       thumbnailSize: 400, // Increased slightly for better loading reliability
       highQuality: false,
+    );
+  }
+
+  Widget _buildUploadStatusIndicator(PhotoMetadata? metadata) {
+    // Determine upload status
+    Color indicatorColor;
+    IconData iconData;
+    String tooltip;
+
+    if (metadata?.galleryUrl != null) {
+      // Photo is uploaded
+      indicatorColor = Colors.green;
+      iconData = Icons.cloud_done_rounded;
+      tooltip = 'Photo uploaded to gallery';
+    } else if (metadata != null && (metadata.world != null || metadata.players.isNotEmpty)) {
+      // Photo can be uploaded (has metadata)
+      indicatorColor = AppTheme.primaryColor;
+      iconData = Icons.cloud_upload_rounded;
+      tooltip = 'Photo can be uploaded';
+    } else {
+      // Photo cannot be uploaded (no metadata)
+      indicatorColor = Colors.grey;
+      iconData = Icons.cloud_off_rounded;
+      tooltip = 'Photo cannot be uploaded (no metadata)';
+    }
+
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: indicatorColor,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(100),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Icon(
+          iconData,
+          color: Colors.white,
+          size: 10,
+        ),
+      ),
     );
   }
 
@@ -582,6 +647,17 @@ class _PhotosScreenState extends State<PhotosScreen> {
                         _openPhotoDetails(entity);
                       },
                     ),
+                  if (hasMetadata && metadata?.galleryUrl == null)
+                    ListTile(
+                      leading: const Icon(Icons.cloud_upload_rounded),
+                      title: const Text('Upload to Gallery'),
+                      subtitle: const Text('Compress and upload this photo'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openPhotoDetails(entity);
+                        // The upload button will be available in the detail view
+                      },
+                    ),
                   const Divider(),
                   ListTile(
                     leading: const Icon(Icons.copy),
@@ -628,7 +704,11 @@ class _PhotosScreenState extends State<PhotosScreen> {
       PageRouteBuilder(
         pageBuilder:
             (context, animation, secondaryAnimation) =>
-                _PhotoDetailScreen(entity: entity, allPhotos: _displayedPhotos),
+                _PhotoDetailScreen(
+                  entity: entity, 
+                  allPhotos: _displayedPhotos,
+                  onMetadataUpdated: () => _refreshMetadataCache(entity.path),
+                ),
         transitionDuration: const Duration(milliseconds: 250),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(
@@ -643,10 +723,14 @@ class _PhotosScreenState extends State<PhotosScreen> {
 
 class _PhotoDetailScreen extends StatefulWidget {
   final FileSystemEntity entity;
-
   final List<FileSystemEntity>? allPhotos;
+  final VoidCallback? onMetadataUpdated;
 
-  const _PhotoDetailScreen({required this.entity, this.allPhotos});
+  const _PhotoDetailScreen({
+    required this.entity, 
+    this.allPhotos,
+    this.onMetadataUpdated,
+  });
 
   @override
   State<_PhotoDetailScreen> createState() => _PhotoDetailScreenState();
@@ -655,9 +739,15 @@ class _PhotoDetailScreen extends StatefulWidget {
 class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
     with AutomaticKeepAliveClientMixin, SingleTickerProviderStateMixin {
   final PhotoMetadataRepository _metadataRepository = PhotoMetadataRepository();
+  final ManualUploadService _manualUploadService = ManualUploadService();
+  final ConfigRepository _configRepository = ConfigRepository();
   PhotoMetadata? _metadata;
+  ConfigModel? _config;
   bool _isMetadataPanelOpen = false;
   bool _isLoading = true;
+  bool _isUploading = false;
+  String _uploadStatus = '';
+  double _uploadProgress = 0.0;
 
   final FocusNode _focusNode = FocusNode();
 
@@ -690,6 +780,7 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
       _focusNode.requestFocus();
     });
 
+    _loadConfig();
     Future.delayed(const Duration(milliseconds: 300), _loadMetadata);
 
     _showIndicators();
@@ -700,6 +791,96 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
     _focusNode.dispose();
     _indicatorController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadConfig() async {
+    try {
+      final config = await _configRepository.loadConfig();
+      if (mounted) {
+        setState(() {
+          _config = config;
+        });
+      }
+    } catch (e) {
+      developer.log('Error loading config: $e', name: 'PhotoDetailScreen', error: e);
+    }
+  }
+
+  Future<void> _manualUpload() async {
+    if (_config == null || _isUploading) return;
+
+    setState(() {
+      _isUploading = true;
+      _uploadStatus = 'Starting upload...';
+      _uploadProgress = 0.0;
+    });
+
+    try {
+      final galleryUrl = await _manualUploadService.uploadPhoto(
+        widget.entity.path,
+        _config!,
+        onStatusUpdate: (status) {
+          if (mounted) {
+            setState(() {
+              _uploadStatus = status;
+            });
+          }
+        },
+        onProgress: (progress) {
+          if (mounted) {
+            setState(() {
+              _uploadProgress = progress;
+            });
+          }
+        },
+      );
+
+      if (mounted) {
+        if (galleryUrl != null) {
+          // Reload metadata to get the updated gallery URL
+          await _loadMetadata();
+          
+          // Notify parent to refresh the photo grid
+          widget.onMetadataUpdated?.call();
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Photo uploaded successfully!'),
+              backgroundColor: Colors.green,
+              action: SnackBarAction(
+                label: 'View',
+                textColor: Colors.white,
+                onPressed: () => _openInGallery(),
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Upload failed: $_uploadStatus'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Upload failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadStatus = '';
+          _uploadProgress = 0.0;
+        });
+      }
+    }
   }
 
   Future<void> _loadMetadata() async {
@@ -1034,6 +1215,35 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
             onPressed: _showInFileExplorer,
             tooltip: 'Show in File Explorer',
           ),
+          // Manual upload button - show if photo has metadata but no gallery URL
+          if (hasMetadata && _metadata?.galleryUrl == null && !_isUploading)
+            IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withAlpha(150),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.cloud_upload_rounded, color: Colors.white),
+              ),
+              onPressed: _manualUpload,
+              tooltip: 'Upload to Gallery',
+            ),
+          // Upload progress indicator
+          if (_isUploading)
+            Container(
+              padding: const EdgeInsets.all(8),
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  value: _uploadProgress > 0 ? _uploadProgress : null,
+                  strokeWidth: 2,
+                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            ),
           IconButton(
             icon: Container(
               padding: const EdgeInsets.all(8),
@@ -1082,6 +1292,16 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
                             _showInFileExplorer();
                           },
                         ),
+                        if (hasMetadata && _metadata?.galleryUrl == null && !_isUploading)
+                          ListTile(
+                            leading: const Icon(Icons.cloud_upload_rounded),
+                            title: const Text('Upload to Gallery'),
+                            subtitle: const Text('Compress and upload this photo'),
+                            onTap: () {
+                              Navigator.pop(context);
+                              _manualUpload();
+                            },
+                          ),
                       ],
                     ),
               );
@@ -1322,6 +1542,70 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
                   ),
                 ),
               ),
+
+              // Upload status overlay
+              if (_isUploading)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black.withAlpha(150),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        margin: const EdgeInsets.symmetric(horizontal: 32),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withAlpha(200),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 60,
+                              height: 60,
+                              child: CircularProgressIndicator(
+                                value: _uploadProgress > 0 ? _uploadProgress : null,
+                                strokeWidth: 4,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  AppTheme.primaryColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Uploading Photo',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _uploadStatus,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            if (_uploadProgress > 0)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  '${(_uploadProgress * 100).toInt()}%',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
