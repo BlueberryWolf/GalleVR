@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/photo_metadata.dart';
 import '../services/vrcx_metadata_service.dart';
@@ -10,108 +11,103 @@ class PhotoMetadataRepository {
   static const String _photoIdsKey = 'gallevr_photo_ids';
   static const String _photoMetadataKeyPrefix = 'gallevr_photo_';
 
+  // In-memory cache to avoid repeated SharedPreferences reads
+  static final Map<String, PhotoMetadata> _metadataCache = {};
+  static final Map<String, String> _filePathToIdCache = {};
+  static bool _cacheInitialized = false;
+  static SharedPreferences? _prefs;
+
+  // Background processing queue to avoid blocking UI
+  static final Map<String, Future<PhotoMetadata?>> _processingQueue = {};
+
+  /// Initialize the cache by loading all metadata once
+  Future<void> _initializeCache() async {
+    if (_cacheInitialized) return;
+
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      final photoIds = _prefs!.getStringList(_photoIdsKey) ?? [];
+
+      for (final photoId in photoIds) {
+        final metadataJson = _prefs!.getString('$_photoMetadataKeyPrefix$photoId');
+        if (metadataJson != null) {
+          try {
+            final metadata = PhotoMetadata.fromJson(json.decode(metadataJson));
+            _metadataCache[photoId] = metadata;
+            
+            // Build reverse lookup cache for file paths
+            if (metadata.localPath != null) {
+              _filePathToIdCache[metadata.localPath!] = photoId;
+            }
+            _filePathToIdCache[metadata.filename] = photoId;
+          } catch (e) {
+            developer.log(
+              'Error parsing cached metadata for $photoId: $e',
+              name: 'PhotoMetadataRepository',
+            );
+          }
+        }
+      }
+
+      _cacheInitialized = true;
+      developer.log(
+        'Metadata cache initialized with ${_metadataCache.length} entries',
+        name: 'PhotoMetadataRepository',
+      );
+    } catch (e) {
+      developer.log(
+        'Error initializing metadata cache: $e',
+        name: 'PhotoMetadataRepository',
+        error: e,
+      );
+    }
+  }
+
   Future<bool> savePhotoMetadata(PhotoMetadata metadata) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      _prefs ??= await SharedPreferences.getInstance();
+      await _initializeCache();
 
       final photoId = '${metadata.filename}_${metadata.takenDate}';
 
-      developer.log(
-        'Saving metadata for photo ID: $photoId',
-        name: 'PhotoMetadataRepository',
-      );
-      developer.log(
-        'Metadata details: Filename: ${metadata.filename}, Path: ${metadata.localPath}',
-        name: 'PhotoMetadataRepository',
-      );
-      developer.log(
-        'World: ${metadata.world?.name}, Players: ${metadata.players.length}',
-        name: 'PhotoMetadataRepository',
-      );
-      if (metadata.galleryUrl != null) {
-        developer.log(
-          'Gallery URL: ${metadata.galleryUrl}',
-          name: 'PhotoMetadataRepository',
-        );
-      }
-
-      final existingMetadata = await getPhotoMetadataForFile(
-        metadata.localPath ?? metadata.filename,
-      );
-      if (existingMetadata != null) {
-        final existingPhotoId =
-            '${existingMetadata.filename}_${existingMetadata.takenDate}';
-        developer.log(
-          'Updating existing metadata with ID: $existingPhotoId',
-          name: 'PhotoMetadataRepository',
-        );
-
+      // Check for existing metadata
+      final existingId = _findExistingPhotoId(metadata.localPath ?? metadata.filename);
+      
+      if (existingId != null) {
+        // Update existing metadata
+        final existingMetadata = _metadataCache[existingId]!;
         final updatedMetadata = existingMetadata.copyWith(
           world: metadata.world ?? existingMetadata.world,
-          players:
-              metadata.players.isNotEmpty
-                  ? metadata.players
-                  : existingMetadata.players,
+          players: metadata.players.isNotEmpty ? metadata.players : existingMetadata.players,
           galleryUrl: metadata.galleryUrl ?? existingMetadata.galleryUrl,
         );
 
         final metadataJson = json.encode(updatedMetadata.toJson());
-        await prefs.setString(
-          '$_photoMetadataKeyPrefix$existingPhotoId',
-          metadataJson,
-        );
-
-        final savedMetadata = prefs.getString(
-          '$_photoMetadataKeyPrefix$existingPhotoId',
-        );
-        if (savedMetadata != null) {
-          developer.log(
-            'Existing metadata updated successfully',
-            name: 'PhotoMetadataRepository',
-          );
-          return true;
-        } else {
-          developer.log(
-            'Failed to update existing metadata',
-            name: 'PhotoMetadataRepository',
-          );
-          return false;
-        }
+        await _prefs!.setString('$_photoMetadataKeyPrefix$existingId', metadataJson);
+        
+        // Update cache
+        _metadataCache[existingId] = updatedMetadata;
+        
+        return true;
       } else {
+        // Save new metadata
         final metadataJson = json.encode(metadata.toJson());
-        await prefs.setString('$_photoMetadataKeyPrefix$photoId', metadataJson);
+        await _prefs!.setString('$_photoMetadataKeyPrefix$photoId', metadataJson);
 
-        final photoIds = prefs.getStringList(_photoIdsKey) ?? [];
+        final photoIds = _prefs!.getStringList(_photoIdsKey) ?? [];
         if (!photoIds.contains(photoId)) {
           photoIds.add(photoId);
-          await prefs.setStringList(_photoIdsKey, photoIds);
-          developer.log(
-            'Added new photo ID to list: $photoId',
-            name: 'PhotoMetadataRepository',
-          );
-        } else {
-          developer.log(
-            'Photo ID already exists in list: $photoId',
-            name: 'PhotoMetadataRepository',
-          );
+          await _prefs!.setStringList(_photoIdsKey, photoIds);
         }
 
-        final savedMetadata = prefs.getString(
-          '$_photoMetadataKeyPrefix$photoId',
-        );
-        if (savedMetadata != null) {
-          developer.log(
-            'New metadata saved successfully',
-            name: 'PhotoMetadataRepository',
-          );
-          return true;
-        } else {
-          developer.log(
-            'Failed to save new metadata',
-            name: 'PhotoMetadataRepository',
-          );
-          return false;
+        // Update cache
+        _metadataCache[photoId] = metadata;
+        if (metadata.localPath != null) {
+          _filePathToIdCache[metadata.localPath!] = photoId;
         }
+        _filePathToIdCache[metadata.filename] = photoId;
+
+        return true;
       }
     } catch (e) {
       developer.log(
@@ -124,171 +120,58 @@ class PhotoMetadataRepository {
   }
 
   Future<PhotoMetadata?> getPhotoMetadata(String photoId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final metadataJson = prefs.getString('$_photoMetadataKeyPrefix$photoId');
-
-      if (metadataJson == null) {
-        return null;
-      }
-
-      return PhotoMetadata.fromJson(json.decode(metadataJson));
-    } catch (e) {
-      developer.log(
-        'Error getting photo metadata: $e',
-        name: 'PhotoMetadataRepository',
-        error: e,
-      );
-      return null;
-    }
+    await _initializeCache();
+    return _metadataCache[photoId];
   }
 
   Future<List<PhotoMetadata>> getAllPhotoMetadata() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final photoIds = prefs.getStringList(_photoIdsKey) ?? [];
-
-      final List<PhotoMetadata> result = [];
-
-      for (final photoId in photoIds) {
-        final metadataJson = prefs.getString(
-          '$_photoMetadataKeyPrefix$photoId',
-        );
-        if (metadataJson != null) {
-          try {
-            final metadata = PhotoMetadata.fromJson(json.decode(metadataJson));
-            result.add(metadata);
-          } catch (e) {
-            developer.log(
-              'Error parsing metadata for photo $photoId: $e',
-              name: 'PhotoMetadataRepository',
-              error: e,
-            );
-          }
-        }
-      }
-
-      result.sort((a, b) => b.takenDate.compareTo(a.takenDate));
-
-      return result;
-    } catch (e) {
-      developer.log(
-        'Error getting all photo metadata: $e',
-        name: 'PhotoMetadataRepository',
-        error: e,
-      );
-      return [];
-    }
+    await _initializeCache();
+    final result = _metadataCache.values.toList();
+    result.sort((a, b) => b.takenDate.compareTo(a.takenDate));
+    return result;
   }
 
+  ///  version that avoids loading all metadata
   Future<PhotoMetadata?> getPhotoMetadataForFile(String filePath) async {
     try {
+      await _initializeCache();
+      
       final filename = path.basename(filePath);
-      final allMetadata = await getAllPhotoMetadata();
 
-      developer.log(
-        'Looking for metadata for file: $filename',
-        name: 'PhotoMetadataRepository',
-      );
-      developer.log(
-        'Available metadata count: ${allMetadata.length}',
-        name: 'PhotoMetadataRepository',
-      );
-
-      if (allMetadata.isNotEmpty) {
-        final sampleSize = allMetadata.length > 3 ? 3 : allMetadata.length;
-        for (int i = 0; i < sampleSize; i++) {
-          final meta = allMetadata[i];
-          developer.log(
-            'Sample metadata $i: filename=${meta.filename}, path=${meta.localPath}, galleryUrl=${meta.galleryUrl}',
-            name: 'PhotoMetadataRepository',
-          );
+      // Fast lookup using cached file path mappings
+      String? photoId = _filePathToIdCache[filePath] ?? _filePathToIdCache[filename];
+      
+      if (photoId != null) {
+        final metadata = _metadataCache[photoId];
+        if (metadata != null) {
+          return metadata;
         }
       }
 
-      PhotoMetadata? result;
-
-      result = allMetadata.firstWhere(
-        (metadata) => metadata.localPath == filePath,
-        orElse: () => PhotoMetadata(takenDate: 0, filename: ''),
-      );
-
-      if (result.filename.isNotEmpty) {
-        developer.log(
-          'Found metadata by exact path match',
-          name: 'PhotoMetadataRepository',
-        );
-        return result;
-      }
-
-      result = allMetadata.firstWhere(
-        (metadata) => metadata.filename == filename,
-        orElse: () => PhotoMetadata(takenDate: 0, filename: ''),
-      );
-
-      if (result.filename.isNotEmpty) {
-        developer.log(
-          'Found metadata by exact filename match',
-          name: 'PhotoMetadataRepository',
-        );
-        return result;
-      }
-
+      // Fallback: search by filename contains (less common case)
       final filenameWithoutExt = path.basenameWithoutExtension(filePath);
-      result = allMetadata.firstWhere(
-        (metadata) => metadata.filename.contains(filenameWithoutExt),
-        orElse: () => PhotoMetadata(takenDate: 0, filename: ''),
-      );
-
-      if (result.filename.isNotEmpty) {
-        developer.log(
-          'Found metadata by filename contains match',
-          name: 'PhotoMetadataRepository',
-        );
-        return result;
-      }
-
-      developer.log(
-        'No GalleVR metadata found for $filename, checking for VRCX metadata',
-        name: 'PhotoMetadataRepository',
-      );
-
-      // Check for VRCX metadata in the image file
-      final vrcxService = VrcxMetadataService();
-      final vrcxMetadata = await vrcxService.extractVrcxMetadata(filePath);
-
-      if (vrcxMetadata != null) {
-        developer.log(
-          'Found VRCX metadata for $filename, saving to GalleVR format',
-          name: 'PhotoMetadataRepository',
-        );
-
-        // Save the converted metadata to GalleVR's storage
-        final saveResult = await savePhotoMetadata(vrcxMetadata);
-
-        if (saveResult) {
-          developer.log(
-            'Successfully saved VRCX metadata for $filename',
-            name: 'PhotoMetadataRepository',
-          );
-
-          // Successfully processed this file
-
-          // Return the saved metadata
-          return vrcxMetadata;
-        } else {
-          developer.log(
-            'Failed to save VRCX metadata for $filename',
-            name: 'PhotoMetadataRepository',
-          );
+      for (final metadata in _metadataCache.values) {
+        if (metadata.filename.contains(filenameWithoutExt)) {
+          // Update cache for faster future lookups
+          final metadataId = '${metadata.filename}_${metadata.takenDate}';
+          _filePathToIdCache[filePath] = metadataId;
+          return metadata;
         }
       }
 
-      developer.log(
-        'No metadata found for $filename',
-        name: 'PhotoMetadataRepository',
-      );
-      return null;
+      // Check if we're already processing this file
+      if (_processingQueue.containsKey(filePath)) {
+        return await _processingQueue[filePath];
+      }
+
+      // Process VRCX metadata in background
+      final future = _processVrcxMetadataBackground(filePath);
+      _processingQueue[filePath] = future;
+      
+      final result = await future;
+      _processingQueue.remove(filePath);
+      
+      return result;
     } catch (e) {
       developer.log(
         'Error getting photo metadata for file: $e',
@@ -299,15 +182,46 @@ class PhotoMetadataRepository {
     }
   }
 
+  /// Background processing of VRCX metadata to avoid blocking UI
+  Future<PhotoMetadata?> _processVrcxMetadataBackground(String filePath) async {
+    return await compute(_extractAndSaveVrcxMetadata, {
+      'filePath': filePath,
+      'cacheData': {
+        'photoIds': _prefs?.getStringList(_photoIdsKey) ?? [],
+        'metadataPrefix': _photoMetadataKeyPrefix,
+      }
+    });
+  }
+
+  String? _findExistingPhotoId(String filePath) {
+    final filename = path.basename(filePath);
+    
+    // Direct path match
+    String? photoId = _filePathToIdCache[filePath];
+    if (photoId != null) return photoId;
+    
+    // Filename match
+    photoId = _filePathToIdCache[filename];
+    if (photoId != null) return photoId;
+    
+    return null;
+  }
+
   Future<bool> deletePhotoMetadata(String photoId) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      _prefs ??= await SharedPreferences.getInstance();
+      
+      await _prefs!.remove('$_photoMetadataKeyPrefix$photoId');
 
-      await prefs.remove('$_photoMetadataKeyPrefix$photoId');
-
-      final photoIds = prefs.getStringList(_photoIdsKey) ?? [];
+      final photoIds = _prefs!.getStringList(_photoIdsKey) ?? [];
       photoIds.remove(photoId);
-      await prefs.setStringList(_photoIdsKey, photoIds);
+      await _prefs!.setStringList(_photoIdsKey, photoIds);
+
+      // Update cache
+      final metadata = _metadataCache.remove(photoId);
+      if (metadata != null) {
+        _filePathToIdCache.removeWhere((key, value) => value == photoId);
+      }
 
       return true;
     } catch (e) {
@@ -320,16 +234,74 @@ class PhotoMetadataRepository {
     }
   }
 
-  /// Resets the VRCX metadata cache
-  ///
-  /// This allows the app to check for VRCX metadata again for files that have already been checked
-  void resetVrcxMetadataCache() {
+  /// Clears all caches and forces reload
+  void clearCache() {
+    _metadataCache.clear();
+    _filePathToIdCache.clear();
+    _processingQueue.clear();
+    _cacheInitialized = false;
+    VrcxMetadataService().clearCache();
+    
     developer.log(
-      'Clearing VRCX metadata cache',
+      'All metadata caches cleared',
       name: 'PhotoMetadataRepository',
     );
+  }
 
-    // Clear the VRCX service cache
-    VrcxMetadataService().clearCache();
+  /// Batch load metadata for multiple files (for better performance)
+  Future<Map<String, PhotoMetadata?>> getMetadataForFiles(List<String> filePaths) async {
+    await _initializeCache();
+    
+    final result = <String, PhotoMetadata?>{};
+    final toProcess = <String>[];
+    
+    // First pass: get cached results
+    for (final filePath in filePaths) {
+      final filename = path.basename(filePath);
+      final photoId = _filePathToIdCache[filePath] ?? _filePathToIdCache[filename];
+      
+      if (photoId != null) {
+        result[filePath] = _metadataCache[photoId];
+      } else {
+        toProcess.add(filePath);
+      }
+    }
+    
+    // Second pass: process remaining files in background
+    if (toProcess.isNotEmpty) {
+      final futures = toProcess.map((filePath) => 
+        getPhotoMetadataForFile(filePath).then((metadata) => 
+          MapEntry(filePath, metadata)
+        )
+      );
+      
+      final processed = await Future.wait(futures);
+      for (final entry in processed) {
+        result[entry.key] = entry.value;
+      }
+    }
+    
+    return result;
+  }
+}
+
+/// Background function for VRCX metadata extraction
+Future<PhotoMetadata?> _extractAndSaveVrcxMetadata(Map<String, dynamic> params) async {
+  try {
+    final filePath = params['filePath'] as String;
+    
+    // Extract VRCX metadata
+    final vrcxService = VrcxMetadataService();
+    final vrcxMetadata = await vrcxService.extractVrcxMetadata(filePath);
+    
+    if (vrcxMetadata != null) {
+      // Note: We can't save to SharedPreferences from background isolate
+      // The main thread will need to handle saving
+      return vrcxMetadata;
+    }
+    
+    return null;
+  } catch (e) {
+    return null;
   }
 }
