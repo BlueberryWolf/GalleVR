@@ -1,0 +1,72 @@
+name: Flutter Build, Windows Inno Setup & Android APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows Inno Setup Installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.32.5"
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Install Arabic Inno Setup language
+        run: |
+          curl -L -o "C:\Program Files (x86)\Inno Setup 6\Languages\Arabic.isl" https://raw.github.com/jrsoftware/issrc/istrans-6_4_0/Files/Languages/Arabic.isl
+
+      - name: Run inno_bundle to build and create installer
+        run: dart run inno_bundle:build --release
+
+      - name: Rename installer to GalleVR.exe
+        run: |
+          $installer = Get-ChildItem "build/windows/x64/installer/Release/*.exe" | Select-Object -First 1
+          Rename-Item $installer.FullName "build/windows/x64/installer/Release/GalleVR.exe"
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: build/windows/x64/installer/Release/GalleVR.exe
+
+  build-android:
+    name: Build Android Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.32.5"
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Android release APK
+        run: flutter build apk --release
+
+      - name: Rename APK to GalleVR.apk
+        run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/GalleVR.apk
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build/app/outputs/flutter-apk/GalleVR.apk
