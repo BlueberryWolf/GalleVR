@@ -171,6 +171,22 @@ class PhotoMetadataRepository {
       final result = await future;
       _processingQueue.remove(filePath);
       
+      // Save extracted VRCX metadata to SharedPreferences
+      if (result != null) {
+        final saved = await savePhotoMetadata(result);
+        if (saved) {
+          developer.log(
+            'Saved VRCX metadata for ${path.basename(filePath)}',
+            name: 'PhotoMetadataRepository',
+          );
+        } else {
+          developer.log(
+            'Failed to save VRCX metadata for ${path.basename(filePath)}',
+            name: 'PhotoMetadataRepository',
+          );
+        }
+      }
+      
       return result;
     } catch (e) {
       developer.log(
