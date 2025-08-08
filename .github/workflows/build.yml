@@ -24,17 +24,19 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build Windows app
-        run: flutter build windows --release
+      - name: Run inno_bundle to build and create installer
+        run: dart run inno_bundle:build --release
 
-      - name: Run inno_bundle to create installer
-        run: dart run inno_bundle
+      - name: Rename installer to GalleVR.exe
+        run: |
+          $installer = Get-ChildItem "build/windows/x64/installer/Release/*.exe" | Select-Object -First 1
+          Rename-Item $installer.FullName "build/windows/x64/installer/Release/GalleVR.exe"
 
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: build/windows/runner/Release/*.exe
+          path: build/windows/x64/installer/Release/GalleVR.exe
 
   build-android:
     name: Build Android Release APK
@@ -56,8 +58,11 @@ jobs:
       - name: Build Android release APK
         run: flutter build apk --release
 
+      - name: Rename APK to GalleVR.apk
+        run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/GalleVR.apk
+
       - name: Upload Android APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/GalleVR.apk
