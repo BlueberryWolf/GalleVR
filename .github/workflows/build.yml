@@ -24,6 +24,10 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Install Arabic Inno Setup language
+        run: |
+          curl -L -o "C:\Program Files (x86)\Inno Setup 6\Languages\Arabic.isl" https://raw.github.com/jrsoftware/issrc/istrans-6_4_0/Files/Languages/Arabic.isl
+
       - name: Run inno_bundle to build and create installer
         run: dart run inno_bundle:build --release
 
