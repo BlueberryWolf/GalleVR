@@ -32,9 +32,11 @@ jobs:
         run: dart run inno_bundle:build --release
 
       - name: Rename installer to GalleVR.exe
+        shell: pwsh
         run: |
           $installer = Get-ChildItem "build/windows/x64/installer/Release/*.exe" | Select-Object -First 1
-          Rename-Item $installer.FullName "build/windows/x64/installer/Release/GalleVR.exe"
+          $target = Join-Path $installer.Directory.FullName "GalleVR.exe"
+          Rename-Item -Path $installer.FullName -NewName $target -Force
 
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
