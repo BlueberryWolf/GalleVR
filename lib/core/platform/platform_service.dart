@@ -23,5 +23,6 @@ abstract class PlatformService {
 enum PlatformType {
   windows,
   android,
+  linux,
   unknown
 }
