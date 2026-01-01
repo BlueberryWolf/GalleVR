@@ -1112,6 +1112,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return 'Windows';
       case PlatformType.android:
         return 'Android';
+      case PlatformType.linux:
+        return 'Linux';
       default:
         return 'Unknown';
     }
