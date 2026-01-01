@@ -15,7 +15,7 @@ import 'platform_service.dart';
 
 class LinuxPlatformService implements PlatformService {
   @override
-  PlatformType getPlatformType() => PlatformType.windows;
+  PlatformType getPlatformType() => PlatformType.linux;
 
   @override
   Future<String> getPhotosDirectory() async {
