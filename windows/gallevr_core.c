@@ -14,8 +14,6 @@
 #define EXPORT __attribute__((visibility("default"))) __attribute__((used))
 #endif
 
-extern "C" {
-
 // Fast PNG chunk scanner to find VRCX metadata in Description field
 // Returns a pointer to a heap-allocated string (C-string). Caller must free it.
 EXPORT char* extract_vrcx_metadata(const char* file_path) {
@@ -112,6 +110,4 @@ EXPORT char* extract_vrcx_metadata(const char* file_path) {
 
 EXPORT void free_metadata(char* ptr) {
     if (ptr) free(ptr);
-}
-
 }
