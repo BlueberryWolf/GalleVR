@@ -86,7 +86,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev liblzma-dev libnm-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev ninja-build pkg-config imagemagick
+          sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev liblzma-dev libnm-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev ninja-build pkg-config imagemagick patchelf
 
       - name: Flutter pub get
         run: flutter pub get
@@ -110,6 +110,15 @@ jobs:
           
           # Copy bundle to /opt/gallevr
           cp -r build/linux/x64/release/bundle/* build/linux/x64/release/deb/opt/gallevr/
+          
+          # Bundle essential system libraries that might be missing in Flatpak/AppImage
+          mkdir -p build/linux/x64/release/bundle/lib
+          for lib in libayatana-appindicator3.so.1 libayatana-indicator3.so.7 libdbusmenu-gtk3.so.4 libdbusmenu-glib.so.4 libnm.so.0; do
+            FILE=$(ldconfig -p | grep "$lib" | head -n 1 | awk '{print $4}')
+            if [ -n "$FILE" ]; then
+              cp -L "$FILE" build/linux/x64/release/bundle/lib/
+            fi
+          done
           
           # Symlink binary to /usr/bin
           ln -s /opt/gallevr/GalleVR build/linux/x64/release/deb/usr/bin/gallevr
@@ -145,9 +154,10 @@ jobs:
 
       - name: Prepare AppImage
         run: |
-          # Install linuxdeploy
+          # Install linuxdeploy and gstreamer plugin script
           wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          chmod +x linuxdeploy-x86_64.AppImage
+          wget https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-gstreamer.sh
           
           # Set up AppDir
           mkdir -p AppDir/usr/bin
@@ -161,8 +171,16 @@ jobs:
           
           export LDAI_OUTPUT="GalleVR.AppImage"
           export LINUXDEPLOY_OUTPUT_VERSION="${{ env.VERSION }}"
+
+          export LINUXDEPLOY="./linuxdeploy-x86_64.AppImage --appimage-extract-and-run"
+          
           # Deploy pointing to the binary already in usr/bin
-          ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir AppDir -e AppDir/usr/bin/gallevr -d AppDir/gallevr.desktop -i AppDir/com.blueberrywolf.gallevr.png --output appimage
+          $LINUXDEPLOY --appdir AppDir \
+            -e AppDir/usr/bin/gallevr \
+            -d AppDir/gallevr.desktop \
+            -i AppDir/com.blueberrywolf.gallevr.png \
+            --plugin gstreamer \
+            --output appimage
 
       - name: Upload Linux bundle
         uses: actions/upload-artifact@v4
