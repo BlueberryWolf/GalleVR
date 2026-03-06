@@ -16,19 +16,12 @@ class LinuxPlatformService implements PlatformService {
     if (vrcPath != null) {
       final photosPath = path.join(vrcPath, 'pfx', 'drive_c', 'users', 'steamuser', 'Pictures', 'VRChat');
       final dir = Directory(photosPath);
-      if (await dir.exists()) {
-        return photosPath;
+      if (!await dir.exists()) {
+          await dir.create(recursive: true);
       }
+      return photosPath;
     }
-
-    // fallback: try default local share
-    final ConfigPath = Platform.environment['XDG_CONFIG_HOME'] ?? path.join(Platform.environment['HOME'] ?? '', '.config');
-    final fallbackPath = path.join(ConfigPath, 'GalleVR', 'VRChat_Photos_Fallback');
-    final fallbackDir = Directory(fallbackPath);
-    if (!await fallbackDir.exists()) {
-      await fallbackDir.create(recursive: true);
-    }
-    return fallbackPath;
+    return '';
   }
 
   @override
@@ -37,19 +30,12 @@ class LinuxPlatformService implements PlatformService {
     if (vrcPath != null) {
       final logsPath = path.join(vrcPath, 'pfx', 'drive_c', 'users', 'steamuser', 'AppData', 'LocalLow', 'VRChat', 'VRChat');
       final dir = Directory(logsPath);
-      if (await dir.exists()) {
-        return logsPath;
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
       }
+      return logsPath;
     }
-
-    // fallback
-    final ConfigPath = Platform.environment['XDG_CONFIG_HOME'] ?? path.join(Platform.environment['HOME'] ?? '', '.config');
-    final fallbackPath = path.join(ConfigPath, 'GalleVR', 'VRChat_Logs_Fallback');
-    final fallbackDir = Directory(fallbackPath);
-    if (!await fallbackDir.exists()) {
-      await fallbackDir.create(recursive: true);
-    }
-    return fallbackPath;
+    return '';
   }
 
   @override
