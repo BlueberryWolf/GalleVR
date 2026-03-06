@@ -9,6 +9,8 @@ finish-args:
   - --socket=wayland
   - --share=network
   - --device=dri
+  - --socket=pulseaudio
+  - --filesystem=home
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.ayatana.IndicatorManager
   - --talk-name=org.freedesktop.portal.Desktop
