@@ -96,7 +96,7 @@ jobs:
         run: |
           VERSION=$(grep "^version: " pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "::set-output name=version::$VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Build Linux release
         run: flutter build linux --release
@@ -147,8 +147,9 @@ jobs:
           # Resize icon to a valid resolution (512x512) for linuxdeploy
           convert assets/images/app_icon.png -resize 512x512 AppDir/gallevr.png
           
-          export OUTPUT="GalleVR.AppImage"
-          export SIGN=0
+          export LDAI_OUTPUT="GalleVR.AppImage"
+          export LDAI_SIGN=0
+          export LINUXDEPLOY_OUTPUT_VERSION="${{ env.VERSION }}"
           ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir AppDir -e AppDir/gallevr -d AppDir/gallevr.desktop -i AppDir/gallevr.png --output appimage
 
       - name: Upload Linux bundle

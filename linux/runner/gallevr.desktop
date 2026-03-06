@@ -1,10 +1,10 @@
-[Desktop Entry]
-Version=@@VERSION@@
+Version=1.0
 Type=Application
 Name=GalleVR
 Comment=A social platform for your VRChat photos.
 Exec=gallevr
 Icon=gallevr
 Terminal=false
-Categories=Photography;Social;Graphics;
+Categories=Graphics;Photography;
 Keywords=VR;VRChat;Image;Gallery;
+X-App-Version=@@VERSION@@
