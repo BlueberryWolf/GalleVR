@@ -44,6 +44,7 @@ function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_options(${TARGET} PRIVATE -Wall -Werror)
   target_compile_options(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:-O3>")
   target_compile_definitions(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
+  target_compile_definitions(${TARGET} PRIVATE "GLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_26" "GLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_26" "GLIB_DISABLE_DEPRECATION_WARNINGS")
 endfunction()
 
 # Flutter library and tool build rules.
