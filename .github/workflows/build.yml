@@ -141,6 +141,7 @@ jobs:
           # Set up AppDir
           mkdir -p AppDir
           cp -r build/linux/x64/release/bundle/* AppDir/
+          mv AppDir/GalleVR AppDir/gallevr
           sed "s/@@VERSION@@/${{ env.VERSION }}/g" linux/runner/gallevr.desktop > AppDir/gallevr.desktop
           
           # Resize icon to a valid resolution (512x512) for linuxdeploy
