@@ -116,7 +116,7 @@ jobs:
           
           # Copy desktop file and icon
           sed "s/@@VERSION@@/${{ env.VERSION }}/g" linux/runner/gallevr.desktop > build/linux/x64/release/deb/usr/share/applications/gallevr.desktop
-          convert assets/images/app_icon.png -resize 128x128 build/linux/x64/release/deb/usr/share/icons/hicolor/128x128/apps/gallevr.png
+          convert assets/images/app_icon.png -resize 128x128 build/linux/x64/release/deb/usr/share/icons/hicolor/128x128/apps/com.blueberrywolf.gallevr.png
           
           # Create DEBIAN/control
           mkdir -p build/linux/x64/release/deb/DEBIAN
@@ -145,12 +145,13 @@ jobs:
           
           # Setup desktop file and icon for linuxdeploy (in root)
           sed "s/@@VERSION@@/${{ env.VERSION }}/g" linux/runner/gallevr.desktop > AppDir/gallevr.desktop
-          convert assets/images/app_icon.png -resize 512x512 AppDir/gallevr.png
+          # Resize icon to a valid resolution (512x512) for linuxdeploy
+          convert assets/images/app_icon.png -resize 512x512 AppDir/com.blueberrywolf.gallevr.png
           
           export LDAI_OUTPUT="GalleVR.AppImage"
           export LINUXDEPLOY_OUTPUT_VERSION="${{ env.VERSION }}"
           # Deploy pointing to the binary already in usr/bin
-          ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir AppDir -e AppDir/usr/bin/gallevr -d AppDir/gallevr.desktop -i AppDir/gallevr.png --output appimage
+          ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir AppDir -e AppDir/usr/bin/gallevr -d AppDir/gallevr.desktop -i AppDir/com.blueberrywolf.gallevr.png --output appimage
 
       - name: Upload Linux bundle
         uses: actions/upload-artifact@v4
@@ -184,10 +185,13 @@ jobs:
           name: linux-bundle
           path: build/linux/x64/release/bundle
 
-      - name: Prepare desktop file
+      - name: Prepare desktop file and icon
         run: |
           VERSION=$(grep "^version: " pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
           sed -i "s/@@VERSION@@/${VERSION}/g" linux/runner/gallevr.desktop
+          # Install imagemagick in container to resize icon
+          dnf install -y ImageMagick || apt-get install -y imagemagick
+          convert assets/images/app_icon.png -resize 128x128 assets/images/app_icon_flatpak.png
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
