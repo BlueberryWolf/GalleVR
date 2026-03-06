@@ -36,8 +36,10 @@ class PhotoUploadService {
   Future<bool> uploadPhoto(
     String photoPath,
     ConfigModel config,
-    LogMetadata? logMetadata,
-  ) async {
+    LogMetadata? logMetadata, {
+    PhotoMetadata? metadata,
+    String? originalPath,
+  }) async {
     final filename = path.basename(photoPath);
     developer.log(
       'Starting upload for photo: $filename',
@@ -90,7 +92,7 @@ class PhotoUploadService {
         return false;
       }
 
-      final photoMetadata = _createPhotoMetadata(photoPath, logMetadata);
+      final photoMetadata = metadata ?? _createPhotoMetadata(photoPath, logMetadata);
 
       final saveResult = await _photoMetadataRepository.savePhotoMetadata(
         photoMetadata,
@@ -141,6 +143,9 @@ class PhotoUploadService {
             'Photo uploaded successfully',
             photoPath: photoPath,
           );
+          
+          // Notify that the photo was uploaded (use original path if provided for UI matching)
+          PhotoEventService().notifyPhotoUploaded(originalPath ?? photoPath);
 
           final galleryUrl = response.body.trim();
           developer.log('Gallery URL: $galleryUrl', name: 'PhotoUploadService');

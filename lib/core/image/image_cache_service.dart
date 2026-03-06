@@ -1,9 +1,12 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'dart:developer' as developer;
-import 'package:image/image.dart' as img;
 
 class ImageCacheService {
   static final ImageCacheService _instance = ImageCacheService._internal();
@@ -18,13 +21,19 @@ class ImageCacheService {
 
   int _currentCacheSize = 0;
 
-  static const int _maxCacheEntries = 50; // Balanced for performance and loading
+  static const int _maxCacheEntries = 300;
 
-  static const int _maxMemoryCacheSize = 25 * 1024 * 1024; // 25MB for better loading
+  static const int _maxMemoryCacheSize = 80 * 1024 * 1024;
 
   Directory? _cacheDir;
 
   final List<String> _cacheAccessOrder = [];
+  
+  final Map<String, Future<Uint8List?>> _pendingRequests = {};
+  
+  int _activeDecodes = 0;
+  static const int _maxConcurrentDecodes = 4;
+  final List<Completer<void>> _decodeQueue = [];
 
   Future<void> initialize() async {
     try {
@@ -48,164 +57,158 @@ class ImageCacheService {
   }
 
   Future<Uint8List?> getThumbnail(String filePath, {int size = 300}) async {
-    final cacheKey = _getCacheKey(filePath, size);
-
-    if (_thumbnailCache.containsKey(cacheKey)) {
-      developer.log(
-        'Thumbnail found in memory cache: $cacheKey',
-        name: 'ImageCacheService',
-      );
-
-      if (_cacheAccessOrder.contains(cacheKey)) {
-        _cacheAccessOrder.remove(cacheKey);
-      }
-      _cacheAccessOrder.add(cacheKey);
-
-      return _thumbnailCache[cacheKey];
+    if (_thumbnailCache.containsKey(filePath)) {
+      _updateAccessOrder(filePath);
+      return _thumbnailCache[filePath];
     }
 
-    final thumbnailFile = await _getThumbnailFile(cacheKey);
-    if (await thumbnailFile.exists()) {
-      try {
-        final bytes = await thumbnailFile.readAsBytes();
-
-        _addToMemoryCache(cacheKey, bytes);
-        developer.log(
-          'Thumbnail loaded from disk cache: $cacheKey',
-          name: 'ImageCacheService',
-        );
-        return bytes;
-      } catch (e) {
-        developer.log(
-          'Error reading cached thumbnail: $e',
-          name: 'ImageCacheService',
-        );
-      }
+    if (_pendingRequests.containsKey(filePath)) {
+      return _pendingRequests[filePath];
     }
 
-    return await _generateThumbnail(filePath, size, cacheKey);
+    final completer = Completer<Uint8List?>();
+    _pendingRequests[filePath] = completer.future;
+
+    try {
+      final result = await _loadThumbnailInternal(filePath, size);
+      completer.complete(result);
+      return result;
+    } catch (e) {
+      completer.complete(null);
+      return null;
+    } finally {
+      _pendingRequests.remove(filePath);
+    }
   }
 
-  Future<Uint8List?> _generateThumbnail(
-    String filePath,
-    int size,
-    String cacheKey,
-  ) async {
+  Future<Uint8List?> _loadThumbnailInternal(String filePath, int size) async {
     try {
+      if (_cacheDir == null) await initialize();
+      
       final file = File(filePath);
-      if (!await file.exists()) {
-        developer.log(
-          'File does not exist: $filePath',
-          name: 'ImageCacheService',
-        );
-        return null;
+      if (!await file.exists()) return null;
+
+      final stat = await file.stat();
+      final cacheKey = '${path.basenameWithoutExtension(filePath)}-${stat.modified.millisecondsSinceEpoch}-$size${path.extension(filePath)}';
+      final cacheFile = File(path.join(_cacheDir!.path, cacheKey));
+
+      if (await cacheFile.exists()) {
+        try {
+          final data = await cacheFile.readAsBytes();
+          _addToMemoryCache(filePath, data);
+          return data;
+        } catch (e) {
+          developer.log('Error reading disk cache: $e', name: 'ImageCacheService');
+        }
       }
-
-      final bytes = await file.readAsBytes();
-
-      final thumbnail = await compute(
-        _decodeThumbnail,
-        ThumbnailParams(bytes, size),
-      );
-
-      if (thumbnail != null) {
-        final thumbnailFile = await _getThumbnailFile(cacheKey);
-        await thumbnailFile.writeAsBytes(thumbnail);
-
-        _addToMemoryCache(cacheKey, thumbnail);
-
-        developer.log(
-          'Generated new thumbnail: $cacheKey',
-          name: 'ImageCacheService',
-        );
-        return thumbnail;
-      }
-    } catch (e) {
-      developer.log(
-        'Error generating thumbnail: $e',
-        name: 'ImageCacheService',
-      );
 
       try {
-        final file = File(filePath);
-        if (await file.exists()) {
-          developer.log(
-            'Using original image as fallback: $filePath',
-            name: 'ImageCacheService',
-          );
-          return await file.readAsBytes();
-        }
-      } catch (fallbackError) {
-        developer.log(
-          'Fallback also failed: $fallbackError',
-          name: 'ImageCacheService',
+        final result = await FlutterImageCompress.compressWithFile(
+          filePath,
+          minWidth: size,
+          minHeight: (size * 9 / 16).round(),
+          quality: 80,
+          format: CompressFormat.jpeg,
         );
+        
+        if (result != null) {
+          _saveToDiskCache(cacheFile, result);
+          _addToMemoryCache(filePath, result);
+          return result;
+        }
+      } catch (e) {
+        developer.log('Native compression failed for $filePath: $e', name: 'ImageCacheService');
       }
+
+      await _waitForDecodeSlot();
+      try {
+        developer.log('Using Flutter Engine fallback for $filePath', name: 'ImageCacheService');
+        final bytes = await file.readAsBytes();
+        
+        final ui.Codec codec = await ui.instantiateImageCodec(
+          bytes,
+          targetWidth: size,
+          allowUpscaling: false,
+        );
+        
+        final ui.FrameInfo frameInfo = await codec.getNextFrame();
+        final ui.Image image = frameInfo.image;
+        
+        final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData != null) {
+          final result = byteData.buffer.asUint8List();
+          _saveToDiskCache(cacheFile, result);
+          _addToMemoryCache(filePath, result);
+          return result;
+        }
+      } catch (e) {
+        developer.log('Flutter Engine fallback failed for $filePath: $e', name: 'ImageCacheService');
+      } finally {
+        _releaseDecodeSlot();
+      }
+    } catch (e) {
+      developer.log('Critical error generating thumbnail for $filePath: $e', name: 'ImageCacheService');
     }
 
     return null;
   }
 
-  void _addToMemoryCache(String key, Uint8List bytes) {
+  Future<void> _waitForDecodeSlot() async {
+    if (_activeDecodes < _maxConcurrentDecodes) {
+      _activeDecodes++;
+      return;
+    }
+    final completer = Completer<void>();
+    _decodeQueue.add(completer);
+    await completer.future;
+  }
+
+  void _releaseDecodeSlot() {
+    if (_decodeQueue.isNotEmpty) {
+      final completer = _decodeQueue.removeAt(0);
+      completer.complete();
+    } else {
+      _activeDecodes--;
+    }
+  }
+
+  Future<void> _saveToDiskCache(File cacheFile, Uint8List data) async {
+    try {
+      if (!await cacheFile.parent.exists()) {
+        await cacheFile.parent.create(recursive: true);
+      }
+      await cacheFile.writeAsBytes(data);
+    } catch (_) {}
+  }
+
+  void _updateAccessOrder(String key) {
     if (_cacheAccessOrder.contains(key)) {
       _cacheAccessOrder.remove(key);
     }
     _cacheAccessOrder.add(key);
+  }
+
+  void _addToMemoryCache(String key, Uint8List bytes) {
+    _updateAccessOrder(key);
 
     if (_thumbnailCache.containsKey(key)) {
       _currentCacheSize -= _thumbnailCache[key]!.length;
     }
 
-    if (_currentCacheSize + bytes.length > _maxMemoryCacheSize) {
-      while (_cacheAccessOrder.isNotEmpty &&
-          _currentCacheSize + bytes.length > _maxMemoryCacheSize) {
-        final oldestKey = _cacheAccessOrder.first;
-        if (_thumbnailCache.containsKey(oldestKey)) {
-          final oldBytes = _thumbnailCache[oldestKey]!;
-          _currentCacheSize -= oldBytes.length;
-          _thumbnailCache.remove(oldestKey);
-        }
-        _cacheAccessOrder.removeAt(0);
-      }
+    while (_currentCacheSize + bytes.length > _maxMemoryCacheSize && _cacheAccessOrder.isNotEmpty) {
+      final oldestKey = _cacheAccessOrder.removeAt(0);
+      final oldBytes = _thumbnailCache.remove(oldestKey);
+      if (oldBytes != null) _currentCacheSize -= oldBytes.length;
     }
 
-    while (_thumbnailCache.length >= _maxCacheEntries &&
-        _cacheAccessOrder.isNotEmpty) {
-      final oldestKey = _cacheAccessOrder.first;
-      if (_thumbnailCache.containsKey(oldestKey)) {
-        final oldBytes = _thumbnailCache[oldestKey]!;
-        _currentCacheSize -= oldBytes.length;
-        _thumbnailCache.remove(oldestKey);
-      }
-      _cacheAccessOrder.removeAt(0);
+    while (_thumbnailCache.length >= _maxCacheEntries && _cacheAccessOrder.isNotEmpty) {
+      final oldestKey = _cacheAccessOrder.removeAt(0);
+      final oldBytes = _thumbnailCache.remove(oldestKey);
+      if (oldBytes != null) _currentCacheSize -= oldBytes.length;
     }
 
     _thumbnailCache[key] = bytes;
     _currentCacheSize += bytes.length;
-
-    if (_thumbnailCache.length % 10 == 0) {
-      developer.log(
-        'Cache stats: ${_thumbnailCache.length} entries, ${(_currentCacheSize / 1024 / 1024).toStringAsFixed(2)}MB used',
-        name: 'ImageCacheService',
-      );
-    }
-  }
-
-  String _getCacheKey(String filePath, int size) {
-    final fileName = path.basenameWithoutExtension(filePath);
-    final fileExt = path.extension(filePath);
-    final fileStats = FileStat.statSync(filePath);
-    final modified = fileStats.modified.millisecondsSinceEpoch;
-
-    return '$fileName-$modified-$size$fileExt';
-  }
-
-  Future<File> _getThumbnailFile(String cacheKey) async {
-    if (_cacheDir == null) {
-      await initialize();
-    }
-
-    return File(path.join(_cacheDir!.path, cacheKey));
   }
 
   Future<void> clearCache() async {
@@ -217,47 +220,5 @@ class ImageCacheService {
       await _cacheDir!.delete(recursive: true);
       await _cacheDir!.create(recursive: true);
     }
-
-    developer.log('Image cache cleared', name: 'ImageCacheService');
   }
-}
-
-class ThumbnailParams {
-  final Uint8List bytes;
-  final int size;
-
-  ThumbnailParams(this.bytes, this.size);
-}
-
-Uint8List? _decodeThumbnail(ThumbnailParams params) {
-  try {
-    final image = img.decodeImage(params.bytes);
-    if (image == null) return null;
-
-    int width, height;
-    if (image.width > image.height) {
-      width = params.size;
-      height = (params.size * image.height / image.width).round();
-    } else {
-      height = params.size;
-      width = (params.size * image.width / image.height).round();
-    }
-
-    // Use faster linear interpolation for better performance
-    final resized = img.copyResize(
-      image,
-      width: width,
-      height: height,
-      interpolation: img.Interpolation.linear, // Changed from average to linear for speed
-    );
-
-    // Use JPEG encoding for smaller file size and faster processing
-    final jpegBytes = img.encodeJpg(resized, quality: 85);
-
-    return jpegBytes;
-  } catch (e) {
-    debugPrint('Error in _decodeThumbnail: $e');
-  }
-
-  return null;
 }

@@ -14,6 +14,8 @@ import '../../core/audio/sound_service.dart';
 import 'photo_watcher_service.dart';
 import 'photo_event_service.dart';
 import 'vrchat_service.dart';
+import '../repositories/photo_metadata_repository.dart';
+import '../../core/isolate/isolate_worker_pool.dart';
 
 // Singleton service manager for the application
 // Manages global services that should run throughout the app lifecycle
@@ -43,9 +45,6 @@ class AppServiceManager {
 
   // Image cache service
   final ImageCacheService _imageCacheService = ImageCacheService();
-
-  // Permission service
-  final PermissionService _permissionService = PermissionService();
 
   // Sound service
   final SoundService soundService = SoundService();
@@ -140,19 +139,24 @@ class AppServiceManager {
     if (_isInitialized) return;
 
     try {
-      // Initialize image cache service
-      await _imageCacheService.initialize();
-      developer.log('Image cache service initialized', name: 'AppServiceManager');
+      // Initialize core infrastructure in parallel
+      await Future.wait([
+        IsolateWorkerPool().initialize(),
+        _imageCacheService.initialize(),
+        soundService.initialize(),
+        _configRepository.loadConfig().then((config) => _config = config),
+      ]);
+      developer.log('Core services and config loaded', name: 'AppServiceManager');
 
-      // Initialize sound service
-      await soundService.initialize();
-      developer.log('Sound service initialized', name: 'AppServiceManager');
+      // Initialize secondary services in parallel
+      final secondaryInit = Future.wait([
+        PhotoMetadataRepository().getAllPhotoMetadata(),
+        checkVerificationStatus(),
+      ]);
 
-      // Load configuration
-      _config = await _configRepository.loadConfig();
-
-      // Check verification status
-      await checkVerificationStatus();
+      if (_config == null) {
+        developer.log('Warning: Configuration could not be loaded', name: 'AppServiceManager');
+      }
 
       // Initialize platform-specific services
       if (Platform.isWindows && _config != null) {
@@ -285,6 +289,13 @@ class AppServiceManager {
   // Dispose all services
   Future<void> dispose() async {
     developer.log('Disposing all services', name: 'AppServiceManager');
+
+    try {
+      IsolateWorkerPool().dispose();
+      developer.log('Isolate worker pool disposed', name: 'AppServiceManager');
+    } catch (e) {
+      developer.log('Error disposing isolate worker pool: $e', name: 'AppServiceManager');
+    }
 
     try {
       // Stop foreground tasks first

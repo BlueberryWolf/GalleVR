@@ -23,6 +23,9 @@ class PhotoMetadata {
   // URL to the photo in the gallery
   final String? galleryUrl;
 
+  // Whether this photo has been scanned and confirmed to have no VRCX metadata
+  final bool isNonVrcx;
+
   // Default constructor
   PhotoMetadata({
     required this.takenDate,
@@ -32,6 +35,7 @@ class PhotoMetadata {
     this.players = const [],
     this.localPath,
     this.galleryUrl,
+    this.isNonVrcx = false,
   });
 
   // Create a PhotoMetadata from JSON
@@ -48,6 +52,7 @@ class PhotoMetadata {
           .toList() ?? [],
       localPath: json['localPath'] as String?,
       galleryUrl: json['galleryUrl'] as String?,
+      isNonVrcx: json['isNonVrcx'] as bool? ?? false,
     );
   }
 
@@ -61,6 +66,7 @@ class PhotoMetadata {
       'players': players.map((p) => p.toJson()).toList(),
       if (localPath != null) 'localPath': localPath,
       if (galleryUrl != null) 'galleryUrl': galleryUrl,
+      'isNonVrcx': isNonVrcx,
     };
   }
 
@@ -73,6 +79,7 @@ class PhotoMetadata {
     List<Player>? players,
     String? localPath,
     String? galleryUrl,
+    bool? isNonVrcx,
   }) {
     return PhotoMetadata(
       takenDate: takenDate ?? this.takenDate,
@@ -82,6 +89,7 @@ class PhotoMetadata {
       players: players ?? this.players,
       localPath: localPath ?? this.localPath,
       galleryUrl: galleryUrl ?? this.galleryUrl,
+      isNonVrcx: isNonVrcx ?? this.isNonVrcx,
     );
   }
 }

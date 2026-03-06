@@ -38,8 +38,14 @@ class PhotoEventService {
   // Stream controller for error events
   final _errorController = StreamController<PhotoErrorEvent>.broadcast();
 
+  // Stream controller for photo uploaded events
+  final _photoUploadedController = StreamController<String>.broadcast();
+
   // Stream of photo added events
   Stream<String> get photoAdded => _photoAddedController.stream;
+
+  // Stream of photo uploaded events
+  Stream<String> get photoUploaded => _photoUploadedController.stream;
 
   // Stream of error events
   Stream<PhotoErrorEvent> get errors => _errorController.stream;
@@ -60,9 +66,15 @@ class PhotoEventService {
     );
   }
 
+  // Notify that a photo has been uploaded successfully
+  void notifyPhotoUploaded(String photoPath) {
+    _photoUploadedController.add(photoPath);
+  }
+
   // Dispose resources
   void dispose() {
     _photoAddedController.close();
+    _photoUploadedController.close();
     _errorController.close();
   }
 }

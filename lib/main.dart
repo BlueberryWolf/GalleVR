@@ -46,10 +46,6 @@ void main(List<String> args) async {
     DeviceOrientation.landscapeRight,
   ]);
 
-  // Initialize app services
-  final appServiceManager = AppServiceManager();
-  await appServiceManager.initialize();
-
   bool shouldStartMinimized = Platform.isWindows && AppArgs.hasStartMinimized(args);
   if (shouldStartMinimized) {
     developer.log('App will start minimized', name: 'GalleVRApp');
@@ -76,7 +72,7 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _checkOnboardingStatus();
+    _initializeApp();
 
     // The window visibility is now handled at the native level
     // If the app is starting minimized, show a notification after a delay
@@ -100,6 +96,11 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
       // this is called when the app is about to be closed
       // i don't need to do anything here as the native code will handle it
     }
+  }
+
+  Future<void> _initializeApp() async {
+    await _appServiceManager.initialize();
+    await _checkOnboardingStatus();
   }
 
   Future<void> _checkOnboardingStatus() async {

@@ -1,22 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:developer' as developer;
-import 'package:flutter/foundation.dart';
-
 import 'package:gallevr/data/models/log_metadata.dart';
 import 'package:gallevr/data/models/photo_metadata.dart';
+import 'package:gallevr/core/native/gallevr_native.dart';
+import 'package:gallevr/core/isolate/isolate_worker_pool.dart';
 import 'package:path/path.dart' as path;
-
-/// Parameters for VRCX metadata extraction
-class _MetadataExtractionParams {
-  final Uint8List bytes;
-  final String imagePath;
-
-  _MetadataExtractionParams({
-    required this.bytes,
-    required this.imagePath,
-  });
-}
 
 /// Service for extracting and converting VRCX metadata from image files
 class VrcxMetadataService {
@@ -71,7 +60,7 @@ class VrcxMetadataService {
     return result;
   }
 
-  /// metadata extraction with better caching
+  /// Metadata extraction with better caching
   Future<PhotoMetadata?> extractVrcxMetadata(String imagePath) async {
     try {
       // Check if file has been modified since last processing
@@ -82,204 +71,71 @@ class VrcxMetadataService {
 
       final stats = await file.stat();
       final modTime = stats.modified.millisecondsSinceEpoch;
-      final cachedModTime = _fileModTimeCache[imagePath];
       
-      // If file hasn't changed, use cached result
-      if (cachedModTime == modTime) {
-        if (_processedFiles.contains(imagePath)) {
-          return _metadataCache[imagePath];
-        }
-        if (_nonVrcxFiles.contains(imagePath)) {
-          return null;
-        }
-      } else {
-        // File changed, clear old cache entries
-        _processedFiles.remove(imagePath);
-        _nonVrcxFiles.remove(imagePath);
-        _metadataCache.remove(imagePath);
-        _fileModTimeCache[imagePath] = modTime;
-      }
+      final cached = _getCached(imagePath, modTime);
+      if (cached != null) return cached.isEmpty ? null : cached.first;
 
-      // Quick file type check before reading bytes
-      if (!imagePath.toLowerCase().endsWith('.png')) {
-        _nonVrcxFiles.add(imagePath);
-        return null;
-      }
+      final result = await IsolateWorkerPool().execute<String, PhotoMetadata?>(
+        VrcxMetadataService.extractVrcxMetadataSync, 
+        imagePath,
+      );
 
-      // Read only the header portion for PNG signature check
-      final randomAccessFile = await file.open(mode: FileMode.read);
-      final headerBytes = await randomAccessFile.read(8);
-      
-      if (!_isPngSignature(headerBytes)) {
-        await randomAccessFile.close();
-        _nonVrcxFiles.add(imagePath);
-        return null;
-      }
-
-      // Read metadata portion (typically in first 64KB of PNG files)
-      await randomAccessFile.setPosition(0);
-      final fileSize = await file.length();
-      final bytesToRead = fileSize > 1024 * 64 ? 1024 * 64 : fileSize;
-      final bytes = await randomAccessFile.read(bytesToRead);
-      await randomAccessFile.close();
-
-      // Process in background isolate
-      final result = await compute(_processVrcxMetadata, _MetadataExtractionParams(
-        bytes: bytes,
-        imagePath: imagePath,
-      ));
-
-      if (result == null) {
-        _nonVrcxFiles.add(imagePath);
-        return null;
-      }
-
-      // Cache successful result
-      _processedFiles.add(imagePath);
-      _metadataCache[imagePath] = result;
-
+      _updateCache(imagePath, modTime, result);
       return result;
     } catch (e) {
       developer.log('Error extracting VRCX metadata: $e', name: _logName, error: e);
-      _nonVrcxFiles.add(imagePath);
       return null;
     }
   }
 
-  /// Get cached result if available
+  static PhotoMetadata? extractVrcxMetadataSync(String imagePath) {
+    try {
+      if (!imagePath.toLowerCase().endsWith('.png')) return null;
+      final vrcxJson = GalleVrNative().extractVrcxMetadata(imagePath);
+      if (vrcxJson == null) return null;
+
+      final vrcxMetadata = _parseVrcxMetadata(vrcxJson);
+      if (vrcxMetadata == null) return null;
+
+      return _convertToGalleVrMetadata(vrcxMetadata, imagePath);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static List<PhotoMetadata>? _getCached(String imagePath, int modTime) {
+    final cachedModTime = _fileModTimeCache[imagePath];
+    if (cachedModTime == modTime) {
+      if (_processedFiles.contains(imagePath)) {
+        final metadata = _metadataCache[imagePath];
+        if (metadata != null) return [metadata];
+      }
+      if (_nonVrcxFiles.contains(imagePath)) return [];
+    }
+    return null;
+  }
+
+  static void _updateCache(String imagePath, int modTime, PhotoMetadata? result) {
+    _fileModTimeCache[imagePath] = modTime;
+    if (result != null) {
+      _processedFiles.add(imagePath);
+      _metadataCache[imagePath] = result;
+      _nonVrcxFiles.remove(imagePath);
+    } else {
+      _processedFiles.remove(imagePath);
+      _metadataCache.remove(imagePath);
+      _nonVrcxFiles.add(imagePath);
+    }
+  }
+
   List<PhotoMetadata>? _getCachedResult(String imagePath) {
     try {
       final file = File(imagePath);
       final stats = file.statSync();
-      final modTime = stats.modified.millisecondsSinceEpoch;
-      final cachedModTime = _fileModTimeCache[imagePath];
-      
-      if (cachedModTime == modTime) {
-        if (_processedFiles.contains(imagePath)) {
-          final metadata = _metadataCache[imagePath];
-          return metadata != null ? [metadata] : [];
-        }
-        if (_nonVrcxFiles.contains(imagePath)) {
-          return []; // Empty list indicates "no metadata"
-        }
-      }
+      return _getCached(imagePath, stats.modified.millisecondsSinceEpoch);
     } catch (e) {
-      // File access error, remove from caches
-      _processedFiles.remove(imagePath);
-      _nonVrcxFiles.remove(imagePath);
-      _metadataCache.remove(imagePath);
-      _fileModTimeCache.remove(imagePath);
-    }
-    
-    return null; // Null indicates "not cached"
-  }
-
-  ///  PNG signature check
-  bool _isPngSignature(Uint8List bytes) {
-    if (bytes.length < 8) return false;
-    
-    // PNG signature: 89 50 4E 47 0D 0A 1A 0A
-    return bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 &&
-           bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A;
-  }
-
-  /// Get cache statistics for debugging
-  Map<String, int> getCacheStats() {
-    return {
-      'processedFiles': _processedFiles.length,
-      'nonVrcxFiles': _nonVrcxFiles.length,
-      'metadataCache': _metadataCache.length,
-      'fileModTimeCache': _fileModTimeCache.length,
-    };
-  }
-}
-
-///  background processing function
-PhotoMetadata? _processVrcxMetadata(_MetadataExtractionParams params) {
-  try {
-    // Fast PNG chunk parsing with early exit
-    final description = _extractPngDescription(params.bytes);
-    
-    if (description == null || description.isEmpty) {
       return null;
     }
-
-    // Quick VRCX check before JSON parsing
-    if (!description.contains('"application"') || 
-        (!description.contains('"VRCX"') && !description.contains(': "VRCX"'))) {
-      return null;
-    }
-
-    // Parse VRCX metadata
-    final vrcxMetadata = _parseVrcxMetadata(description);
-    if (vrcxMetadata == null) {
-      return null;
-    }
-
-    // Convert to GalleVR format
-    return _convertToGalleVrMetadata(vrcxMetadata, params.imagePath);
-  } catch (e) {
-    return null;
-  }
-}
-
-///  PNG description extraction with early exit
-String? _extractPngDescription(Uint8List bytes) {
-  try {
-    // Skip PNG signature
-    int offset = 8;
-    
-    // Limit search to reasonable chunk count to avoid infinite loops
-    int chunkCount = 0;
-    const maxChunks = 50;
-    
-    while (offset < bytes.length - 12 && chunkCount < maxChunks) {
-      chunkCount++;
-      
-      // Read chunk length (big-endian)
-      if (offset + 4 > bytes.length) break;
-      final length = (bytes[offset] << 24) | (bytes[offset + 1] << 16) | 
-                    (bytes[offset + 2] << 8) | bytes[offset + 3];
-      offset += 4;
-      
-      // Sanity check for chunk length
-      if (length < 0 || length > bytes.length - offset) break;
-      
-      // Read chunk type
-      if (offset + 4 > bytes.length) break;
-      final type = String.fromCharCodes(bytes.sublist(offset, offset + 4));
-      offset += 4;
-      
-      // Check for text chunks
-      if (type == 'tEXt' || type == 'iTXt') {
-        if (offset + length > bytes.length) break;
-        
-        final dataBytes = bytes.sublist(offset, offset + length);
-        final data = String.fromCharCodes(dataBytes);
-        
-        // Quick check for Description field
-        if (data.startsWith('Description') || data.contains('Description')) {
-          final nullByteIndex = data.indexOf('\x00');
-          if (nullByteIndex != -1 && nullByteIndex < data.length - 1) {
-            final description = data.substring(nullByteIndex + 1);
-            // Quick VRCX check before returning
-            if (description.contains('VRCX')) {
-              return description;
-            }
-          }
-        }
-      }
-      
-      // Skip chunk data and CRC
-      offset += length + 4;
-      
-      // Early exit if we've found IDAT (image data) - metadata should come before this
-      if (type == 'IDAT') break;
-    }
-    
-    return null;
-  } catch (e) {
-    return null;
   }
 }
 

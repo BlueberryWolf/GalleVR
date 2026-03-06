@@ -178,6 +178,9 @@ class ManualUploadService {
           photoPath: photoPath,
         );
 
+        // Notify that the photo was uploaded
+        PhotoEventService().notifyPhotoUploaded(photoPath);
+
         onStatusUpdate?.call('Upload complete!');
         onProgress?.call(1.0);
 

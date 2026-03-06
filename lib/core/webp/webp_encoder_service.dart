@@ -26,9 +26,9 @@ class WebpEncoderService {
     final originalWidth = image.width;
     final originalHeight = image.height;
 
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isLinux) {
       try {
-        // For Windows, we'll pass the original image and let cwebp handle resizing
+        // For Windows & Linux, we'll pass the original image and let cwebp handle resizing
         return await _encodeWithSizeConstraint(
           image,
           initialQuality: quality,
@@ -312,14 +312,19 @@ class WebpEncoderService {
     try {
       final appDir = await getApplicationSupportDirectory();
       final cwebpDir = Directory(path.join(appDir.path, 'cwebp'));
-      final cwebpPath = path.join(cwebpDir.path, 'cwebp.exe');
+      final cwebpFilename = Platform.isLinux ? 'cwebp' : 'cwebp.exe';
+      final cwebpPath = path.join(cwebpDir.path, cwebpFilename);
 
       if (!await File(cwebpPath).exists()) {
         if (!await cwebpDir.exists()) {
           await cwebpDir.create(recursive: true);
         }
 
-        final byteData = await rootBundle.load('assets/bin/windows/cwebp.exe');
+        final assetPath = Platform.isLinux
+            ? 'assets/bin/linux/cwebp'
+            : 'assets/bin/windows/cwebp.exe';
+            
+        final byteData = await rootBundle.load(assetPath);
         final buffer = byteData.buffer;
         final bytes = buffer.asUint8List(
           byteData.offsetInBytes,
@@ -327,15 +332,27 @@ class WebpEncoderService {
         );
 
         await File(cwebpPath).writeAsBytes(bytes);
+        
+        // ensure the binary is executable on linux
+        if (Platform.isLinux) {
+          try {
+            await Process.run('chmod', ['+x', cwebpPath]);
+          } catch (chmodError) {
+            developer.log(
+              'Error making cwebp executable: $chmodError',
+              name: 'WebpEncoderService',
+            );
+          }
+        }
       }
 
       return cwebpPath;
     } catch (e) {
       developer.log(
-        'Error extracting cwebp.exe: $e',
+        'Error extracting cwebp binary: $e',
         name: 'WebpEncoderService',
       );
-      throw Exception('Failed to extract cwebp.exe: $e');
+      throw Exception('Failed to extract cwebp binary: $e');
     }
   }
 

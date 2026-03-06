@@ -113,9 +113,9 @@ class PhotoProcessorService {
             name: 'PhotoProcessorService',
           );
 
-          final outputFile = File(outputPath);
-          final stats = outputFile.statSync();
-          final creationTimeMs = stats.modified.millisecondsSinceEpoch;
+          final sourceFile = File(sourcePath);
+          final sourceStats = sourceFile.statSync();
+          final creationTimeMs = sourceStats.modified.millisecondsSinceEpoch;
 
           final photoMetadata = PhotoMetadata(
             takenDate: creationTimeMs,
@@ -160,6 +160,8 @@ class PhotoProcessorService {
               outputPath,
               config,
               metadata,
+              metadata: photoMetadata,
+              originalPath: sourcePath,
             );
 
             if (uploadSuccess) {

@@ -7,14 +7,12 @@ import 'dart:developer' as developer;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pasteboard/pasteboard.dart';
-
 import '../../data/repositories/config_repository.dart';
 import '../../data/models/config_model.dart';
 import '../../data/models/photo_metadata.dart';
 import '../../data/repositories/photo_metadata_repository.dart';
 import '../../data/services/photo_event_service.dart';
 import '../../data/services/manual_upload_service.dart';
-import '../../core/image/image_cache_service.dart';
 import '../../core/image/thumbnail_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/photo_metadata_panel.dart';
@@ -37,10 +35,12 @@ class PhotosScreen extends StatefulWidget {
 class _PhotosScreenState extends State<PhotosScreen> {
   final ConfigRepository _configRepository = ConfigRepository();
   final PhotoEventService _photoEventService = PhotoEventService();
+  final PhotoMetadataRepository _metadataRepository = PhotoMetadataRepository();
   ConfigModel? _config;
 
   List<FileSystemEntity> _allPhotos = [];
   List<FileSystemEntity> _displayedPhotos = [];
+  final Map<String, PhotoMetadata?> _photoMetadataMap = {};
 
   bool _isLoading = true;
   bool _isLoadingMore = false;
@@ -50,6 +50,7 @@ class _PhotosScreenState extends State<PhotosScreen> {
   final ScrollController _scrollController = ScrollController();
 
   StreamSubscription<String>? _photoAddedSubscription;
+  StreamSubscription<String>? _photoUploadedSubscription;
 
   @override
   void initState() {
@@ -65,13 +66,12 @@ class _PhotosScreenState extends State<PhotosScreen> {
   }
 
   void _configureImageCacheSettings() {
-    // Set balanced image cache limits for good performance and loading
-    PaintingBinding.instance.imageCache.maximumSize = 100; // Reasonable cache size
+    PaintingBinding.instance.imageCache.maximumSize = 500; 
     PaintingBinding.instance.imageCache.maximumSizeBytes =
-        20 * 1024 * 1024; // 20MB limit
+        100 * 1024 * 1024; 
 
     developer.log(
-      'Configured balanced image cache limits: 100 images, 20MB max',
+      'Configured image cache limits: 500 images, 100MB max',
       name: 'PhotosScreen',
     );
   }
@@ -79,6 +79,7 @@ class _PhotosScreenState extends State<PhotosScreen> {
   @override
   void dispose() {
     _photoAddedSubscription?.cancel();
+    _photoUploadedSubscription?.cancel();
     _scrollController.removeListener(_scrollListener);
     _scrollController.dispose();
 
@@ -120,16 +121,21 @@ class _PhotosScreenState extends State<PhotosScreen> {
     _photoAddedSubscription = _photoEventService.photoAdded.listen((photoPath) {
       developer.log('Photo event received: $photoPath', name: 'PhotosScreen');
 
-      if (_metadataCache.containsKey(photoPath)) {
-        developer.log(
-          'Clearing metadata cache for: $photoPath',
-          name: 'PhotosScreen',
-        );
-        _metadataCache.remove(photoPath);
-      }
+      _photoMetadataMap.remove(photoPath);
 
       if (mounted) {
         developer.log('Refreshing photos list', name: 'PhotosScreen');
+        _loadPhotos();
+      }
+    });
+
+    _photoUploadedSubscription = _photoEventService.photoUploaded.listen((photoPath) {
+      developer.log('Photo uploaded event received: $photoPath', name: 'PhotosScreen');
+
+      _photoMetadataMap.remove(photoPath);
+
+      if (mounted) {
+        developer.log('Refreshing photos list after upload', name: 'PhotosScreen');
         _loadPhotos();
       }
     });
@@ -203,7 +209,7 @@ class _PhotosScreenState extends State<PhotosScreen> {
 
       developer.log('Found ${photos.length} photos', name: 'PhotosScreen');
 
-      _metadataCache.clear();
+      _photoMetadataMap.clear();
       developer.log('Metadata cache cleared', name: 'PhotosScreen');
 
       setState(() {
@@ -241,17 +247,21 @@ class _PhotosScreenState extends State<PhotosScreen> {
 
       final nextPagePhotos = _allPhotos.sublist(start, end);
 
+      final folderMetadata = await _metadataRepository.getMetadataForFiles(
+        nextPagePhotos.map((e) => e.path).toList(),
+      );
 
       if (!mounted) return;
 
       setState(() {
+        _photoMetadataMap.addAll(folderMetadata);
         _displayedPhotos.addAll(nextPagePhotos);
         _currentPage++;
         _isLoadingMore = false;
       });
 
       developer.log(
-        'Loaded more photos: ${_displayedPhotos.length}/${_allPhotos.length}',
+        'Loaded more photos and metadata: ${_displayedPhotos.length}/${_allPhotos.length}',
         name: 'PhotosScreen',
       );
     } catch (e) {
@@ -355,9 +365,9 @@ class _PhotosScreenState extends State<PhotosScreen> {
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
               ),
-              addAutomaticKeepAlives: false,
-              addRepaintBoundaries: false,
-              cacheExtent: 500,
+              addAutomaticKeepAlives: true, 
+              addRepaintBoundaries: true, 
+              cacheExtent: 1000, 
               itemCount:
                   _displayedPhotos.length +
                   (_isLoadingMore || _displayedPhotos.length < _allPhotos.length
@@ -378,7 +388,8 @@ class _PhotosScreenState extends State<PhotosScreen> {
                 }
 
                 final photo = _displayedPhotos[index];
-                return _buildPhotoItem(photo);
+                final metadata = _photoMetadataMap[photo.path];
+                return _buildPhotoItem(photo, metadata);
               },
             ),
           ),
@@ -387,70 +398,239 @@ class _PhotosScreenState extends State<PhotosScreen> {
     );
   }
 
-  final Map<String, Future<PhotoMetadata?>> _metadataCache = {};
-
-  Future<PhotoMetadata?> _getMetadataFuture(
-    String filePath, {
-    bool forceRefresh = false,
-  }) {
-    if (forceRefresh || !_metadataCache.containsKey(filePath)) {
-      developer.log(
-        'Getting fresh metadata for: $filePath',
-        name: 'PhotosScreen',
-      );
-      _metadataCache[filePath] = PhotoMetadataRepository()
-          .getPhotoMetadataForFile(filePath);
-    }
-    return _metadataCache[filePath]!;
-  }
-
-  void _refreshMetadataCache(String filePath) {
-    // Remove the cached future completely
-    _metadataCache.remove(filePath);
+  void _refreshMetadataCache(String filePath) async {
+    final metadata = await _metadataRepository.getPhotoMetadataForFile(filePath);
     
-    // Trigger a rebuild of the photo grid which will create a new future
     if (mounted) {
-      setState(() {});
+      setState(() {
+        _photoMetadataMap[filePath] = metadata;
+      });
     }
   }
 
-  Widget _buildPhotoItem(FileSystemEntity entity) {
-    return FutureBuilder<PhotoMetadata?>(
-      future: _getMetadataFuture(entity.path),
-      builder: (context, snapshot) {
-        final metadata = snapshot.data;
-        final hasWorld = metadata?.world != null;
-        final hasPlayers = metadata?.players.isNotEmpty == true;
+  Widget _buildPhotoItem(FileSystemEntity entity, PhotoMetadata? metadata) {
+    return _PhotoGridItem(
+      entity: entity,
+      metadata: metadata,
+      onTap: () => _openPhotoDetails(entity),
+      onOptionsPressed: () => _showPhotoOptions(entity, metadata),
+    );
+  }
 
-        return Card(
+  void _showPhotoOptions(FileSystemEntity entity, PhotoMetadata? metadata) {
+    showStyledBottomSheet(
+      context: context,
+      builder:
+          (context) {
+              final hasMetadata =
+                  metadata != null &&
+                  (metadata.world != null || metadata.players.isNotEmpty);
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.info_outline_rounded),
+                    title: const Text('View Photo Info'),
+                    subtitle:
+                        hasMetadata
+                            ? const Text(
+                                'World and player information available',
+                              )
+                            : const Text('Basic photo information'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _openPhotoDetails(entity);
+                    },
+                  ),
+                  if (metadata?.players.isNotEmpty == true)
+                    ListTile(
+                      leading: const Icon(Icons.people_alt_rounded),
+                      title: Text('Players (${metadata!.players.length})'),
+                      subtitle: Text(
+                        metadata.players.length > 3
+                            ? '${metadata.players.take(3).map((p) => p.name).join(', ')}...'
+                            : metadata.players.map((p) => p.name).join(', '),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openPhotoDetails(entity);
+                      },
+                    ),
+                  if (metadata?.world != null)
+                    ListTile(
+                      leading: const Icon(Icons.public),
+                      title: const Text('World'),
+                      subtitle: Text(metadata!.world!.name),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openPhotoDetails(entity);
+                      },
+                    ),
+                  if (hasMetadata && metadata.galleryUrl == null)
+                    ListTile(
+                      leading: const Icon(Icons.cloud_upload_rounded),
+                      title: const Text('Upload to Gallery'),
+                      subtitle: const Text('Compress and upload this photo'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openPhotoDetails(entity);
+                      },
+                    ),
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.copy),
+                    title: const Text('Copy Photo Link'),
+                    onTap: () async {
+                      Navigator.pop(context);
+
+                      if (metadata?.galleryUrl != null) {
+                        await copyToClipboard(
+                          text: metadata!.galleryUrl!,
+                          context: context,
+                          successMessage: 'Gallery link copied to clipboard',
+                          loggerName: 'PhotosScreen',
+                        );
+                      } else {
+                        await copyToClipboard(
+                          text: entity.path,
+                          context: context,
+                          successMessage:
+                              'Photo path copied to clipboard (no gallery link available)',
+                          loggerName: 'PhotosScreen',
+                        );
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.folder_open),
+                    title: const Text('Show in File Explorer'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      showFileInExplorer(entity.path, context);
+                    },
+                  ),
+                ],
+              );
+            },
+    );
+  }
+
+  void _openPhotoDetails(FileSystemEntity entity) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder:
+            (context, animation, secondaryAnimation) =>
+                _PhotoDetailScreen(
+                  entity: entity, 
+                  allPhotos: _displayedPhotos,
+                  onMetadataUpdated: () => _refreshMetadataCache(entity.path),
+                ),
+        transitionDuration: const Duration(milliseconds: 250),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: child,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _PhotoGridItem extends StatefulWidget {
+  final FileSystemEntity entity;
+  final PhotoMetadata? metadata;
+  final VoidCallback onTap;
+  final VoidCallback onOptionsPressed;
+
+  const _PhotoGridItem({
+    required this.entity,
+    required this.metadata,
+    required this.onTap,
+    required this.onOptionsPressed,
+  });
+
+  @override
+  State<_PhotoGridItem> createState() => _PhotoGridItemState();
+}
+
+class _PhotoGridItemState extends State<_PhotoGridItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final metadata = widget.metadata;
+    final entity = widget.entity;
+    final hasWorld = metadata?.world != null;
+    final hasPlayers = metadata?.players.isNotEmpty == true;
+    final isUploaded = metadata?.galleryUrl != null;
+    final bool isGreyedOut = !isUploaded && !_isHovered;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: _isHovered
+              ? [
+                  BoxShadow(
+                    color: AppTheme.primaryColor.withOpacity(0.3),
+                    blurRadius: 15,
+                    spreadRadius: 2,
+                  )
+                ]
+              : [],
+        ),
+        child: Card(
           clipBehavior: Clip.antiAlias,
-          elevation: 2,
+          elevation: _isHovered ? 8 : 2,
           margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: _isHovered
+                  ? AppTheme.primaryColor.withOpacity(0.5)
+                  : AppTheme.cardBorderColor,
+              width: 1.5,
+            ),
+          ),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => _openPhotoDetails(entity),
+              onTap: widget.onTap,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  _buildPhotoImage(entity),
+                  _buildImage(entity, isGreyedOut: isGreyedOut),
 
                   // Bottom overlay with filename
                   Positioned(
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
                       height: 32,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [Colors.transparent, Colors.black.withAlpha(120)],
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withAlpha(_isHovered ? 200 : 120)
+                          ],
                         ),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         child: Text(
                           metadata?.filename ?? path.basename(entity.path),
                           style: const TextStyle(
@@ -515,17 +695,21 @@ class _PhotosScreenState extends State<PhotosScreen> {
                   Positioned(
                     top: 4,
                     right: 4,
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
                       decoration: BoxDecoration(
-                        color: Colors.black.withAlpha(100),
+                        color: Colors.black.withAlpha(_isHovered ? 180 : 100),
                         shape: BoxShape.circle,
                       ),
                       child: IconButton(
                         icon: const Icon(Icons.more_vert, size: 12),
                         color: Colors.white,
-                        onPressed: () => _showPhotoOptions(entity),
+                        onPressed: widget.onOptionsPressed,
                         padding: const EdgeInsets.all(2),
-                        constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                        constraints: const BoxConstraints(
+                          minWidth: 20,
+                          minHeight: 20,
+                        ),
                       ),
                     ),
                   ),
@@ -533,38 +717,54 @@ class _PhotosScreenState extends State<PhotosScreen> {
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
-  Widget _buildPhotoImage(FileSystemEntity entity) {
-    return CachedImage(
+  Widget _buildImage(FileSystemEntity entity, {bool isGreyedOut = false}) {
+    Widget image = CachedImage(
       filePath: entity.path,
       fit: BoxFit.cover,
-      thumbnailSize: 400, // Increased slightly for better loading reliability
+      thumbnailSize: 400,
       highQuality: false,
+    );
+
+    if (isGreyedOut) {
+      image = ColorFiltered(
+        colorFilter: const ColorFilter.matrix([
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0,      0,      0,      1, 0,
+        ]),
+        child: Opacity(opacity: 0.7, child: image),
+      );
+    }
+
+    return AnimatedScale(
+      scale: _isHovered ? 1.05 : 1.0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutBack,
+      child: image,
     );
   }
 
   Widget _buildUploadStatusIndicator(PhotoMetadata? metadata) {
-    // Determine upload status
     Color indicatorColor;
     IconData iconData;
     String tooltip;
 
     if (metadata?.galleryUrl != null) {
-      // Photo is uploaded
       indicatorColor = Colors.green;
       iconData = Icons.cloud_done_rounded;
       tooltip = 'Photo uploaded to gallery';
-    } else if (metadata != null && (metadata.world != null || metadata.players.isNotEmpty)) {
-      // Photo can be uploaded (has metadata)
+    } else if (metadata != null &&
+        (metadata.world != null || metadata.players.isNotEmpty)) {
       indicatorColor = AppTheme.primaryColor;
       iconData = Icons.cloud_upload_rounded;
       tooltip = 'Photo can be uploaded';
     } else {
-      // Photo cannot be uploaded (no metadata)
       indicatorColor = Colors.grey;
       iconData = Icons.cloud_off_rounded;
       tooltip = 'Photo cannot be uploaded (no metadata)';
@@ -572,7 +772,8 @@ class _PhotosScreenState extends State<PhotosScreen> {
 
     return Tooltip(
       message: tooltip,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           color: indicatorColor,
@@ -585,137 +786,7 @@ class _PhotosScreenState extends State<PhotosScreen> {
             ),
           ],
         ),
-        child: Icon(
-          iconData,
-          color: Colors.white,
-          size: 10,
-        ),
-      ),
-    );
-  }
-
-  void _showPhotoOptions(FileSystemEntity entity) {
-    showStyledBottomSheet(
-      context: context,
-      builder:
-          (context) => FutureBuilder<PhotoMetadata?>(
-            future: _getMetadataFuture(entity.path),
-            builder: (context, snapshot) {
-              final metadata = snapshot.data;
-              final hasMetadata =
-                  metadata != null &&
-                  (metadata.world != null || metadata.players.isNotEmpty);
-
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.info_outline_rounded),
-                    title: const Text('View Photo Info'),
-                    subtitle:
-                        hasMetadata
-                            ? const Text(
-                              'World and player information available',
-                            )
-                            : const Text('Basic photo information'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _openPhotoDetails(entity);
-                    },
-                  ),
-                  if (metadata?.players.isNotEmpty == true)
-                    ListTile(
-                      leading: const Icon(Icons.people_alt_rounded),
-                      title: Text('Players (${metadata!.players.length})'),
-                      subtitle: Text(
-                        metadata.players.length > 3
-                            ? '${metadata.players.take(3).map((p) => p.name).join(', ')}...'
-                            : metadata.players.map((p) => p.name).join(', '),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _openPhotoDetails(entity);
-                      },
-                    ),
-                  if (metadata?.world != null)
-                    ListTile(
-                      leading: const Icon(Icons.public),
-                      title: const Text('World'),
-                      subtitle: Text(metadata!.world!.name),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _openPhotoDetails(entity);
-                      },
-                    ),
-                  if (hasMetadata && metadata?.galleryUrl == null)
-                    ListTile(
-                      leading: const Icon(Icons.cloud_upload_rounded),
-                      title: const Text('Upload to Gallery'),
-                      subtitle: const Text('Compress and upload this photo'),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _openPhotoDetails(entity);
-                        // The upload button will be available in the detail view
-                      },
-                    ),
-                  const Divider(),
-                  ListTile(
-                    leading: const Icon(Icons.copy),
-                    title: const Text('Copy Photo Link'),
-                    onTap: () async {
-                      Navigator.pop(context);
-                      final metadata = snapshot.data;
-
-                      if (metadata?.galleryUrl != null) {
-                        await copyToClipboard(
-                          text: metadata!.galleryUrl!,
-                          context: context,
-                          successMessage: 'Gallery link copied to clipboard',
-                          loggerName: 'PhotosScreen',
-                        );
-                      } else {
-                        await copyToClipboard(
-                          text: entity.path,
-                          context: context,
-                          successMessage:
-                              'Photo path copied to clipboard (no gallery link available)',
-                          loggerName: 'PhotosScreen',
-                        );
-                      }
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.folder_open),
-                    title: const Text('Show in File Explorer'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      showFileInExplorer(entity.path, context);
-                    },
-                  ),
-                ],
-              );
-            },
-          ),
-    );
-  }
-
-  void _openPhotoDetails(FileSystemEntity entity) {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder:
-            (context, animation, secondaryAnimation) =>
-                _PhotoDetailScreen(
-                  entity: entity, 
-                  allPhotos: _displayedPhotos,
-                  onMetadataUpdated: () => _refreshMetadataCache(entity.path),
-                ),
-        transitionDuration: const Duration(milliseconds: 250),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-            child: child,
-          );
-        },
+        child: Icon(iconData, color: Colors.white, size: 10),
       ),
     );
   }
@@ -770,6 +841,8 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
         (photo) => photo.path == widget.entity.path,
       );
     }
+    
+    _listenToUploadEvents();
 
     _indicatorController = AnimationController(
       vsync: this,
@@ -784,6 +857,20 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
     Future.delayed(const Duration(milliseconds: 300), _loadMetadata);
 
     _showIndicators();
+  }
+
+  void _listenToUploadEvents() {
+    PhotoEventService().photoUploaded.listen((uploadedPath) {
+      if (!mounted) return;
+      
+      final currentFilename = path.basenameWithoutExtension(widget.entity.path);
+      final uploadedFilename = path.basenameWithoutExtension(uploadedPath);
+      
+      if (currentFilename == uploadedFilename) {
+        developer.log('Photo uploaded while viewing, reloading metadata', name: 'PhotoDetailScreen');
+        _loadMetadata();
+      }
+    });
   }
 
   @override
@@ -840,6 +927,8 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
           // Reload metadata to get the updated gallery URL
           await _loadMetadata();
           
+          if (!mounted) return;
+
           // Notify parent to refresh the photo grid
           widget.onMetadataUpdated?.call();
           
@@ -895,36 +984,6 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
         'Loading metadata for file: ${widget.entity.path}',
         name: 'PhotoDetailScreen',
       );
-
-      final parentState = context.findAncestorStateOfType<_PhotosScreenState>();
-      if (parentState != null) {
-        final fileStats = widget.entity.statSync();
-        final fileModTime = fileStats.modified;
-        final currentTime = DateTime.now();
-        final timeDifference = currentTime.difference(fileModTime);
-
-        final bool isRecentlyAdded = timeDifference.inMinutes < 1;
-
-        if (isRecentlyAdded) {
-          developer.log(
-            'Recently added photo detected, forcing metadata refresh',
-            name: 'PhotoDetailScreen',
-          );
-        }
-
-        final metadata = await parentState._getMetadataFuture(
-          widget.entity.path,
-          forceRefresh: isRecentlyAdded,
-        );
-
-        if (mounted) {
-          setState(() {
-            _metadata = metadata;
-            _isLoading = false;
-          });
-        }
-        return;
-      }
 
       final metadata = await _metadataRepository.getPhotoMetadataForFile(
         widget.entity.path,
@@ -1407,7 +1466,8 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
                         child: CachedImage(
                           filePath: widget.entity.path,
                           fit: BoxFit.contain,
-                          highQuality: false,
+                          thumbnailSize: 800, 
+                          highQuality: true,
                         ),
                       );
                     },
@@ -1421,7 +1481,7 @@ class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
                           fit: BoxFit.contain,
                           width: MediaQuery.of(context).size.width,
                           height: MediaQuery.of(context).size.height,
-                          thumbnailSize: 800,
+                          useOriginal: true,
                           highQuality: true,
                         ),
                       ),
