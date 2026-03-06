@@ -71,6 +71,8 @@ dev_dependencies:
 dependency_overrides:
   system_tray:
     path: packages/system_tray
+  audioplayers_linux:
+    path: packages/audioplayers_linux
   uuid: ^4.5.1
 
 flutter_launcher_icons:

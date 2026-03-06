@@ -116,9 +116,20 @@ jobs:
           
           # Copy desktop file and icon
           sed "s/@@VERSION@@/${{ env.VERSION }}/g" linux/runner/gallevr.desktop > build/linux/x64/release/deb/usr/share/applications/gallevr.desktop
-          convert assets/images/app_icon.png -resize 128x128 build/linux/x64/release/deb/usr/share/icons/hicolor/128x128/apps/com.blueberrywolf.gallevr.png
           
-          # Create DEBIAN/control
+      - name: Prepare icons for packaging
+        run: |
+          mkdir -p build/linux/x64/release/deb/usr/share/icons/hicolor/128x128/apps
+          mkdir -p AppDir
+          # Icon for .deb
+          convert assets/images/app_icon.png -resize 128x128 build/linux/x64/release/deb/usr/share/icons/hicolor/128x128/apps/com.blueberrywolf.gallevr.png
+          # Icon for AppImage
+          convert assets/images/app_icon.png -resize 512x512 AppDir/com.blueberrywolf.gallevr.png
+          # Icon for Flatpak (include in bundle for next job)
+          convert assets/images/app_icon.png -resize 128x128 build/linux/x64/release/bundle/app_icon_flatpak.png
+
+      - name: Create DEBIAN/control
+        run: |
           mkdir -p build/linux/x64/release/deb/DEBIAN
           echo "Package: gallevr
           Version: ${{ env.VERSION }}
@@ -129,8 +140,8 @@ jobs:
           Maintainer: BlueberryWolf
           Description: A social platform for your VRChat photos." > build/linux/x64/release/deb/DEBIAN/control
           
-          # Build .deb
-          dpkg-deb --build build/linux/x64/release/deb GalleVR.deb
+      - name: Build .deb
+        run: dpkg-deb --build build/linux/x64/release/deb GalleVR.deb
 
       - name: Prepare AppImage
         run: |
@@ -145,8 +156,8 @@ jobs:
           
           # Setup desktop file and icon for linuxdeploy (in root)
           sed "s/@@VERSION@@/${{ env.VERSION }}/g" linux/runner/gallevr.desktop > AppDir/gallevr.desktop
-          # Resize icon to a valid resolution (512x512) for linuxdeploy
-          convert assets/images/app_icon.png -resize 512x512 AppDir/com.blueberrywolf.gallevr.png
+          # Use local copy
+          cp AppDir/usr/bin/app_icon_flatpak.png AppDir/com.blueberrywolf.gallevr.png
           
           export LDAI_OUTPUT="GalleVR.AppImage"
           export LINUXDEPLOY_OUTPUT_VERSION="${{ env.VERSION }}"
@@ -189,9 +200,8 @@ jobs:
         run: |
           VERSION=$(grep "^version: " pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
           sed -i "s/@@VERSION@@/${VERSION}/g" linux/runner/gallevr.desktop
-          # Install imagemagick in container to resize icon
-          dnf install -y ImageMagick || apt-get install -y imagemagick
-          convert assets/images/app_icon.png -resize 128x128 assets/images/app_icon_flatpak.png
+          # Use the pre-resized icon from the bundle
+          cp build/linux/x64/release/bundle/app_icon_flatpak.png assets/images/app_icon_flatpak.png
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
