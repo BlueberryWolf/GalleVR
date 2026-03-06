@@ -30,5 +30,5 @@ modules:
       - type: file
         path: gallevr.desktop
       - type: file
-        path: ../../assets/images/app_icon_flatpak.png
+        path: com.blueberrywolf.gallevr.png
         dest-filename: com.blueberrywolf.gallevr.png
