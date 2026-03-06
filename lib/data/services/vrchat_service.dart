@@ -295,7 +295,7 @@ class VRChatService {
     }
   }
 
-  Future<List<LimitedUser>> getFriends() async {
+  Future<List<LimitedUserFriend>> getFriends() async {
     if (!_isInitialized) {
       await initialize();
     }
