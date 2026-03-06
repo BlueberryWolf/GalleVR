@@ -148,7 +148,7 @@ jobs:
           convert assets/images/app_icon.png -resize 512x512 AppDir/gallevr.png
           
           export OUTPUT="GalleVR.AppImage"
-          ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir AppDir -d AppDir/gallevr.desktop -i AppDir/gallevr.png --output appimage
+          ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir AppDir -e AppDir/gallevr -d AppDir/gallevr.desktop -i AppDir/gallevr.png --output appimage
 
       - name: Upload Linux bundle
         uses: actions/upload-artifact@v4
