@@ -23,11 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
-
-      - name: Install Arabic Inno Setup language
-        run: |
-          curl -L -o "C:\Program Files (x86)\Inno Setup 6\Languages\Arabic.isl" https://raw.github.com/jrsoftware/issrc/istrans-6_4_0/Files/Languages/Arabic.isl
-
+        
       - name: Run inno_bundle to build and create installer
         run: dart run inno_bundle:build --release
 
@@ -72,3 +68,40 @@ jobs:
         with:
           name: android-apk
           path: build/app/outputs/flutter-apk/GalleVR.apk
+
+  build-linux:
+    name: Build Linux Release Bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.32.5"
+          channel: stable
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev liblzma-dev libnm-dev ninja-build pkg-config
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Linux release
+        run: flutter build linux --release
+
+      - name: Package Linux build
+        run: |
+          cd build/linux/x64/release/bundle
+          tar -czf ../../../../../GalleVR-linux.tar.gz .
+          cd ../../../../../
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-bundle
+          path: GalleVR-linux.tar.gz
