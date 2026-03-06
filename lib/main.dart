@@ -12,6 +12,7 @@ import 'presentation/screens/onboarding_screen.dart';
 import 'presentation/theme/app_theme.dart';
 import 'presentation/widgets/app_wrapper.dart';
 import 'core/services/windows_service.dart';
+import 'core/services/linux_service.dart';
 
 // Command line arguments
 class AppArgs {
@@ -46,7 +47,8 @@ void main(List<String> args) async {
     DeviceOrientation.landscapeRight,
   ]);
 
-  bool shouldStartMinimized = Platform.isWindows && AppArgs.hasStartMinimized(args);
+  bool shouldStartMinimized = (Platform.isWindows || Platform.isLinux) && 
+      AppArgs.hasStartMinimized(args);
   if (shouldStartMinimized) {
     developer.log('App will start minimized', name: 'GalleVRApp');
   }
@@ -76,13 +78,17 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
 
     // The window visibility is now handled at the native level
     // If the app is starting minimized, show a notification after a delay
-    if (Platform.isWindows && AppArgs.hasStartMinimized(widget.args)) {
+    if ((Platform.isWindows || Platform.isLinux) && AppArgs.hasStartMinimized(widget.args)) {
       developer.log('App configured to start minimized', name: 'GalleVRApp');
 
       // Show a notification after a delay to ensure the app is fully initialized
       Future.delayed(Duration(seconds: 2), () async {
         try {
-          await WindowsService().showStartMinimizedNotification();
+          if (Platform.isWindows) {
+            await WindowsService().showStartMinimizedNotification();
+          } else if (Platform.isLinux) {
+            await LinuxService().showStartMinimizedNotification();
+          }
         } catch (e) {
           developer.log('Error showing start minimized notification: $e', name: 'GalleVRApp');
         }
@@ -135,7 +141,7 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
               if (keyEvent.logicalKey == LogicalKeyboardKey.f4 &&
                   HardwareKeyboard.instance.isAltPressed) {
                 // exit the app completely
-                if (Platform.isWindows) {
+                if (Platform.isWindows || Platform.isLinux) {
                   // force exit the app when Alt+F4 is pressed
                   developer.log('Alt+F4 detected, exiting application', name: 'GalleVRApp');
 

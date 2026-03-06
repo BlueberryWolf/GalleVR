@@ -69,6 +69,8 @@ dev_dependencies:
 
 # Override uuid dependency to resolve conflict between system_tray and inno_bundle
 dependency_overrides:
+  system_tray:
+    path: packages/system_tray
   uuid: ^4.5.1
 
 flutter_launcher_icons:

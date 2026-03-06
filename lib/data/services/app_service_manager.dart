@@ -9,6 +9,7 @@ import '../repositories/config_repository.dart';
 import '../../core/image/image_cache_service.dart';
 import '../../core/services/permission_service.dart';
 import '../../core/services/windows_service.dart';
+import '../../core/services/linux_service.dart';
 import '../../core/services/update_service.dart';
 import '../../core/audio/sound_service.dart';
 import 'photo_watcher_service.dart';
@@ -54,6 +55,9 @@ class AppServiceManager {
 
   // Windows service for system tray and auto-start
   final WindowsService _windowsService = WindowsService();
+
+  // Linux service for system tray
+  final LinuxService _linuxService = LinuxService();
 
   // Update service for checking new versions
   final UpdateService _updateService = UpdateService();
@@ -172,7 +176,14 @@ class AppServiceManager {
           await _windowsService.setStartWithWindows(_config!.startWithWindows);
         }
 
-        developer.log('Windows-specific services initialized', name: 'AppServiceManager');
+        developer.log('Windows services initialized', name: 'AppServiceManager');
+      } else if (Platform.isLinux && _config != null) {
+        await _linuxService.initialize(
+          minimizeToTray: _config!.minimizeToTray,
+          appTitle: 'GalleVR',
+        );
+
+        developer.log('Linux services initialized', name: 'AppServiceManager');
       }
 
       // Initialize update service and check for updates (for both Windows and Android)
@@ -240,6 +251,12 @@ class AppServiceManager {
         developer.log('Updated start with Windows setting: ${config.startWithWindows}',
             name: 'AppServiceManager');
       }
+    } else if (Platform.isLinux) {
+      if (minimizeToTrayChanged) {
+        _linuxService.updateMinimizeToTray(config.minimizeToTray);
+        developer.log('Updated minimize to tray setting: ${config.minimizeToTray}',
+            name: 'AppServiceManager');
+      }
     }
 
     // Restart photo watcher if photos directory changed
@@ -282,6 +299,15 @@ class AppServiceManager {
         // Minimize to tray if enabled
         return await _windowsService.handleWindowClose();
       }
+    } else if (Platform.isLinux) {
+      if (forceExit) {
+        developer.log('Force exiting application from AppServiceManager', name: 'AppServiceManager');
+        await dispose();
+        await _linuxService.exitApplication();
+        return false;
+      } else if (_config != null && _config!.minimizeToTray) {
+        return await _linuxService.handleWindowClose();
+      }
     }
     return false;
   }
@@ -317,12 +343,18 @@ class AppServiceManager {
       developer.log('Error disposing sound service: $e', name: 'AppServiceManager');
     }
 
-    // Dispose Windows service if on Windows
+    // Dispose platform services
     if (Platform.isWindows) {
       try {
         _windowsService.dispose();
       } catch (e) {
         developer.log('Error disposing Windows service: $e', name: 'AppServiceManager');
+      }
+    } else if (Platform.isLinux) {
+      try {
+        _linuxService.dispose();
+      } catch (e) {
+        developer.log('Error disposing Linux service: $e', name: 'AppServiceManager');
       }
     }
 
