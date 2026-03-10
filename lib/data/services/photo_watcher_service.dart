@@ -259,42 +259,69 @@ class PhotoWatcherService {
   }
 
   void _handleScreenshotFromLog(String screenshotPath, ConfigModel config) {
+    String finalPath = screenshotPath;
+
+    // On Linux, VRChat (via Proton/Wine) might log Windows-style paths.
+    if ((Platform.isLinux || Platform.isMacOS) && finalPath.contains(r'\')) {
+      developer.log(
+        'Detected Windows-style path on non-Windows platform: $finalPath',
+        name: 'PhotoWatcherService',
+      );
+
+      final photosDirName = path.basename(config.photosDirectory);
+      const pathSeparator = r'\';
+
+      final vrchatFolderIndex = finalPath.toLowerCase().lastIndexOf(photosDirName.toLowerCase() + pathSeparator);
+
+      if (vrchatFolderIndex != -1) {
+        final relativePath = finalPath.substring(vrchatFolderIndex + photosDirName.length + 1);
+        final platformRelativePath = relativePath.replaceAll(r'\', path.separator);
+        
+        finalPath = path.join(config.photosDirectory, platformRelativePath);
+
+        developer.log(
+          'Converted Windows path to: $finalPath',
+          name: 'PhotoWatcherService',
+        );
+      }
+    }
+
     // Verify the file exists and is a VRChat screenshot
-    final file = File(screenshotPath);
+    final file = File(finalPath);
     if (!file.existsSync()) {
       developer.log(
-        'Screenshot file does not exist: $screenshotPath',
+        'Screenshot file does not exist: $finalPath',
         name: 'PhotoWatcherService',
       );
       return;
     }
 
-    if (!_isVRChatScreenshot(screenshotPath)) {
+    if (!_isVRChatScreenshot(finalPath)) {
       developer.log(
-        'Ignoring non-VRChat screenshot: $screenshotPath',
+        'Ignoring non-VRChat screenshot: $finalPath',
         name: 'PhotoWatcherService',
       );
       return;
     }
 
-    if (_handledPhotos.contains(screenshotPath)) {
+    if (_handledPhotos.contains(finalPath)) {
       developer.log(
-        'Ignoring already handled photo: $screenshotPath',
+        'Ignoring already handled photo: $finalPath',
         name: 'PhotoWatcherService',
       );
       return;
     }
 
-    _handledPhotos.add(screenshotPath);
+    _handledPhotos.add(finalPath);
 
-    developer.log('New screenshot detected from log: $screenshotPath', name: 'PhotoWatcherService');
+    developer.log('New screenshot detected from log: $finalPath', name: 'PhotoWatcherService');
     PhotoEventService().notifyError(
       'info',
-      'New screenshot detected: ${path.basename(screenshotPath)}',
+      'New screenshot detected: ${path.basename(finalPath)}',
     );
 
-    _photoStreamController.add(screenshotPath);
-    PhotoEventService().notifyPhotoAdded(screenshotPath);
+    _photoStreamController.add(finalPath);
+    PhotoEventService().notifyPhotoAdded(finalPath);
   }
 
 

@@ -23,11 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
-
-      - name: Install Arabic Inno Setup language
-        run: |
-          curl -L -o "C:\Program Files (x86)\Inno Setup 6\Languages\Arabic.isl" https://raw.github.com/jrsoftware/issrc/istrans-6_4_0/Files/Languages/Arabic.isl
-
+        
       - name: Run inno_bundle to build and create installer
         run: dart run inno_bundle:build --release
 
@@ -72,3 +68,174 @@ jobs:
         with:
           name: android-apk
           path: build/app/outputs/flutter-apk/GalleVR.apk
+
+  build-linux:
+    name: Build Linux Release Bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.32.5"
+          channel: stable
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev liblzma-dev libnm-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev ninja-build pkg-config imagemagick patchelf
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Extract version from pubspec.yaml
+        id: extract_version
+        run: |
+          VERSION=$(grep "^version: " pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build Linux release
+        run: flutter build linux --release
+
+      - name: Prepare .deb package
+        run: |
+          mkdir -p build/linux/x64/release/deb/usr/bin
+          mkdir -p build/linux/x64/release/deb/usr/share/applications
+          mkdir -p build/linux/x64/release/deb/usr/share/icons/hicolor/128x128/apps
+          mkdir -p build/linux/x64/release/deb/opt/gallevr
+          
+          # Copy bundle to /opt/gallevr
+          cp -r build/linux/x64/release/bundle/* build/linux/x64/release/deb/opt/gallevr/
+          
+          # Bundle essential system libraries that might be missing in Flatpak/AppImage
+          mkdir -p build/linux/x64/release/bundle/lib
+          for lib in libayatana-appindicator3.so.1 libayatana-indicator3.so.7 libayatana-ido3-0.4.so.0 libdbusmenu-gtk3.so.4 libdbusmenu-glib.so.4 libnm.so.0; do
+            FILE=$(ldconfig -p | grep "$lib" | head -n 1 | awk '{print $4}')
+            if [ -z "$FILE" ]; then
+              # Fallback to searching in standard locations if ldconfig misses it
+              FILE=$(find /usr/lib -name "$lib" | head -n 1)
+            fi
+            if [ -n "$FILE" ]; then
+              cp -L "$FILE" build/linux/x64/release/bundle/lib/
+            fi
+          done
+          
+          # Symlink binary to /usr/bin
+          ln -s /opt/gallevr/GalleVR build/linux/x64/release/deb/usr/bin/gallevr
+          
+          # Copy desktop file and icon
+          sed "s/@@VERSION@@/${{ env.VERSION }}/g" linux/runner/gallevr.desktop > build/linux/x64/release/deb/usr/share/applications/gallevr.desktop
+          
+      - name: Prepare icons for packaging
+        run: |
+          mkdir -p build/linux/x64/release/deb/usr/share/icons/hicolor/128x128/apps
+          mkdir -p AppDir
+          # Icon for .deb
+          convert assets/images/app_icon.png -resize 128x128 build/linux/x64/release/deb/usr/share/icons/hicolor/128x128/apps/com.blueberrywolf.gallevr.png
+          # Icon for AppImage
+          convert assets/images/app_icon.png -resize 512x512 AppDir/com.blueberrywolf.gallevr.png
+          # Icon for Flatpak (include in bundle for next job)
+          convert assets/images/app_icon.png -resize 128x128 build/linux/x64/release/bundle/app_icon_flatpak.png
+
+      - name: Create DEBIAN/control
+        run: |
+          mkdir -p build/linux/x64/release/deb/DEBIAN
+          echo "Package: gallevr
+          Version: ${{ env.VERSION }}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtk-3-0, libayatana-appindicator3-1, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0
+          Maintainer: BlueberryWolf
+          Description: A social platform for your VRChat photos." > build/linux/x64/release/deb/DEBIAN/control
+          
+      - name: Build .deb
+        run: dpkg-deb --build build/linux/x64/release/deb GalleVR.deb
+
+      - name: Prepare AppImage
+        run: |
+          # Install linuxdeploy and gstreamer plugin script
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-gstreamer.sh
+          
+          # Set up AppDir
+          mkdir -p AppDir/usr/bin
+          cp -r build/linux/x64/release/bundle/* AppDir/usr/bin/
+          mv AppDir/usr/bin/GalleVR AppDir/usr/bin/gallevr
+          
+          # Setup desktop file and icon for linuxdeploy (in root)
+          sed "s/@@VERSION@@/${{ env.VERSION }}/g" linux/runner/gallevr.desktop > AppDir/gallevr.desktop
+          # Use local copy
+          cp AppDir/usr/bin/app_icon_flatpak.png AppDir/com.blueberrywolf.gallevr.png
+          
+          export LDAI_OUTPUT="GalleVR.AppImage"
+          export LINUXDEPLOY_OUTPUT_VERSION="${{ env.VERSION }}"
+
+          export LINUXDEPLOY="./linuxdeploy-x86_64.AppImage --appimage-extract-and-run"
+          
+          # Deploy pointing to the binary already in usr/bin
+          $LINUXDEPLOY --appdir AppDir \
+            -e AppDir/usr/bin/gallevr \
+            -d AppDir/gallevr.desktop \
+            -i AppDir/com.blueberrywolf.gallevr.png \
+            --plugin gstreamer \
+            --output appimage
+
+      - name: Upload Linux bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-bundle
+          path: build/linux/x64/release/bundle
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            GalleVR.deb
+            GalleVR.AppImage
+
+  build-flatpak:
+    name: Build Flatpak Bundle
+    runs-on: ubuntu-latest
+    needs: build-linux
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
+      options: --privileged
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Linux bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-bundle
+          path: build/linux/x64/release/bundle
+
+      - name: Prepare desktop file and icon
+        run: |
+          VERSION=$(grep "^version: " pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
+          sed -i "s/@@VERSION@@/${VERSION}/g" linux/runner/gallevr.desktop
+          # Copy icon to the same directory as the manifest
+          cp build/linux/x64/release/bundle/app_icon_flatpak.png linux/runner/com.blueberrywolf.gallevr.png
+
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: GalleVR.flatpak
+          manifest-path: linux/runner/com.blueberrywolf.gallevr.yml
+          cache: true
+          branch: stable
+          arch: x86_64
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-bundle
+          path: GalleVR.flatpak

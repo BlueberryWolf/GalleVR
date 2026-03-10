@@ -69,6 +69,10 @@ dev_dependencies:
 
 # Override uuid dependency to resolve conflict between system_tray and inno_bundle
 dependency_overrides:
+  system_tray:
+    path: packages/system_tray
+  audioplayers_linux:
+    path: packages/audioplayers_linux
   uuid: ^4.5.1
 
 flutter_launcher_icons:
@@ -87,6 +91,8 @@ inno_bundle:
   icon_path: assets/images/app_icon.ico
   installer_icon: assets/images/app_icon.ico
   output_dir: build/windows/installer
+  languages:
+    - english
 
 
 # For information on the generic Dart part of this file, see the

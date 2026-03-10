@@ -1,0 +1,35 @@
+app-id: com.blueberrywolf.gallevr
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: gallevr
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --share=network
+  - --device=dri
+  - --socket=pulseaudio
+  - --filesystem=home
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.ayatana.IndicatorManager
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --env=LD_LIBRARY_PATH=/app/bin/lib
+
+modules:
+  - name: gallevr
+    buildsystem: simple
+    build-commands:
+      - install -D GalleVR /app/bin/gallevr
+      - cp -r lib /app/bin/
+      - cp -r data /app/bin/
+      - install -Dm644 gallevr.desktop /app/share/applications/com.blueberrywolf.gallevr.desktop
+      - install -Dm644 com.blueberrywolf.gallevr.png /app/share/icons/hicolor/128x128/apps/com.blueberrywolf.gallevr.png
+    sources:
+      - type: dir
+        path: ../../build/linux/x64/release/bundle
+      - type: file
+        path: gallevr.desktop
+      - type: file
+        path: com.blueberrywolf.gallevr.png
+        dest-filename: com.blueberrywolf.gallevr.png

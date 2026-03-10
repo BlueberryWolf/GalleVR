@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=GalleVR
+Comment=A social platform for your VRChat photos.
+Exec=gallevr
+Icon=com.blueberrywolf.gallevr
+Terminal=false
+Categories=Graphics;Photography;
+Keywords=VR;VRChat;Image;Gallery;
+X-App-Version=@@VERSION@@
