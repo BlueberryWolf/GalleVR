@@ -124,7 +124,7 @@ class AuthData extends Equatable {
         lowerBadges.contains('editor') || 
         lowerBadges.contains('admin') || 
         lowerBadges.contains('owner') || 
-        lowerBadges.contains('furality_team') ||
+        lowerBadges.contains('furality_team')) {
       return SupporterTier.megaSupporter;
     }
     
@@ -147,7 +147,7 @@ class AuthData extends Equatable {
     return lowerBadges.contains('editor') || 
            lowerBadges.contains('admin') || 
            lowerBadges.contains('furality_team') ||
-           lowerBadges.contains('owner')
+           lowerBadges.contains('owner');
   }
 }
 
