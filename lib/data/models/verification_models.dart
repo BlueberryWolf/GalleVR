@@ -81,11 +81,15 @@ class AuthData extends Equatable {
   // Whether the user is verified as over 13 years old
   final bool ageVerified;
 
+  // List of badge IDs for the user
+  final List<String> badges;
+
   // Default constructor
   const AuthData({
     required this.accessKey,
     required this.userId,
     this.ageVerified = false,
+    this.badges = const [],
   });
 
   // Create an AuthData from JSON
@@ -94,6 +98,7 @@ class AuthData extends Equatable {
       accessKey: json['accessKey'] as String,
       userId: json['userId'] as String,
       ageVerified: json['ageVerified'] as bool? ?? false,
+      badges: (json['badges'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? const [],
     );
   }
 
@@ -103,11 +108,82 @@ class AuthData extends Equatable {
       'accessKey': accessKey,
       'userId': userId,
       'ageVerified': ageVerified,
+      'badges': badges,
     };
   }
 
   @override
-  List<Object?> get props => [accessKey, userId, ageVerified];
+  List<Object?> get props => [accessKey, userId, ageVerified, badges];
+
+  /// Returns the highest supporter tier based on user badges
+  SupporterTier get supporterTier {
+    final lowerBadges = badges.map((b) => b.toLowerCase()).toList();
+    
+    // Mega Tier
+    if (lowerBadges.contains('mega_supporter') || 
+        lowerBadges.contains('editor') || 
+        lowerBadges.contains('admin') || 
+        lowerBadges.contains('owner') || 
+        lowerBadges.contains('furality_team') ||
+      return SupporterTier.megaSupporter;
+    }
+    
+    // Super Tier
+    if (lowerBadges.contains('super_supporter')) {
+      return SupporterTier.superSupporter;
+    }
+    
+    // Standard Supporter
+    if (lowerBadges.contains('supporter')) {
+      return SupporterTier.supporter;
+    }
+    
+    return SupporterTier.none;
+  }
+
+  /// Returns true if the user has editor or higher permissions
+  bool get isEditor {
+    final lowerBadges = badges.map((b) => b.toLowerCase()).toList();
+    return lowerBadges.contains('editor') || 
+           lowerBadges.contains('admin') || 
+           lowerBadges.contains('furality_team') ||
+           lowerBadges.contains('owner')
+  }
+}
+
+enum SupporterTier {
+  none,
+  supporter,
+  superSupporter,
+  megaSupporter,
+}
+
+extension SupporterTierExtension on SupporterTier {
+  String get name {
+    switch (this) {
+      case SupporterTier.megaSupporter:
+        return 'Mega Supporter';
+      case SupporterTier.superSupporter:
+        return 'Super Supporter';
+      case SupporterTier.supporter:
+        return 'Supporter';
+      case SupporterTier.none:
+        return 'Standard User';
+    }
+  }
+
+  dynamic get color {
+    switch (this) {
+      case SupporterTier.megaSupporter:
+        return 0xFFB884FC;
+      case SupporterTier.superSupporter:
+        return 0xFFFFD700;
+      case SupporterTier.supporter:
+        return 0xFF4CAF50;
+      case SupporterTier.none:
+        return null;
+    }
+  }
 }
 
 // Result of a verification attempt

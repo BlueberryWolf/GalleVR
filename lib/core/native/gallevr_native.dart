@@ -39,11 +39,12 @@ class GalleVrNative {
 
   ffi.DynamicLibrary _loadLibrary() {
     if (Platform.isWindows) {
-      // in development, the DLL might be in several places
       final possiblePaths = [
         'gallevr_core.dll',
         path.join(Directory.current.path, 'build', 'windows', 'x64', 'runner', 'Debug', 'gallevr_core.dll'),
         path.join(Directory.current.path, 'build', 'windows', 'x64', 'runner', 'Release', 'gallevr_core.dll'),
+        path.join(Directory.current.path, 'build', 'windows', 'x64', 'gallevr_core', 'Debug', 'gallevr_core.dll'),
+        path.join(Directory.current.path, 'build', 'windows', 'x64', 'gallevr_core', 'Release', 'gallevr_core.dll'),
       ];
 
       for (final path in possiblePaths) {

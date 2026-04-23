@@ -605,6 +605,15 @@ class VRChatService {
           'Verification status result: $isVerified',
           name: 'VRChatService',
         );
+
+        if (isVerified) {
+          try {
+            await fetchMe(authData, forceRefresh: true);
+          } catch (e) {
+            developer.log('Error fetching profile after verification: $e', name: 'VRChatService');
+          }
+        }
+
         return isVerified;
       }
 
@@ -616,6 +625,49 @@ class VRChatService {
       );
       return false;
     }
+  }
+
+  Future<AuthData?> fetchMe(AuthData authData, {bool forceRefresh = false}) async {
+    try {
+      final url = Uri.parse(
+        'https://api.blueberry.coffee/vrchat/auth/me?includeVRChatData=false${forceRefresh ? '&cache=false' : ''}',
+      );
+      developer.log('Fetching user profile from $url', name: 'VRChatService');
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${authData.accessKey}',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        final badges = (responseData['badges'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            const [];
+        
+        developer.log('Received badges from API: $badges', name: 'VRChatService');
+
+        final updatedAuthData = AuthData(
+          accessKey: authData.accessKey,
+          userId: authData.userId,
+          ageVerified: responseData['ageVerified'] == true,
+          badges: badges,
+        );
+
+        await saveAuthData(updatedAuthData);
+        developer.log('Successfully fetched and saved updated auth data with ${badges.length} badges', name: 'VRChatService');
+        return updatedAuthData;
+      } else {
+        developer.log('Failed to fetch profile: ${response.statusCode} ${response.body}', name: 'VRChatService');
+      }
+    } catch (e) {
+      developer.log('Error fetching user profile: $e', name: 'VRChatService');
+    }
+    return null;
   }
 
   Future<bool> checkFriendStatus(String username) async {

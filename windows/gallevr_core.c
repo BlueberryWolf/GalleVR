@@ -10,8 +10,12 @@
 
 #ifdef _WIN32
 #define EXPORT __declspec(dllexport)
+#include <windows.h>
+#define SLEEP_MS(ms) Sleep(ms)
 #else
 #define EXPORT __attribute__((visibility("default"))) __attribute__((used))
+#include <unistd.h>
+#define SLEEP_MS(ms) usleep((ms) * 1000)
 #endif
 
 // Fast PNG chunk scanner to find VRCX metadata in Description field

@@ -26,6 +26,9 @@ class PhotoMetadata {
   // Whether this photo has been scanned and confirmed to have no VRCX metadata
   final bool isNonVrcx;
 
+  // Whether this photo is an edited version
+  final bool isEdited;
+
   // Default constructor
   PhotoMetadata({
     required this.takenDate,
@@ -36,6 +39,7 @@ class PhotoMetadata {
     this.localPath,
     this.galleryUrl,
     this.isNonVrcx = false,
+    this.isEdited = false,
   });
 
   // Create a PhotoMetadata from JSON
@@ -53,6 +57,7 @@ class PhotoMetadata {
       localPath: json['localPath'] as String?,
       galleryUrl: json['galleryUrl'] as String?,
       isNonVrcx: json['isNonVrcx'] as bool? ?? false,
+      isEdited: json['isEdited'] as bool? ?? false,
     );
   }
 
@@ -67,6 +72,7 @@ class PhotoMetadata {
       if (localPath != null) 'localPath': localPath,
       if (galleryUrl != null) 'galleryUrl': galleryUrl,
       'isNonVrcx': isNonVrcx,
+      'isEdited': isEdited,
     };
   }
 
@@ -80,6 +86,7 @@ class PhotoMetadata {
     String? localPath,
     String? galleryUrl,
     bool? isNonVrcx,
+    bool? isEdited,
   }) {
     return PhotoMetadata(
       takenDate: takenDate ?? this.takenDate,
@@ -90,6 +97,7 @@ class PhotoMetadata {
       localPath: localPath ?? this.localPath,
       galleryUrl: galleryUrl ?? this.galleryUrl,
       isNonVrcx: isNonVrcx ?? this.isNonVrcx,
+      isEdited: isEdited ?? this.isEdited,
     );
   }
 }

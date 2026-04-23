@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
@@ -6,26 +7,31 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/webp/webp_encoder_service.dart';
+import '../../core/native/gallevr_native.dart';
 import '../models/config_model.dart';
 import '../models/log_metadata.dart';
 import '../models/photo_metadata.dart';
 import '../repositories/photo_metadata_repository.dart';
 import 'photo_event_service.dart';
 import 'photo_upload_service.dart';
+import 'vrchat_service.dart';
 
 class PhotoProcessorService {
   final PhotoUploadService _photoUploadService;
   final PhotoMetadataRepository _photoMetadataRepository;
   final WebpEncoderService _webpEncoderService;
+  final VRChatService _vrchatService;
 
   PhotoProcessorService({
     PhotoUploadService? photoUploadService,
     PhotoMetadataRepository? photoMetadataRepository,
     WebpEncoderService? webpEncoderService,
+    VRChatService? vrchatService,
   }) : _photoUploadService = photoUploadService ?? PhotoUploadService(),
        _photoMetadataRepository =
            photoMetadataRepository ?? PhotoMetadataRepository(),
-       _webpEncoderService = webpEncoderService ?? WebpEncoderService();
+       _webpEncoderService = webpEncoderService ?? WebpEncoderService(),
+       _vrchatService = vrchatService ?? VRChatService();
 
   Future<String?> processPhoto(
     String sourcePath,
@@ -95,15 +101,57 @@ class PhotoProcessorService {
             return null;
           }
 
-          final processedImage = await _resizeImageIfNeeded(image);
+          // Determine quality settings based on user tier
+          final authData = await _vrchatService.loadAuthData();
+          final badges = authData?.badges.map((b) => b.toLowerCase()).toList() ?? [];
+          
+          int maxDimension = 1080;
+          int webpQuality = 85;
+
+          if (badges.contains('mega_supporter') || badges.contains('editor')) {
+            maxDimension = 7680; // 8K
+            webpQuality = 95;
+            developer.log('User is Mega Supporter: 8K limit, 95 quality', name: 'PhotoProcessorService');
+          } else if (badges.contains('super_supporter')) {
+            maxDimension = 3840; // 4K
+            webpQuality = 92;
+            developer.log('User is Super Supporter: 4K limit, 92 quality', name: 'PhotoProcessorService');
+          } else if (badges.contains('supporter') || badges.contains('donator')) {
+            maxDimension = 2560; // 2K (1440p)
+            webpQuality = 90;
+            developer.log('User is Supporter: 1440p limit, 90 quality', name: 'PhotoProcessorService');
+          } else {
+            developer.log('User is standard: 1080p limit, 85 quality', name: 'PhotoProcessorService');
+          }
+
+          final processedImage = await _resizeImageIfNeeded(image, maxDimension);
           developer.log(
-            'Image resized to ${processedImage.width}x${processedImage.height}',
+            'Image processed to ${processedImage.width}x${processedImage.height}',
             name: 'PhotoProcessorService',
           );
 
-          final webpBytes = await _encodeToWebP(processedImage, 85);
+          Uint8List webpBytes = await _encodeToWebP(processedImage, webpQuality);
+          
+          final bool isSupporter = badges.any((b) => [
+            'mega_supporter', 'super_supporter', 'supporter', 'donator',
+            'editor', 'admin', 'owner', 'staff', 'furality_team'
+          ].contains(b));
+
+          if (!isSupporter && webpBytes.length > 153600) {
+            int currentQuality = webpQuality;
+            developer.log('Initial encode too large for standard user (${webpBytes.length} bytes), starting iterative compression...', name: 'PhotoProcessorService');
+            
+            while (webpBytes.length > 153600 && currentQuality > 50) {
+              currentQuality -= 10;
+              if (currentQuality < 50) currentQuality = 50;
+              webpBytes = await _encodeToWebP(processedImage, currentQuality);
+              developer.log('Retry quality $currentQuality produced ${webpBytes.length} bytes', name: 'PhotoProcessorService');
+              if (currentQuality <= 50) break;
+            }
+          }
+
           developer.log(
-            'Encoded to WebP: ${webpBytes.length} bytes',
+            'Final WebP: ${webpBytes.length} bytes (Quality: $webpQuality / Supporter: $isSupporter)',
             name: 'PhotoProcessorService',
           );
 
@@ -253,32 +301,23 @@ class PhotoProcessorService {
     }, bytes);
   }
 
-  Future<img.Image> _resizeImageIfNeeded(img.Image image) async {
-    const maxDimension = 1080;
-
+  Future<img.Image> _resizeImageIfNeeded(img.Image image, int maxDimension) async {
     if (image.width <= maxDimension && image.height <= maxDimension) {
       return image;
     }
 
-    return await compute((img.Image image) {
+    return await compute((Map<String, dynamic> params) {
+      final img.Image image = params['image'];
+      final int maxDim = params['maxDim'];
+      
       int newWidth, newHeight;
 
       if (image.width > image.height) {
-        if (image.height > maxDimension) {
-          newHeight = maxDimension;
-          newWidth = (image.width * (maxDimension / image.height)).round();
-        } else {
-          newWidth = image.width;
-          newHeight = image.height;
-        }
+        newWidth = maxDim;
+        newHeight = (image.height * (maxDim / image.width)).round();
       } else {
-        if (image.width > maxDimension) {
-          newWidth = maxDimension;
-          newHeight = (image.height * (maxDimension / image.width)).round();
-        } else {
-          newWidth = image.width;
-          newHeight = image.height;
-        }
+        newHeight = maxDim;
+        newWidth = (image.width * (maxDim / image.height)).round();
       }
 
       return img.copyResize(
@@ -287,7 +326,7 @@ class PhotoProcessorService {
         height: newHeight,
         interpolation: img.Interpolation.cubic,
       );
-    }, image);
+    }, {'image': image, 'maxDim': maxDimension});
   }
 
   Future<Uint8List> _encodeToWebP(img.Image image, int quality) async {
@@ -297,11 +336,4 @@ class PhotoProcessorService {
       method: 6,
     );
   }
-}
-
-class EncoderParams {
-  final img.Image image;
-  final int quality;
-
-  EncoderParams(this.image, this.quality);
 }

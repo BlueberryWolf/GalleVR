@@ -15,7 +15,10 @@ import '../../core/platform/platform_service_factory.dart';
 import '../../core/services/permission_service.dart';
 import '../../core/services/update_service.dart';
 import '../../core/services/vrchat_registry_service.dart';
+import '../../data/services/vrchat_service.dart';
+import '../../data/models/verification_models.dart';
 import '../widgets/tos_modal.dart';
+import 'mass_upload_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -32,8 +35,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final UpdateService _updateService = UpdateService();
   final TOSService _tosService = TOSService();
   final VRChatRegistryService _vrchatRegistryService = VRChatRegistryService();
+  final VRChatService _vrchatService = VRChatService();
 
   ConfigModel? _config;
+  AuthData? _authData;
   bool _isLoading = true;
   String _appVersion = '1.0.0'; // Default version
   bool _updateAvailable = false;
@@ -162,8 +167,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       developer.log('Loading config...', name: 'SettingsScreen');
       final config = await _configRepository.loadConfig();
       developer.log('Config loaded successfully', name: 'SettingsScreen');
+      
+      final authData = await _vrchatService.loadAuthData();
+      
       setState(() {
         _config = config;
+        _authData = authData;
         _isLoading = false;
       });
     } catch (e) {
@@ -300,7 +309,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final sectionSpacing = isSmallScreen ? 12.0 : 16.0;
 
     // Calculate item count based on platform
-    final int itemCount = Platform.isWindows ? 11 : 9;
+    final int itemCount = Platform.isWindows ? 12 : 10;
 
     return RepaintBoundary(
       child: ListView.builder(
@@ -319,24 +328,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
             case 2:
               return _buildPhotoProcessingSection(isSmallScreen);
             case 3:
-              return SizedBox(height: sectionSpacing);
+              return _authData?.isEditor == true 
+                  ? _buildEditorSection(isSmallScreen)
+                  : const SizedBox.shrink();
             case 4:
-              return _buildNotificationsSection(isSmallScreen);
+              return SizedBox(height: sectionSpacing);
             case 5:
-              return SizedBox(height: sectionSpacing);
+              return _buildNotificationsSection(isSmallScreen);
             case 6:
-              return _buildSharingSection(isSmallScreen);
-            case 7:
               return SizedBox(height: sectionSpacing);
+            case 7:
+              return _buildSharingSection(isSmallScreen);
             case 8:
+              return SizedBox(height: sectionSpacing);
+            case 9:
               return Platform.isWindows
                   ? _buildWindowsSection(isSmallScreen)
                   : _buildAboutSection(isSmallScreen);
-            case 9:
+            case 10:
               return Platform.isWindows
                   ? SizedBox(height: sectionSpacing * 2)
                   : const SizedBox.shrink();
-            case 10:
+            case 11:
               return Platform.isWindows
                   ? _buildAboutSection(isSmallScreen)
                   : const SizedBox.shrink();
@@ -344,6 +357,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
               return const SizedBox.shrink();
           }
         },
+      ),
+    );
+  }
+
+  Widget _buildEditorSection([bool isSmallScreen = false]) {
+    final padding = isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
+    
+    return RepaintBoundary(
+      child: Card(
+        color: Theme.of(context).colorScheme.primaryContainer.withAlpha(50),
+        child: Padding(
+          padding: padding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.edit_note, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Editor Tools',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.blueAccent,
+                  child: Icon(Icons.cloud_upload, color: Colors.white),
+                ),
+                title: const Text('Mass Upload Screenshots'),
+                subtitle: const Text('Upload edited photos in bulk'),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const MassUploadScreen()),
+                  );
+                },
+                trailing: const Icon(Icons.chevron_right),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

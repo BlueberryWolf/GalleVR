@@ -17,6 +17,7 @@ import 'photo_event_service.dart';
 import 'vrchat_service.dart';
 import '../repositories/photo_metadata_repository.dart';
 import '../../core/isolate/isolate_worker_pool.dart';
+import '../models/verification_models.dart';
 
 // Singleton service manager for the application
 // Manages global services that should run throughout the app lifecycle
@@ -76,6 +77,18 @@ class AppServiceManager {
   // Get the current configuration
   ConfigModel? get config => _config;
 
+  // Stream controller for auth data changes
+  final _authDataStreamController = StreamController<AuthData?>.broadcast();
+
+  // Stream of auth data changes
+  Stream<AuthData?> get authDataStream => _authDataStreamController.stream;
+
+  // Current auth data
+  AuthData? _authData;
+
+  // Get the current auth data
+  AuthData? get authData => _authData;
+
   // Track if a TOS modal is currently being shown
   bool _isTOSModalVisible = false;
 
@@ -131,9 +144,17 @@ class AppServiceManager {
           developer.log('Verification is invalid, logging out user', name: 'AppServiceManager');
           // Clear auth data if verification is invalid
           await _vrchatService.logout();
+          _authData = null;
+          _authDataStreamController.add(null);
         } else {
           developer.log('Verification is valid', name: 'AppServiceManager');
+          final updatedAuthData = await _vrchatService.loadAuthData();
+          _authData = updatedAuthData;
+          _authDataStreamController.add(updatedAuthData);
         }
+      } else {
+        _authData = null;
+        _authDataStreamController.add(null);
       }
     } catch (e) {
       developer.log('Error checking verification status: $e', name: 'AppServiceManager');
@@ -154,8 +175,15 @@ class AppServiceManager {
       ]);
       developer.log('Core services and config loaded', name: 'AppServiceManager');
 
+      // Load initial auth data from storage
+      _authData = await _vrchatService.loadAuthData();
+      if (_authData != null) {
+        _authDataStreamController.add(_authData);
+        developer.log('Initial auth data loaded: ${_authData!.badges.length} badges', name: 'AppServiceManager');
+      }
+
       // Initialize secondary services in parallel
-      final secondaryInit = Future.wait([
+      await Future.wait([
         PhotoMetadataRepository().getAllPhotoMetadata(),
         checkVerificationStatus(),
       ]);
@@ -362,8 +390,9 @@ class AppServiceManager {
 
     try {
       await _configStreamController.close();
+      await _authDataStreamController.close();
     } catch (e) {
-      developer.log('Error closing config stream controller: $e', name: 'AppServiceManager');
+      developer.log('Error closing stream controllers: $e', name: 'AppServiceManager');
     }
 
     try {

@@ -8,6 +8,7 @@ import '../../data/services/log_parser_service.dart';
 import '../../data/services/photo_processor_service.dart';
 import '../../data/services/photo_event_service.dart';
 import '../../data/models/config_model.dart';
+import '../../data/models/verification_models.dart';
 
 class MonitorScreen extends StatefulWidget {
   const MonitorScreen({super.key});
@@ -23,6 +24,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
   final PhotoEventService _photoEventService = PhotoEventService();
 
   ConfigModel? _config;
+  AuthData? _authData;
   bool _isWatching = false;
   bool _isLoading = true;
   bool _rebuildScheduled = false;
@@ -30,6 +32,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
   final List<_ProcessingEvent> _events = [];
   StreamSubscription<String>? _photoSubscription;
   StreamSubscription<ConfigModel>? _configSubscription;
+  StreamSubscription<AuthData?>? _authSubscription;
   StreamSubscription<PhotoErrorEvent>? _errorSubscription;
 
   @override
@@ -37,6 +40,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
     super.initState();
     _loadConfig();
     _listenForConfigChanges();
+    _listenForAuthChanges();
     _listenForErrorEvents();
   }
 
@@ -44,6 +48,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
   void dispose() {
     _stopWatching();
     _configSubscription?.cancel();
+    _authSubscription?.cancel();
     _errorSubscription?.cancel();
     super.dispose();
   }
@@ -114,6 +119,16 @@ class _MonitorScreenState extends State<MonitorScreen> {
     });
   }
 
+  void _listenForAuthChanges() {
+    _authSubscription = _appServiceManager.authDataStream.listen((authData) {
+      if (mounted) {
+        setState(() {
+          _authData = authData;
+        });
+      }
+    });
+  }
+
   void _updateWatcherStatus() {
     if (_config != null) {
       if (_config!.photosDirectory.isNotEmpty && !_isWatching) {
@@ -135,6 +150,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
       if (config != null) {
         setState(() {
           _config = config;
+          _authData = _appServiceManager.authData;
           _isLoading = false;
         });
 
@@ -145,6 +161,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
         await _appServiceManager.initialize();
         setState(() {
           _config = _appServiceManager.config;
+          _authData = _appServiceManager.authData;
           _isLoading = false;
         });
 
@@ -384,13 +401,64 @@ class _MonitorScreenState extends State<MonitorScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              'All photos are saved locally with metadata',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            const SizedBox(height: 12),
+            _buildSupporterStatus(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSupporterStatus() {
+    if (_authData == null) return const SizedBox.shrink();
+
+    final tier = _authData!.supporterTier;
+    final colorValue = tier.color as int?;
+    final color = colorValue != null ? Color(colorValue) : Colors.grey;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            tier == SupporterTier.none ? Icons.person : Icons.stars,
+            color: color,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            tier.name,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+          if (tier != SupporterTier.none) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'ACTIVE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -11,6 +11,12 @@ import '../services/vrcx_metadata_service.dart';
 class PhotoMetadataRepository {
   static const String _photoIdsKey = 'gallevr_photo_ids';
   static const String _photoMetadataKeyPrefix = 'gallevr_photo_';
+  
+  // Regex to find VRChat filename pattern: VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT
+  static final RegExp _vrcFilenameRegex = RegExp(
+    r'VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}(?:_\d+x\d+)?',
+    caseSensitive: false,
+  );
 
   // In-memory cache to avoid repeated SharedPreferences reads
   static final Map<String, PhotoMetadata> _metadataCache = {};
@@ -103,6 +109,20 @@ class PhotoMetadataRepository {
       final foundId = '${bestFallback.filename}_${bestFallback.takenDate}';
       _filePathToIdCache[nameWithoutExt] = foundId;
       return bestFallback;
+    }
+
+    // Regex Fallback: Search for the VRChat pattern within the current filename
+    final match = _vrcFilenameRegex.firstMatch(filename);
+    if (match != null) {
+      final vrcBaseName = match.group(0)!;
+      developer.log('Detected VRChat pattern in filename: $vrcBaseName', name: 'PhotoMetadataRepository');
+      
+      for (final metadata in _metadataCache.values) {
+        if (metadata.filename.contains(vrcBaseName)) {
+           developer.log('Recovered metadata via regex match for $vrcBaseName', name: 'PhotoMetadataRepository');
+           return metadata;
+        }
+      }
     }
 
     if (_processingQueue.containsKey(filePath)) {

@@ -10,3 +10,9 @@ apply_standard_settings(gallevr_core)
 set_target_properties(gallevr_core PROPERTIES
   C_VISIBILITY_PRESET hidden
 )
+
+install(TARGETS gallevr_core
+    RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_PREFIX}"
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_PREFIX}"
+)
