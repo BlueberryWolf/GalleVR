@@ -87,9 +87,27 @@ class PhotoMetadataRepository {
     final nameWithoutExt = path.basenameWithoutExtension(filename);
 
     String? photoId = _filePathToIdCache[filePath] ?? 
-                     _filePathToIdCache[filename] ?? 
-                     _filePathToIdCache[nameWithoutExt];
+                     _filePathToIdCache[filename];
 
+    if (photoId != null && _metadataCache.containsKey(photoId)) {
+      return _metadataCache[photoId];
+    }
+
+    // check vrcx metadata from file
+    if (filename.toLowerCase().endsWith('.png')) {
+      try {
+        final fileMetadata = await _processVrcxMetadataBackground(filePath);
+        if (fileMetadata != null && fileMetadata.world != null) {
+          developer.log('Extracted valid VRCX metadata directly from file: $filename', name: 'PhotoMetadataRepository');
+          return fileMetadata;
+        }
+      } catch (e) {
+        developer.log('Error during direct VRCX extraction: $e', name: 'PhotoMetadataRepository');
+      }
+    }
+
+    // fuzzy database matching
+    photoId = _filePathToIdCache[nameWithoutExt];
     if (photoId != null && _metadataCache.containsKey(photoId)) {
       return _metadataCache[photoId];
     }
