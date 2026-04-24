@@ -406,7 +406,10 @@ class VRChatService {
     }
   }
 
-  Future<VerificationResult> startAutomaticVerification({bool ageVerified = false}) async {
+  Future<VerificationResult> startAutomaticVerification({
+    bool ageVerified = false,
+    void Function(String message)? onProgress,
+  }) async {
     if (!_isInitialized) {
       await initialize();
     }
@@ -437,6 +440,7 @@ class VRChatService {
         return VerificationResult.failure('User ID is null');
       }
 
+      onProgress?.call('Starting verification process...');
       developer.log(
         'Starting automatic verification for user: ${currentUser?.displayName} ($userId)',
         name: 'VRChatService',
@@ -444,6 +448,7 @@ class VRChatService {
 
       String originalBio = '';
       try {
+        onProgress?.call('Backing up your current bio...');
         originalBio = await getCurrentBio() ?? '';
         developer.log(
           'Successfully retrieved current bio: $originalBio',
@@ -453,6 +458,7 @@ class VRChatService {
         developer.log('Error getting current bio: $e', name: 'VRChatService');
       }
 
+      onProgress?.call('Requesting verification token...');
       developer.log(
         'Getting verification token from server for user ID: $userId',
         name: 'VRChatService',
@@ -484,6 +490,7 @@ class VRChatService {
         ageVerified: verificationResponse.ageVerified,
       );
 
+      onProgress?.call('Setting your VRChat status to token...');
       developer.log(
         'Updating bio with verification token',
         name: 'VRChatService',
@@ -496,9 +503,10 @@ class VRChatService {
       }
 
       bool verificationSuccessful = false;
-      const maxAttempts = 10;
+      const maxAttempts = 30; // Increased from 10
 
       for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        onProgress?.call('Waiting for VRChat to sync (Attempt $attempt/$maxAttempts)...');
         developer.log(
           'Checking verification status (attempt $attempt/$maxAttempts)',
           name: 'VRChatService',
@@ -510,13 +518,15 @@ class VRChatService {
           break;
         }
 
-        await Future.delayed(const Duration(seconds: 1));
+        await Future.delayed(const Duration(seconds: 2)); // Increased from 1s
       }
 
+      onProgress?.call('Restoring your original bio...');
       developer.log('Restoring original bio', name: 'VRChatService');
       await updateBio(originalBio);
 
       if (verificationSuccessful) {
+        onProgress?.call('Verification successful!');
         developer.log('Verification successful', name: 'VRChatService');
         return VerificationResult.success(authData);
       } else {
@@ -525,7 +535,7 @@ class VRChatService {
           name: 'VRChatService',
         );
         return VerificationResult.failure(
-          'Verification failed after multiple attempts',
+          'Verification failed after $maxAttempts attempts. VRChat API is being slow to update. Please try again in a minute.',
         );
       }
     } catch (e) {

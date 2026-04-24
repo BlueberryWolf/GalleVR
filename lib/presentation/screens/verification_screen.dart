@@ -143,6 +143,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
         final verificationResult =
             await _vrchatService.startAutomaticVerification(
               ageVerified: _isAgeVerified,
+              onProgress: (message) {
+                setState(() {
+                  _statusMessage = message;
+                });
+              },
             );
 
         if (verificationResult.success && verificationResult.authData != null) {
@@ -719,7 +724,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             ),
             const SizedBox(height: 8),
             StepIndicator(
-              steps: const ['Enter Username', 'Add Friend', 'Update Status'],
+              steps: const ['Start', 'Friendship', 'Verify'],
               currentStep: _manualVerificationStep,
             ),
             const SizedBox(height: 16),
@@ -835,21 +840,23 @@ class _VerificationScreenState extends State<VerificationScreen> {
               const SizedBox(height: 8),
               const ListTile(
                 leading: CircleAvatar(child: Text('1')),
-                title: Text('Open VRChat'),
+                title: Text('Check your VRChat Notifications'),
+                subtitle: Text('A friend request from "GalleVR" should be waiting for you.'),
               ),
               const ListTile(
                 leading: CircleAvatar(child: Text('2')),
-                title: Text('Open the menu and go to Social → User Search'),
+                title: Text('Accept the friend request'),
+                subtitle: Text('This allows us to verify your profile status.'),
               ),
               const ListTile(
                 leading: CircleAvatar(child: Text('3')),
-                title: Text('Search for "GalleVR" and send a friend request'),
+                title: Text('Click "Check Status" below'),
+                subtitle: Text('We\'ll confirm once the friendship is active.'),
               ),
-              const ListTile(
-                leading: CircleAvatar(child: Text('4')),
-                title: Text(
-                  'Click "Check Status" below once you\'ve sent the request',
-                ),
+              const SizedBox(height: 16),
+              const Text(
+                'Tip: If you don\'t see a request, you can also search for "GalleVR" manually and send one to us.',
+                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey),
               ),
             ] else if (_manualVerificationStep == 2) ...[
               const Text('Set your VRChat status to the verification token:'),
