@@ -68,6 +68,11 @@ jobs:
           
           echo "Keystore decoded successfully. Size: $(stat -c%s android/app/release.keystore) bytes"
 
+      - name: Verify Keystore Password
+        run: |
+          keytool -list -keystore android/app/release.keystore -storepass "${{ secrets.ANDROID_STORE_PASSWORD }}" -alias "${{ secrets.ANDROID_KEY_ALIAS }}"
+          echo "Secret verification successful"
+
       - name: Build Android release APK
         run: flutter build apk --release
         env:
