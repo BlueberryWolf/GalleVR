@@ -44,7 +44,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   // Windows settings
   bool _minimizeToTray = true;
-  bool _startWithWindows = false;
+  bool _startWithWindows = true;
 
   int _currentStep = 0;
 
