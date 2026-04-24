@@ -48,3 +48,9 @@ android/app/build/
 
 # Local configuration files
 windows/flutter/ephemeral/generated_config.cmake
+
+# Signing and Local Secrets
+android/app/*.keystore
+android/app/*.jks
+android/key.properties
+.env

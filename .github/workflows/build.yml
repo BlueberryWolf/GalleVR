@@ -57,8 +57,17 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
+
       - name: Build Android release APK
         run: flutter build apk --release
+        env:
+          ANDROID_KEYSTORE_PATH: "release.keystore"
+          ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
+          ANDROID_KEY_PASSWORD: "${{ secrets.ANDROID_KEY_PASSWORD }}"
+          ANDROID_STORE_PASSWORD: "${{ secrets.ANDROID_STORE_PASSWORD }}"
 
       - name: Rename APK to GalleVR.apk
         run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/GalleVR.apk
