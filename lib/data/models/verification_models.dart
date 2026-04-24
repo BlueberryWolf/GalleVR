@@ -120,11 +120,7 @@ class AuthData extends Equatable {
     final lowerBadges = badges.map((b) => b.toLowerCase()).toList();
     
     // Mega Tier
-    if (lowerBadges.contains('mega_supporter') || 
-        lowerBadges.contains('editor') || 
-        lowerBadges.contains('admin') || 
-        lowerBadges.contains('owner') || 
-        lowerBadges.contains('furality_team')) {
+    if (lowerBadges.contains('mega_supporter')) {
       return SupporterTier.megaSupporter;
     }
     
@@ -134,7 +130,7 @@ class AuthData extends Equatable {
     }
     
     // Standard Supporter
-    if (lowerBadges.contains('supporter')) {
+    if (lowerBadges.contains('supporter') || lowerBadges.contains('donator')) {
       return SupporterTier.supporter;
     }
     

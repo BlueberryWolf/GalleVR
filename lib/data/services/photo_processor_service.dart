@@ -108,7 +108,7 @@ class PhotoProcessorService {
           int maxDimension = 1080;
           int webpQuality = 85;
 
-          if (badges.contains('mega_supporter') || badges.contains('editor')) {
+          if (badges.contains('mega_supporter')) {
             maxDimension = 7680; // 8K
             webpQuality = 95;
             developer.log('User is Mega Supporter: 8K limit, 95 quality', name: 'PhotoProcessorService');
@@ -133,8 +133,7 @@ class PhotoProcessorService {
           Uint8List webpBytes = await _encodeToWebP(processedImage, webpQuality);
           
           final bool isSupporter = badges.any((b) => [
-            'mega_supporter', 'super_supporter', 'supporter', 'donator',
-            'editor', 'admin', 'owner', 'staff', 'furality_team'
+            'mega_supporter', 'super_supporter', 'supporter', 'donator'
           ].contains(b));
 
           if (!isSupporter && webpBytes.length > 153600) {
