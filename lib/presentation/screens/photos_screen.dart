@@ -133,11 +133,9 @@ class _PhotosScreenState extends State<PhotosScreen> {
     _photoUploadedSubscription = _photoEventService.photoUploaded.listen((photoPath) {
       developer.log('Photo uploaded event received: $photoPath', name: 'PhotosScreen');
 
-      _photoMetadataMap.remove(photoPath);
-
       if (mounted) {
-        developer.log('Refreshing photos list after upload', name: 'PhotosScreen');
-        _loadPhotos();
+        developer.log('Refreshing photo status after upload', name: 'PhotosScreen');
+        _refreshMetadataCache(photoPath);
       }
     });
   }
@@ -213,15 +211,13 @@ class _PhotosScreenState extends State<PhotosScreen> {
       if (loadId != _currentLoadId || !mounted) return;
       developer.log('Found ${photos.length} total PNG files', name: 'PhotosScreen');
 
-      setState(() {
-        _isLoading = true;
-        _allPhotos = [];
-        _displayedPhotos = [];
-        _currentPage = 0;
-        _photoMetadataMap.clear();
-      });
+      if (_allPhotos.isEmpty) {
+        setState(() {
+          _isLoading = true;
+        });
+      }
 
-      const int prioritySize = 50;
+      developer.log('Processing priority chunk...', name: 'PhotosScreen');
       final priorityChunk = photos.take(prioritySize).toList();
       
       final priorityMetadata = await _metadataRepository.getMetadataForFiles(
@@ -238,7 +234,10 @@ class _PhotosScreenState extends State<PhotosScreen> {
       setState(() {
         _isLoading = false;
         _photoMetadataMap.addAll(priorityMetadata);
+        
         _allPhotos = filteredPriority;
+        _displayedPhotos = [];
+        _currentPage = 0;
       });
 
       // load initial batch of grid items
