@@ -1,4 +1,4 @@
-package com.gallevr.gallevr
+package com.gallevr.app
 
 import io.flutter.embedding.android.FlutterActivity
 
