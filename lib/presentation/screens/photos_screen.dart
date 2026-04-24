@@ -207,13 +207,31 @@ class _PhotosScreenState extends State<PhotosScreen> {
         ),
       );
 
-      developer.log('Found ${photos.length} photos', name: 'PhotosScreen');
+      developer.log('Found ${photos.length} total PNG files', name: 'PhotosScreen');
+
+      final allMetadata = await _metadataRepository.getMetadataForFiles(
+        photos.map((e) => e.path).toList(),
+      );
+
+      final filteredPhotos = photos.where((photo) {
+        final meta = allMetadata[photo.path];
+        if (meta == null) return false;
+        return meta.world != null || 
+               meta.players.isNotEmpty || 
+               meta.galleryUrl != null;
+      }).toList();
+
+      developer.log(
+        'Filtered to ${filteredPhotos.length} photos with metadata', 
+        name: 'PhotosScreen'
+      );
 
       _photoMetadataMap.clear();
-      developer.log('Metadata cache cleared', name: 'PhotosScreen');
+      _photoMetadataMap.addAll(allMetadata);
+      developer.log('Metadata cache updated with ${allMetadata.length} entries', name: 'PhotosScreen');
 
       setState(() {
-        _allPhotos = photos;
+        _allPhotos = filteredPhotos;
         _displayedPhotos = [];
         _currentPage = 0;
       });
