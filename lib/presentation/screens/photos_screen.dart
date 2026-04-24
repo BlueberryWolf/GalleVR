@@ -41,6 +41,7 @@ class _PhotosScreenState extends State<PhotosScreen> {
   List<FileSystemEntity> _allPhotos = [];
   List<FileSystemEntity> _displayedPhotos = [];
   final Map<String, PhotoMetadata?> _photoMetadataMap = {};
+  int _currentLoadId = 0;
 
   bool _isLoading = true;
   bool _isLoadingMore = false;
@@ -168,7 +169,9 @@ class _PhotosScreenState extends State<PhotosScreen> {
   }
 
   Future<void> _loadPhotos() async {
-    developer.log('Loading photos...', name: 'PhotosScreen');
+    final loadId = ++_currentLoadId;
+    developer.log('Loading photos (ID: $loadId)...', name: 'PhotosScreen');
+
     if (_config == null || _config!.photosDirectory.isEmpty) {
       developer.log('No photos directory set', name: 'PhotosScreen');
       setState(() {
@@ -207,44 +210,86 @@ class _PhotosScreenState extends State<PhotosScreen> {
         ),
       );
 
+      if (loadId != _currentLoadId || !mounted) return;
       developer.log('Found ${photos.length} total PNG files', name: 'PhotosScreen');
 
-      final allMetadata = await _metadataRepository.getMetadataForFiles(
-        photos.map((e) => e.path).toList(),
-      );
-
-      final filteredPhotos = photos.where((photo) {
-        final meta = allMetadata[photo.path];
-        if (meta == null) return false;
-        return meta.world != null || 
-               meta.players.isNotEmpty || 
-               meta.galleryUrl != null;
-      }).toList();
-
-      developer.log(
-        'Filtered to ${filteredPhotos.length} photos with metadata', 
-        name: 'PhotosScreen'
-      );
-
-      _photoMetadataMap.clear();
-      _photoMetadataMap.addAll(allMetadata);
-      developer.log('Metadata cache updated with ${allMetadata.length} entries', name: 'PhotosScreen');
-
       setState(() {
-        _allPhotos = filteredPhotos;
-        _displayedPhotos = [];
-        _currentPage = 0;
-      });
-
-      _loadMorePhotos();
-    } catch (e) {
-      developer.log('Error loading photos: $e', name: 'PhotosScreen', error: e);
-      setState(() {
+        _isLoading = true;
         _allPhotos = [];
         _displayedPhotos = [];
         _currentPage = 0;
+        _photoMetadataMap.clear();
       });
+
+      const int prioritySize = 50;
+      final priorityChunk = photos.take(prioritySize).toList();
+      
+      final priorityMetadata = await _metadataRepository.getMetadataForFiles(
+        priorityChunk.map((e) => e.path).toList(),
+      );
+
+      if (loadId != _currentLoadId || !mounted) return;
+
+      final filteredPriority = priorityChunk.where((photo) {
+        final meta = priorityMetadata[photo.path];
+        return meta != null && (meta.world != null || meta.players.isNotEmpty || meta.galleryUrl != null);
+      }).toList();
+
+      setState(() {
+        _isLoading = false;
+        _photoMetadataMap.addAll(priorityMetadata);
+        _allPhotos = filteredPriority;
+      });
+
+      // load initial batch of grid items
+      _loadMorePhotos();
+
+      if (photos.length > prioritySize) {
+        _processRemainingPhotos(photos.skip(prioritySize).toList(), loadId);
+      }
+    } catch (e) {
+      developer.log('Error loading photos: $e', name: 'PhotosScreen', error: e);
+      if (loadId == _currentLoadId && mounted) {
+        setState(() {
+          _allPhotos = [];
+          _displayedPhotos = [];
+          _currentPage = 0;
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _processRemainingPhotos(List<FileSystemEntity> remaining, int loadId) async {
+    const int backgroundChunkSize = 200;
+    
+    for (int i = 0; i < remaining.length; i += backgroundChunkSize) {
+      await Future.delayed(const Duration(milliseconds: 10));
+      if (loadId != _currentLoadId || !mounted) return;
+
+      final end = (i + backgroundChunkSize < remaining.length) ? i + backgroundChunkSize : remaining.length;
+      final chunk = remaining.sublist(i, end);
+      
+      final chunkMetadata = await _metadataRepository.getMetadataForFiles(
+        chunk.map((e) => e.path).toList(),
+      );
+
+      if (loadId != _currentLoadId || !mounted) return;
+
+      final filteredChunk = chunk.where((photo) {
+        final meta = chunkMetadata[photo.path];
+        return meta != null && (meta.world != null || meta.players.isNotEmpty || meta.galleryUrl != null);
+      }).toList();
+
+      if (filteredChunk.isNotEmpty) {
+        setState(() {
+          _photoMetadataMap.addAll(chunkMetadata);
+          _allPhotos.addAll(filteredChunk);
+        });
+      }
+    }
+    
+    developer.log('Background photo processing complete for ID: $loadId', name: 'PhotosScreen');
   }
 
   Future<void> _loadMorePhotos() async {

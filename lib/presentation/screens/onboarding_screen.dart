@@ -896,7 +896,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     ],
                   ).createShader(bounds),
               child: Text(
-                'Connect to GalleVR',
+                'Unlock the Full Experience',
                 style: TextStyle(
                   fontSize: isSmallScreen ? 28 : 36,
                   fontWeight: FontWeight.bold,
@@ -909,7 +909,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             SizedBox(height: size.height * 0.02),
 
             Text(
-              'Get the best experience with our web interface',
+              'GalleVR is your personal and social VR hub',
               style: TextStyle(
                 fontSize: isSmallScreen ? 16 : 18,
                 color: Color.fromRGBO(255, 255, 255, 0.8),
@@ -939,7 +939,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
-                          Icons.language,
+                          Icons.public_rounded,
                           color: AppTheme.primaryColor,
                           size: 28,
                         ),
@@ -947,7 +947,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       const SizedBox(width: 16),
                       const Expanded(
                         child: Text(
-                          'Web Interface Benefits',
+                          'Web & Social Features',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -959,7 +959,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'The GalleVR website offers superior sorting and organization features:',
+                    'Linking your VRChat account unlocks the core GalleVR experience:',
                     style: TextStyle(
                       fontSize: 14,
                       color: Color.fromRGBO(255, 255, 255, 0.7),
@@ -967,21 +967,30 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   ),
                   const SizedBox(height: 12),
                   _buildBenefitItem(
-                    'Advanced photo sorting by world, friends, and date',
+                    'Private by Default: You control your photos',
                   ),
-                  _buildBenefitItem('Easy sharing with friends'),
-                  _buildBenefitItem('Completely free'),
-                  _buildBenefitItem('Access your photos from any device'),
+                  _buildBenefitItem('Social Feed: See what your friends are up to'),
+                  _buildBenefitItem('Profiles: Showcase your favorite VR moments'),
+                  _buildBenefitItem('Advanced Sorting: By world, friends, and more'),
                   _buildBenefitItem(
-                    'Better visual experience on larger screens',
+                    'Access Anywhere: Browse your gallery from any device',
                   ),
                   const SizedBox(height: 20),
                   const Text(
-                    'Would you like to connect to the GalleVR website?',
+                    'Ready to link your VRChat account?',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                       color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Note: Linking will NOT automatically sync your existing photos. Your gallery remains 100% private until you choose to share.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                      color: Color.fromRGBO(255, 255, 255, 0.5),
                     ),
                   ),
                 ],
@@ -1030,11 +1039,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'Connect to Website',
+                      'Link VRChat Account',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     SizedBox(width: 8),
-                    Icon(Icons.arrow_forward_rounded),
+                    Icon(Icons.link_rounded),
                   ],
                 ),
               ),
@@ -1044,11 +1053,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
             SizedBox(
               width: double.infinity,
-              height: 56,
+              height: 48,
               child: TextButton(
-                onPressed: _proceedToLocalOnly,
-                style: TextButton.styleFrom(foregroundColor: Colors.white70),
-                child: const Text('Skip (Local Only)'),
+                onPressed: _showSkipConnectionDialog,
+                style: TextButton.styleFrom(foregroundColor: Colors.white54),
+                child: const Text('Continue without Linking'),
               ),
             ),
 
@@ -2176,6 +2185,46 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     if (shouldSkip == true) {
       _nextStep();
+    }
+  }
+
+  Future<void> _showSkipConnectionDialog() async {
+    final shouldSkip = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color.fromRGBO(20, 20, 30, 1),
+        title: const Text(
+          'Skip Account Linking?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Without linking your VRChat account, you will lose access to the core features of GalleVR:\n\n'
+          '• No Social Feed or Profiles\n'
+          '• No Free Unlimited Storage or Multi-device sync\n'
+          '• Limited photo organization\n\n'
+          'Your photos remain 100% private and existing photos are NOT synced automatically even when linked.\n\n'
+          'Continue without linking?',
+          style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.8)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Go Back'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white12,
+              foregroundColor: Colors.white70,
+            ),
+            child: const Text('Continue (Limited)'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldSkip == true) {
+      await _proceedToLocalOnly();
     }
   }
 }
