@@ -218,6 +218,7 @@ class _PhotosScreenState extends State<PhotosScreen> {
       }
 
       developer.log('Processing priority chunk...', name: 'PhotosScreen');
+      const int prioritySize = 50;
       final priorityChunk = photos.take(prioritySize).toList();
       
       final priorityMetadata = await _metadataRepository.getMetadataForFiles(
