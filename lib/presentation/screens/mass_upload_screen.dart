@@ -9,7 +9,9 @@ import '../../data/repositories/config_repository.dart';
 import '../../data/models/config_model.dart';
 import '../../data/services/mass_upload_service.dart';
 import '../../data/services/vrchat_service.dart';
+import '../../data/repositories/photo_metadata_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/cached_image.dart';
 
 class MassUploadScreen extends StatefulWidget {
   const MassUploadScreen({super.key});
@@ -53,13 +55,29 @@ class _MassUploadScreenState extends State<MassUploadScreen> with TickerProvider
     );
 
     if (result != null && result.files.isNotEmpty) {
+      final newTasks = result.files
+          .where((f) => f.path != null)
+          .map((f) => FileTask(path: f.path!))
+          .toList();
+
       setState(() {
-        final newTasks = result.files
-            .where((f) => f.path != null)
-            .map((f) => FileTask(path: f.path!))
-            .toList();
         _tasks.addAll(newTasks);
         if (_tasks.isNotEmpty) _summaryController.forward();
+      });
+
+      final metadataMap = await PhotoMetadataRepository().getMetadataForFiles(
+        newTasks.map((t) => t.path).toList(),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        for (var task in newTasks) {
+          final metadata = metadataMap[task.path];
+          task.hasMetadata = metadata != null && metadata.world != null;
+          if (!task.hasMetadata) {
+            task.message = 'No metadata found. Rename to match original VRChat filename.';
+          }
+        }
       });
     }
   }
@@ -84,6 +102,15 @@ class _MassUploadScreenState extends State<MassUploadScreen> with TickerProvider
     for (var i = 0; i < _tasks.length; i++) {
       if (_tasks[i].status == TaskStatus.completed) {
         _completedCount++;
+        continue;
+      }
+
+      if (!_tasks[i].hasMetadata) {
+        setState(() {
+          _tasks[i].status = TaskStatus.failed;
+          _tasks[i].message = 'Skipped: Missing metadata';
+          _failedCount++;
+        });
         continue;
       }
 
@@ -372,8 +399,8 @@ class _TaskTile extends StatelessWidget {
         ),
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: _buildStatusIndicator(),
+        contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        leading: _buildLeading(context),
         title: Text(
           path.basename(task.path),
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 14),
@@ -384,64 +411,191 @@ class _TaskTile extends StatelessWidget {
             ? Text(
                 task.message!,
                 style: TextStyle(
-                  color: task.status == TaskStatus.failed ? Colors.redAccent : Colors.white54,
+                  color: task.status == TaskStatus.failed 
+                      ? Colors.redAccent 
+                      : !task.hasMetadata 
+                          ? Colors.orangeAccent 
+                          : Colors.white54,
                   fontSize: 12,
                 ),
               )
             : Text(
-                'Ready for processing',
-                style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
+                task.hasMetadata ? 'Ready for processing' : 'Metadata missing - Rename to original',
+                style: TextStyle(
+                  color: task.hasMetadata ? Colors.white.withOpacity(0.3) : Colors.orangeAccent.withOpacity(0.8),
+                  fontSize: 12,
+                  fontWeight: task.hasMetadata ? FontWeight.normal : FontWeight.bold,
+                ),
               ),
-        trailing: onRemove != null
-            ? IconButton(
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!task.hasMetadata)
+              IconButton(
+                icon: const Icon(Icons.info_outline_rounded, color: Colors.orangeAccent, size: 20),
+                onPressed: () => _showMetadataInfo(context),
+                tooltip: 'Metadata Help',
+              ),
+            if (onRemove != null)
+              IconButton(
                 icon: const Icon(Icons.close_rounded, color: Colors.white24, size: 20),
                 onPressed: onRemove,
-              )
-            : null,
+              ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildStatusIndicator() {
+  void _showMetadataInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline_rounded, color: Colors.orangeAccent),
+            SizedBox(width: 12),
+            Text('Missing Metadata'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'GalleVR cannot find VRChat or VRCX metadata for this photo.',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'To fix this, ensure the filename is identical or very similar to the original photo taken in VRChat. This allows the app to correlate the edited image with the original session data.',
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Example:', style: TextStyle(fontSize: 12, color: Colors.white54)),
+                  SizedBox(height: 4),
+                  Text('Original: VRChat_2024-01-01_...png', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                  Text('Edited:   VRChat_2024-01-01_..._EDIT.png', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLeading(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 60,
+          height: 40,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white10),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: CachedImage(
+              filePath: task.path,
+              fit: BoxFit.cover,
+              thumbnailSize: 150,
+            ),
+          ),
+        ),
+        Positioned(
+          right: -6,
+          bottom: -6,
+          child: _buildStatusIndicator(small: true),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusIndicator({bool small = false}) {
+    final double size = small ? 20 : 32;
+    final double iconSize = small ? 12 : 18;
+
     switch (task.status) {
       case TaskStatus.pending:
+        if (!task.hasMetadata) {
+          return Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: Colors.orangeAccent.withOpacity(small ? 1.0 : 0.1),
+              shape: BoxShape.circle,
+              border: small ? Border.all(color: AppTheme.backgroundColor, width: 2) : null,
+            ),
+            child: Icon(Icons.warning_amber_rounded, color: small ? Colors.black : Colors.orangeAccent, size: iconSize),
+          );
+        }
         return Container(
-          width: 32,
-          height: 32,
+          width: size,
+          height: size,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: AppTheme.surfaceColor,
             shape: BoxShape.circle,
+            border: small ? Border.all(color: AppTheme.backgroundColor, width: 2) : null,
           ),
-          child: const Icon(Icons.hourglass_bottom_rounded, color: Colors.white24, size: 16),
+          child: Icon(Icons.hourglass_bottom_rounded, color: Colors.white24, size: iconSize),
         );
       case TaskStatus.processing:
-        return const SizedBox(
-          width: 32,
-          height: 32,
-          child: Padding(
-            padding: EdgeInsets.all(8.0),
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
+        return Container(
+          width: size,
+          height: size,
+          padding: EdgeInsets.all(small ? 4 : 8),
+          decoration: small ? BoxDecoration(
+            color: AppTheme.surfaceColor,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppTheme.backgroundColor, width: 2),
+          ) : null,
+          child: CircularProgressIndicator(strokeWidth: 2),
         );
       case TaskStatus.completed:
         return Container(
-          width: 32,
-          height: 32,
+          width: size,
+          height: size,
           decoration: BoxDecoration(
-            color: Colors.greenAccent.withOpacity(0.1),
+            color: Colors.greenAccent.withOpacity(small ? 1.0 : 0.1),
             shape: BoxShape.circle,
+            border: small ? Border.all(color: AppTheme.backgroundColor, width: 2) : null,
           ),
-          child: const Icon(Icons.check_rounded, color: Colors.greenAccent, size: 18),
+          child: Icon(Icons.check_rounded, color: small ? Colors.black : Colors.greenAccent, size: iconSize),
         );
       case TaskStatus.failed:
         return Container(
-          width: 32,
-          height: 32,
+          width: size,
+          height: size,
           decoration: BoxDecoration(
-            color: Colors.redAccent.withOpacity(0.1),
+            color: Colors.redAccent.withOpacity(small ? 1.0 : 0.1),
             shape: BoxShape.circle,
+            border: small ? Border.all(color: AppTheme.backgroundColor, width: 2) : null,
           ),
-          child: const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 18),
+          child: Icon(Icons.error_outline_rounded, color: small ? Colors.white : Colors.redAccent, size: iconSize),
         );
     }
   }
@@ -502,6 +656,11 @@ class FileTask {
   final String path;
   TaskStatus status;
   String? message;
+  bool hasMetadata;
 
-  FileTask({required this.path, this.status = TaskStatus.pending});
+  FileTask({
+    required this.path, 
+    this.status = TaskStatus.pending,
+    this.hasMetadata = true, // Assume true until checked
+  });
 }
