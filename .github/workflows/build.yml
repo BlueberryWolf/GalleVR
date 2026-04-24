@@ -69,8 +69,11 @@ jobs:
           echo "Keystore decoded successfully. Size: $(stat -c%s android/app/release.keystore) bytes"
 
       - name: Verify Keystore Password
+        env:
+          STORE_PASS: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          keytool -list -keystore android/app/release.keystore -storepass "${{ secrets.ANDROID_STORE_PASSWORD }}" -alias "${{ secrets.ANDROID_KEY_ALIAS }}"
+          keytool -list -keystore android/app/release.keystore -storepass "$STORE_PASS" -alias "$KEY_ALIAS"
           echo "Secret verification successful"
 
       - name: Build Android release APK
