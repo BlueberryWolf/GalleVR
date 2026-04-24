@@ -3,15 +3,18 @@
     <!-- Internet permission -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Storage permissions -->
+    <!-- Storage permissions (Backward compatibility for Android 12 and below) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+
+    <!-- Media permissions for Android 13+ (Required to read VRChat screenshots) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_DOCUMENTS" />
+
+    <!-- All Files Access (Required to monitor VRChat log files in real-time)
+         Note: This is sensitive and required because VRChat logs are stored in 
+         non-media directories that Scoped Storage cannot access. -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
