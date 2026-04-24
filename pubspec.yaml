@@ -91,6 +91,7 @@ inno_bundle:
   icon_path: assets/images/app_icon.ico
   installer_icon: assets/images/app_icon.ico
   output_dir: build/windows/installer
+  license_file: LEGAL.txt
   languages:
     - english
 
