@@ -680,6 +680,45 @@ class VRChatService {
     return null;
   }
 
+  Future<List<PhotoMetadata>> fetchPhotoList() async {
+    try {
+      final authData = await loadAuthData();
+      if (authData == null) return [];
+
+      final url = Uri.parse('https://api.blueberry.coffee/vrchat/photo/list');
+      developer.log('Fetching photo list from $url', name: 'VRChatService');
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${authData.accessKey}',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> responseData = json.decode(response.body);
+        return responseData.map((json) {
+          final metadataJson = json['metadata'] as Map<String, dynamic>;
+          return PhotoMetadata(
+            takenDate: metadataJson['takenDate'] as int? ?? DateTime.now().millisecondsSinceEpoch,
+            filename: metadataJson['filename'] as String? ?? 'unknown.png',
+            galleryUrl: json['url'] as String?,
+            world: metadataJson['world'] != null ? WorldInfo.fromJson(metadataJson['world']) : null,
+            players: (metadataJson['players'] as List<dynamic>?)
+                ?.map((p) => Player.fromJson(p))
+                .toList() ?? [],
+          );
+        }).toList();
+      } else {
+        developer.log('Failed to fetch photo list: ${response.statusCode} ${response.body}', name: 'VRChatService');
+      }
+    } catch (e) {
+      developer.log('Error fetching photo list: $e', name: 'VRChatService');
+    }
+    return [];
+  }
+
   Future<bool> checkFriendStatus(String username) async {
     try {
       final url = Uri.parse(

@@ -49,24 +49,7 @@ class PhotoMetadataRepository {
           try {
             final metadata = PhotoMetadata.fromJson(jsonDecode(metadataJson));
             _metadataCache[id] = metadata;
-            
-            // Populate lookup caches
-            if (metadata.localPath != null) {
-              _filePathToIdCache[metadata.localPath!] = id;
-            }
-            _filePathToIdCache[metadata.filename] = id;
-            
-            // Also cache by extension-less name for cross-format lookup
-            final nameWithoutExt = path.basenameWithoutExtension(metadata.filename);
-            final existingNameId = _filePathToIdCache[nameWithoutExt];
-            if (existingNameId == null) {
-              _filePathToIdCache[nameWithoutExt] = id;
-            } else {
-              final existingMeta = _metadataCache[existingNameId];
-              if (metadata.galleryUrl != null && existingMeta?.galleryUrl == null) {
-                _filePathToIdCache[nameWithoutExt] = id;
-              }
-            }
+            _addToLookupCaches(metadata, id);
           } catch (e) {
             developer.log('Error parsing metadata for $id: $e', name: 'PhotoMetadataRepository');
           }
@@ -75,8 +58,41 @@ class PhotoMetadataRepository {
 
       _cacheInitialized = true;
       developer.log('Metadata cache initialized with ${_metadataCache.length} entries', name: 'PhotoMetadataRepository');
+      
+      syncWithBackend();
     } catch (e) {
       developer.log('Error initializing metadata cache: $e', name: 'PhotoMetadataRepository');
+    }
+  }
+
+  void _addToLookupCaches(PhotoMetadata metadata, String id) {
+    if (metadata.localPath != null) {
+      _filePathToIdCache[metadata.localPath!] = id;
+    }
+    _filePathToIdCache[metadata.filename] = id;
+    
+    final nameWithoutExt = path.basenameWithoutExtension(metadata.filename);
+    final existingNameId = _filePathToIdCache[nameWithoutExt];
+    if (existingNameId == null) {
+      _filePathToIdCache[nameWithoutExt] = id;
+    } else {
+      final existingMeta = _metadataCache[existingNameId];
+      if (metadata.galleryUrl != null && existingMeta?.galleryUrl == null) {
+        _filePathToIdCache[nameWithoutExt] = id;
+      }
+    }
+  }
+
+  Future<void> syncWithBackend() async {
+    try {
+      developer.log('Syncing metadata with backend...', name: 'PhotoMetadataRepository');
+      final backendPhotos = await VRChatService().fetchPhotoList();
+      if (backendPhotos.isNotEmpty) {
+        await savePhotoMetadataBatch(backendPhotos);
+        developer.log('Synced ${backendPhotos.length} photos from backend', name: 'PhotoMetadataRepository');
+      }
+    } catch (e) {
+      developer.log('Error syncing with backend: $e', name: 'PhotoMetadataRepository');
     }
   }
 
@@ -114,7 +130,8 @@ class PhotoMetadataRepository {
 
     PhotoMetadata? bestFallback;
     for (final metadata in _metadataCache.values) {
-      if (metadata.filename.contains(nameWithoutExt)) {
+      final originalNameBase = path.basenameWithoutExtension(metadata.filename);
+      if (nameWithoutExt.contains(originalNameBase) || originalNameBase.contains(nameWithoutExt)) {
         if (metadata.galleryUrl != null) {
           bestFallback = metadata;
           break;
@@ -140,6 +157,39 @@ class PhotoMetadataRepository {
            developer.log('Recovered metadata via regex match for $vrcBaseName', name: 'PhotoMetadataRepository');
            return metadata;
         }
+      }
+
+      try {
+        final config = AppServiceManager().config;
+        if (config != null && config.photosDirectory.isNotEmpty) {
+          final photosDir = Directory(config.photosDirectory);
+          if (await photosDir.exists()) {
+            File? originalFile;
+            final originalName = '$vrcBaseName.png';
+            
+            await for (final entity in photosDir.list(recursive: true, followLinks: false)) {
+              if (entity is File && path.basename(entity.path) == originalName) {
+                originalFile = entity;
+                break;
+              }
+            }
+
+            if (originalFile != null) {
+              developer.log('Found original file for smart matching: ${originalFile.path}', name: 'PhotoMetadataRepository');
+              final extracted = await _processVrcxMetadataBackground(originalFile.path);
+              if (extracted != null && extracted.world != null) {
+                final merged = extracted.copyWith(
+                  localPath: filePath,
+                  filename: filename,
+                );
+                await savePhotoMetadata(merged);
+                return merged;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        developer.log('Error during smart matching: $e', name: 'PhotoMetadataRepository');
       }
     }
 
@@ -186,11 +236,11 @@ class PhotoMetadataRepository {
           views: metadata.views > 0 ? metadata.views : existing.views,
         );
         _metadataCache[existingId] = metadata;
+        _addToLookupCaches(metadata, existingId);
         await _prefs?.setString('$_photoMetadataKeyPrefix$existingId', jsonEncode(metadata.toJson()));
       } else {
         _metadataCache[photoId] = metadata;
-        _filePathToIdCache[nameWithoutExt] = photoId;
-        _filePathToIdCache[metadata.filename] = photoId;
+        _addToLookupCaches(metadata, photoId);
         
         if (!photoIds.contains(photoId)) {
           photoIds.add(photoId);
@@ -249,7 +299,8 @@ class PhotoMetadataRepository {
       } else {
         PhotoMetadata? bestMeta;
         for (final metadata in _metadataCache.values) {
-          if (metadata.filename.contains(nameWithoutExt)) {
+          final originalNameBase = path.basenameWithoutExtension(metadata.filename);
+          if (nameWithoutExt.contains(originalNameBase) || originalNameBase.contains(nameWithoutExt)) {
             if (metadata.galleryUrl != null) {
               bestMeta = metadata;
               break;
