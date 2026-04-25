@@ -11,6 +11,8 @@ import 'package:vrchat_dart/vrchat_dart.dart';
 import '../../core/platform/platform_service.dart';
 import '../../core/platform/platform_service_factory.dart';
 import '../models/verification_models.dart';
+import '../models/photo_metadata.dart';
+import '../models/log_metadata.dart';
 
 // Service for interacting with the VRChat API
 class VRChatService {

@@ -7,6 +7,9 @@ import 'package:gallevr/core/isolate/isolate_worker_pool.dart';
 
 import '../models/photo_metadata.dart';
 import '../services/vrcx_metadata_service.dart';
+import '../services/vrchat_service.dart';
+import '../services/app_service_manager.dart';
+import '../models/log_metadata.dart';
 
 class PhotoMetadataRepository {
   static const String _photoIdsKey = 'gallevr_photo_ids';
