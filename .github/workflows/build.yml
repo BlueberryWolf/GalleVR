@@ -37,7 +37,7 @@ jobs:
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
+          name: GalleVR-Windows-Installer
           path: build/windows/x64/installer/Release/GalleVR.exe
 
   build-android:
@@ -61,21 +61,6 @@ jobs:
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
-          if [ ! -s android/app/release.keystore ]; then
-            echo "Error: keystore file is empty or failed to decode"
-            exit 1
-          fi
-          
-          echo "Keystore decoded successfully.  Size: $(stat -c%s android/app/release.keystore) bytes"
-
-      - name: Verify Keystore Password
-        env:
-          STORE_PASS: ${{ secrets.ANDROID_STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: |
-          keytool -list -keystore android/app/release.keystore -storepass "$STORE_PASS" -alias "$KEY_ALIAS"
-          echo "Secret verification successful"
-
       - name: Build Android release APK
         run: flutter build apk --release
         env:
@@ -90,7 +75,7 @@ jobs:
       - name: Upload Android APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk
+          name: GalleVR-Android-APK
           path: build/app/outputs/flutter-apk/GalleVR.apk
 
   build-linux:
@@ -210,19 +195,35 @@ jobs:
             --plugin gstreamer \
             --output appimage
 
-      - name: Upload Linux bundle
+      - name: Create tar.gz of Linux binaries
+        run: |
+          cd build/linux/x64/release/bundle
+          tar -czf ../../../../../GalleVR-Linux-Binaries.tar.gz .
+          
+      - name: Upload Intermediate Linux bundle (for Flatpak)
         uses: actions/upload-artifact@v4
         with:
-          name: linux-bundle
+          name: linux-bundle-intermediate
           path: build/linux/x64/release/bundle
+          retention-days: 1
 
-      - name: Upload Linux artifacts
+      - name: Upload Linux .deb
         uses: actions/upload-artifact@v4
         with:
-          name: linux-packages
-          path: |
-            GalleVR.deb
-            GalleVR.AppImage
+          name: GalleVR-Linux-DEB
+          path: GalleVR.deb
+
+      - name: Upload Linux .AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: GalleVR-Linux-AppImage
+          path: GalleVR.AppImage
+
+      - name: Upload Linux Binaries (tar.gz)
+        uses: actions/upload-artifact@v4
+        with:
+          name: GalleVR-Linux-Binaries
+          path: GalleVR-Linux-Binaries.tar.gz
 
   build-flatpak:
     name: Build Flatpak Bundle
@@ -239,7 +240,7 @@ jobs:
       - name: Download Linux bundle
         uses: actions/download-artifact@v4
         with:
-          name: linux-bundle
+          name: linux-bundle-intermediate
           path: build/linux/x64/release/bundle
 
       - name: Prepare desktop file and icon
@@ -261,5 +262,40 @@ jobs:
       - name: Upload Flatpak artifact
         uses: actions/upload-artifact@v4
         with:
-          name: flatpak-bundle
+          name: GalleVR-Linux-Flatpak
           path: GalleVR.flatpak
+
+  consolidate-linux-artifacts:
+    name: Consolidate Linux Artifacts
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-flatpak]
+    steps:
+      - name: Download DEB
+        uses: actions/download-artifact@v4
+        with:
+          name: GalleVR-Linux-DEB
+          path: artifacts/
+
+      - name: Download AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: GalleVR-Linux-AppImage
+          path: artifacts/
+
+      - name: Download Binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: GalleVR-Linux-Binaries
+          path: artifacts/
+
+      - name: Download Flatpak
+        uses: actions/download-artifact@v4
+        with:
+          name: GalleVR-Linux-Flatpak
+          path: artifacts/
+
+      - name: Upload All-In-One Linux Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: GalleVR-Linux-All-Packages
+          path: artifacts/
