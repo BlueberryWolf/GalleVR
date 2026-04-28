@@ -105,7 +105,7 @@ class PhotoProcessorService {
           final authData = await _vrchatService.loadAuthData();
           final badges = authData?.badges.map((b) => b.toLowerCase()).toList() ?? [];
           
-          int maxDimension = 1080;
+          int maxDimension = 1920;
           int webpQuality = 85;
 
           if (badges.contains('mega_supporter')) {
