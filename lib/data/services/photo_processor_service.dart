@@ -166,11 +166,11 @@ class PhotoProcessorService {
 
           final photoMetadata = PhotoMetadata(
             takenDate: creationTimeMs,
-            filename: path.basename(outputPath),
+            filename: path.basename(sourcePath),
             views: 0,
             world: metadata?.world,
             players: metadata?.players ?? [],
-            localPath: outputPath,
+            localPath: sourcePath,
           );
 
           final saveResult = await _photoMetadataRepository.savePhotoMetadata(
@@ -189,7 +189,7 @@ class PhotoProcessorService {
           PhotoEventService().notifyError(
             'info',
             metadataDetails,
-            photoPath: outputPath,
+            photoPath: sourcePath,
           );
 
           if (config.uploadEnabled) {
@@ -200,7 +200,7 @@ class PhotoProcessorService {
             PhotoEventService().notifyError(
               'info',
               'Starting upload process...',
-              photoPath: outputPath,
+              photoPath: sourcePath,
             );
 
             final uploadSuccess = await _photoUploadService.uploadPhoto(
@@ -218,7 +218,7 @@ class PhotoProcessorService {
               );
 
               final updatedMetadata = await _photoMetadataRepository
-                  .getPhotoMetadataForFile(outputPath);
+                  .getPhotoMetadataForFile(sourcePath);
               if (updatedMetadata != null &&
                   updatedMetadata.galleryUrl != null) {
                 developer.log(
@@ -233,7 +233,7 @@ class PhotoProcessorService {
                 PhotoEventService().notifyError(
                   'warning',
                   'Upload succeeded but no gallery URL was found',
-                  photoPath: outputPath,
+                  photoPath: sourcePath,
                 );
               }
             } else {
@@ -248,10 +248,21 @@ class PhotoProcessorService {
             PhotoEventService().notifyError(
               'success',
               'Photo processing completed successfully',
-              photoPath: outputPath,
+              photoPath: sourcePath,
             );
           }
-          return outputPath;
+          // clean up the WebP file after processing/uploading
+          try {
+            final webpFile = File(outputPath);
+            if (await webpFile.exists()) {
+              await webpFile.delete();
+              developer.log('Deleted temporary WebP file: $outputPath', name: 'PhotoProcessorService');
+            }
+          } catch (e) {
+            developer.log('Error deleting temporary WebP file: $e', name: 'PhotoProcessorService');
+          }
+
+          return sourcePath;
         } catch (e) {
           final error = 'Error processing image: $e';
           developer.log(error, name: 'PhotoProcessorService');

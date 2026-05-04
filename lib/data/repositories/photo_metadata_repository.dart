@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gallevr/core/isolate/isolate_worker_pool.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/photo_metadata.dart';
 import '../services/vrcx_metadata_service.dart';
@@ -14,6 +15,7 @@ import '../models/log_metadata.dart';
 class PhotoMetadataRepository {
   static const String _photoIdsKey = 'gallevr_photo_ids';
   static const String _photoMetadataKeyPrefix = 'gallevr_photo_';
+  static const String _migrationDoneKey = 'gallevr_webp_migration_done';
   
   // Regex to find VRChat filename pattern: VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT
   static final RegExp _vrcFilenameRegex = RegExp(
@@ -61,10 +63,94 @@ class PhotoMetadataRepository {
 
       _cacheInitialized = true;
       developer.log('Metadata cache initialized with ${_metadataCache.length} entries', name: 'PhotoMetadataRepository');
+
+      _checkAndMigrateLegacyMetadata();
       
       syncWithBackend();
     } catch (e) {
       developer.log('Error initializing metadata cache: $e', name: 'PhotoMetadataRepository');
+    }
+  }
+
+  Future<void> _checkAndMigrateLegacyMetadata() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_migrationDoneKey) == true) return;
+      
+      await migrateLegacyWebpMetadata();
+      await prefs.setBool(_migrationDoneKey, true);
+    } catch (e) {
+      developer.log('Error during legacy metadata migration check: $e', name: 'PhotoMetadataRepository');
+    }
+  }
+
+  Future<void> migrateLegacyWebpMetadata() async {
+    final config = AppServiceManager().config;
+    if (config == null || config.photosDirectory.isEmpty) return;
+    
+    final photosDir = Directory(config.photosDirectory);
+    if (!await photosDir.exists()) return;
+    
+    developer.log('Starting legacy WebP metadata migration...', name: 'PhotoMetadataRepository');
+    
+    int migratedCount = 0;
+    final List<PhotoMetadata> toUpdate = [];
+    
+    final entries = List<PhotoMetadata>.from(_metadataCache.values);
+    
+    final Map<String, String> pngLookup = {};
+    try {
+      await for (final entity in photosDir.list(recursive: true, followLinks: false)) {
+        if (entity is File && entity.path.toLowerCase().endsWith('.png')) {
+          pngLookup[path.basename(entity.path)] = entity.path;
+        }
+      }
+    } catch (e) {
+      developer.log('Error building PNG lookup: $e', name: 'PhotoMetadataRepository');
+    }
+    
+    for (final metadata in entries) {
+      if (metadata.localPath != null && (metadata.localPath!.contains('GalleVR-Temp') || metadata.localPath!.contains('GalleVR-ManualUpload'))) {
+        // this is a legacy WebP path
+        final nameWithoutExt = path.basenameWithoutExtension(metadata.filename);
+        final possiblePngName = '$nameWithoutExt.png';
+        
+        final pngPath = pngLookup[possiblePngName];
+        if (pngPath != null) {
+          toUpdate.add(metadata.copyWith(
+            localPath: pngPath,
+            filename: possiblePngName,
+          ));
+          migratedCount++;
+        }
+      }
+    }
+    
+    if (toUpdate.isNotEmpty) {
+      await savePhotoMetadataBatch(toUpdate);
+      developer.log('Migrated $migratedCount legacy WebP entries to PNG', name: 'PhotoMetadataRepository');
+    }
+    
+    // after migration attempt, we can safely delete the temporary directories
+    await _cleanupGalleVRTemp();
+  }
+
+  Future<void> _cleanupGalleVRTemp() async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final galleVRTemp = Directory(path.join(tempDir.path, 'GalleVR-Temp'));
+      if (await galleVRTemp.exists()) {
+        developer.log('Cleaning up legacy WebP cache at ${galleVRTemp.path}', name: 'PhotoMetadataRepository');
+        await galleVRTemp.delete(recursive: true);
+      }
+      
+      final manualUploadTemp = Directory(path.join(tempDir.path, 'GalleVR-ManualUpload'));
+      if (await manualUploadTemp.exists()) {
+        developer.log('Cleaning up legacy manual upload cache at ${manualUploadTemp.path}', name: 'PhotoMetadataRepository');
+        await manualUploadTemp.delete(recursive: true);
+      }
+    } catch (e) {
+      developer.log('Error cleaning up legacy WebP cache: $e', name: 'PhotoMetadataRepository');
     }
   }
 
