@@ -6,106 +6,80 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <stdbool.h>
 
 #ifdef _WIN32
-#define EXPORT __declspec(dllexport)
-#include <windows.h>
-#define SLEEP_MS(ms) Sleep(ms)
+    #define EXPORT __declspec(dllexport)
+    #define BSWAP32(x) _byteswap_ulong(x)
 #else
-#define EXPORT __attribute__((visibility("default"))) __attribute__((used))
-#include <unistd.h>
-#define SLEEP_MS(ms) usleep((ms) * 1000)
+    #define EXPORT __attribute__((visibility("default"))) __attribute__((used))
+    #include <arpa/inet.h>
+    #define BSWAP32(x) ntohl(x)
 #endif
 
-// Fast PNG chunk scanner to find VRCX metadata in Description field
-// Returns a pointer to a heap-allocated string (C-string). Caller must free it.
 EXPORT char* extract_vrcx_metadata(const char* file_path) {
     FILE* file = fopen(file_path, "rb");
     if (!file) return NULL;
 
-    // Check PNG signature
-    unsigned char signature[8];
-    if (fread(signature, 1, 8, file) != 8) {
-        fclose(file);
-        return NULL;
-    }
-    if (signature[0] != 0x89 || signature[1] != 0x50 || signature[2] != 0x4E || signature[3] != 0x47 ||
-        signature[4] != 0x0D || signature[5] != 0x0A || signature[6] != 0x1A || signature[7] != 0x0A) {
+    // skip png signature
+    if (fseek(file, 8, SEEK_SET) != 0) {
         fclose(file);
         return NULL;
     }
 
-    // Scan chunks
-    while (true) {
-        uint32_t length_be = 0;
-        if (fread(&length_be, 1, 4, file) != 4) break;
-        
-        // Convert from big-endian
-        uint32_t length = ((length_be & 0xFF) << 24) | ((length_be & 0xFF00) << 8) | 
-                          ((length_be & 0xFF0000) >> 8) | ((length_be & 0xFF000000) >> 24);
+    uint32_t len_be;
+    char type[5] = {0};
 
-        char type[5] = {0};
-        if (fread(type, 1, 4, file) != 4) break;
+    // png chunk format: [length][type][data][crc]
+    while (fread(&len_be, 4, 1, file) == 1) {
+        uint32_t chunk_length = BSWAP32(len_be);
+        if (fread(type, 4, 1, file) != 1) break;
 
-        // We are looking for tEXt or iTXt
-        bool is_text = (strcmp(type, "tEXt") == 0);
-        bool is_itxt = (strcmp(type, "iTXt") == 0);
-
-        if (is_text || is_itxt) {
-            char* data = (char*)malloc((size_t)length + 1);
-            if (data) {
-                if (fread(data, 1, length, file) == length) {
-                    data[length] = '\0';
-                    
-                    char* null_pos = (char*)memchr(data, '\0', length);
-                    if (null_pos != NULL) {
-                        size_t keyword_len = null_pos - data;
-                        if (keyword_len == 11 && memcmp(data, "Description", 11) == 0) {
-                            char* value = NULL;
-                            if (is_text) {
-                                value = null_pos + 1;
-                            } else {
-                                size_t offset_after_null = (null_pos - data) + 3;
-                                if (length > offset_after_null) {
-                                    char* lang_null = (char*)memchr(null_pos + 3, '\0', length - offset_after_null);
-                                    if (lang_null != NULL) {
-                                        size_t lang_offset = lang_null - data + 1;
-                                        if (length > lang_offset) {
-                                            char* trans_null = (char*)memchr(lang_null + 1, '\0', length - lang_offset);
-                                            if (trans_null != NULL) {
-                                                value = trans_null + 1;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (value != NULL) {
-                                if (strstr(value, "VRCX") != NULL) {
-                                    char* result = (char*)malloc(strlen(value) + 1);
-                                    if (result) {
-                                        strcpy(result, value);
-                                        free(data);
-                                        fclose(file);
-                                        return result;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                free(data);
+        // VRCX metadata is stored in iTXt chunks
+        if (strcmp(type, "iTXt") == 0 || strcmp(type, "tEXt") == 0) {
+            char* chunk_data = (char*)malloc(chunk_length);
+            if (!chunk_data) break;
+            
+            if (fread(chunk_data, 1, chunk_length, file) != chunk_length) {
+                free(chunk_data);
+                break;
             }
-            // Skip CRC
-            fseek(file, 4, SEEK_CUR);
-        } else {
-            // Skip data and CRC
-            fseek(file, length + 4, SEEK_CUR);
-        }
 
-        // Stop if we hit IDAT
-        if (strcmp(type, "IDAT") == 0) break;
+            const char* needle = "{\"application\":\"VRCX\"";
+            char* json_start = NULL;
+
+            // find start of JSON in chunk
+            for (uint32_t i = 0; i <= (chunk_length > 21 ? chunk_length - 21 : 0); i++) {
+                if (chunk_data[i] == '{' && memcmp(chunk_data + i, needle, 21) == 0) {
+                    json_start = chunk_data + i;
+                    break;
+                }
+            }
+
+            if (json_start) {
+                // calculate length from start of JSON to end of chunk
+                size_t json_len = chunk_length - (json_start - chunk_data);
+                
+                char* result = (char*)malloc(json_len + 1);
+                if (result) {
+                    memcpy(result, json_start, json_len);
+                    result[json_len] = '\0';
+                }
+
+                free(chunk_data);
+                fclose(file);
+                return result;
+            }
+            free(chunk_data);
+            fseek(file, 4, SEEK_CUR); // skip CRC
+        } 
+        else if (strcmp(type, "IDAT") == 0 || strcmp(type, "IEND") == 0) {
+            // stop at pixel data
+            break; 
+        } 
+        else {
+            // jump over other chunks
+            fseek(file, chunk_length + 4, SEEK_CUR);
+        }
     }
 
     fclose(file);
