@@ -15,7 +15,7 @@ import '../models/log_metadata.dart';
 class PhotoMetadataRepository {
   static const String _photoIdsKey = 'gallevr_photo_ids';
   static const String _photoMetadataKeyPrefix = 'gallevr_photo_';
-  static const String _migrationDoneKey = 'gallevr_webp_migration_done';
+  static const String _migrationDoneKey = 'gallevr_webp_migration_v2_done';
   
   // Regex to find VRChat filename pattern: VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT
   static final RegExp _vrcFilenameRegex = RegExp(
@@ -177,7 +177,7 @@ class PhotoMetadataRepository {
       developer.log('Syncing metadata with backend...', name: 'PhotoMetadataRepository');
       final backendPhotos = await VRChatService().fetchPhotoList();
       if (backendPhotos.isNotEmpty) {
-        await savePhotoMetadataBatch(backendPhotos);
+        await savePhotoMetadataBatch(backendPhotos, isRemote: true);
         developer.log('Synced ${backendPhotos.length} photos from backend', name: 'PhotoMetadataRepository');
       }
     } catch (e) {
@@ -299,11 +299,11 @@ class PhotoMetadataRepository {
     }
   }
 
-  Future<bool> savePhotoMetadata(PhotoMetadata metadata) async {
-    return await savePhotoMetadataBatch([metadata]);
+  Future<bool> savePhotoMetadata(PhotoMetadata metadata, {bool isRemote = false}) async {
+    return await savePhotoMetadataBatch([metadata], isRemote: isRemote);
   }
 
-  Future<bool> savePhotoMetadataBatch(List<PhotoMetadata> metadataList) async {
+  Future<bool> savePhotoMetadataBatch(List<PhotoMetadata> metadataList, {bool isRemote = false}) async {
     if (metadataList.isEmpty) return true;
     await _initializeCache();
 
@@ -311,23 +311,33 @@ class PhotoMetadataRepository {
     bool listChanged = false;
 
     for (var metadata in metadataList) {
-      final photoId = '${metadata.filename}_${metadata.takenDate}';
-      
       final nameWithoutExt = path.basenameWithoutExtension(metadata.filename);
       String? existingId = _filePathToIdCache[nameWithoutExt] ?? _filePathToIdCache[metadata.filename];
       
       if (existingId != null && _metadataCache.containsKey(existingId)) {
         final existing = _metadataCache[existingId]!;
-        metadata = existing.copyWith(
-          galleryUrl: metadata.galleryUrl ?? existing.galleryUrl,
-          world: metadata.world ?? existing.world,
-          players: metadata.players.isNotEmpty ? metadata.players : existing.players,
-          views: metadata.views > 0 ? metadata.views : existing.views,
-        );
+        
+        if (isRemote) {
+          metadata = existing.copyWith(
+            galleryUrl: metadata.galleryUrl ?? existing.galleryUrl,
+            views: metadata.views > 0 ? metadata.views : existing.views,
+            world: existing.world ?? metadata.world,
+            players: existing.players.isNotEmpty ? existing.players : metadata.players,
+          );
+        } else {
+          metadata = metadata.copyWith(
+            galleryUrl: metadata.galleryUrl ?? existing.galleryUrl,
+            views: metadata.views > 0 ? metadata.views : existing.views,
+            world: metadata.world ?? existing.world,
+            players: metadata.players.isNotEmpty ? metadata.players : existing.players,
+          );
+        }
+
         _metadataCache[existingId] = metadata;
         _addToLookupCaches(metadata, existingId);
         await _prefs?.setString('$_photoMetadataKeyPrefix$existingId', jsonEncode(metadata.toJson()));
       } else {
+        final photoId = '${metadata.filename}_${metadata.takenDate}';
         _metadataCache[photoId] = metadata;
         _addToLookupCaches(metadata, photoId);
         

@@ -704,7 +704,7 @@ class VRChatService {
           final metadataJson = json['metadata'] as Map<String, dynamic>;
           return PhotoMetadata(
             takenDate: metadataJson['takenDate'] as int? ?? DateTime.now().millisecondsSinceEpoch,
-            filename: metadataJson['filename'] as String? ?? 'unknown.png',
+            filename: (metadataJson['filename'] as String? ?? 'unknown.png').replaceAll('.webp', '.png'),
             galleryUrl: json['url'] as String?,
             world: metadataJson['world'] != null ? WorldInfo.fromJson(metadataJson['world']) : null,
             players: (metadataJson['players'] as List<dynamic>?)
