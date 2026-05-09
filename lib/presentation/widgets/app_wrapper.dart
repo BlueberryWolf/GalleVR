@@ -9,6 +9,7 @@ import '../../data/services/app_service_manager.dart';
 import '../../data/services/tos_service.dart';
 import '../../data/services/vrchat_service.dart';
 import '../../core/services/update_service.dart';
+import '../../core/services/connectivity_service.dart';
 import '../widgets/tos_modal.dart';
 
 /// A widget that wraps the entire app and handles global functionality
@@ -41,6 +42,10 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   String? _latestVersion;
   bool _updateAvailable = false;
   StreamSubscription<bool>? _updateSubscription;
+
+  // Connectivity monitoring related fields
+  bool _isOffline = false;
+  StreamSubscription<bool>? _connectivitySubscription;
 
   // Track the previous upload setting before TOS check
   bool _previousUploadEnabled = true;
@@ -78,6 +83,9 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     _loadAppVersion();
 
     _checkTOSStatus();
+
+    // Start connectivity monitoring
+    _startConnectivityMonitoring();
   }
 
   /// Load the current app version
@@ -138,6 +146,8 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _updateSubscription?.cancel();
+    _connectivitySubscription?.cancel();
+    ConnectivityService().stopMonitoring();
     super.dispose();
   }
 
@@ -325,12 +335,132 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     );
   }
 
+  /// Start monitoring internet connectivity
+  void _startConnectivityMonitoring() {
+    final connectivityService = ConnectivityService();
+    connectivityService.startMonitoring();
+    
+    // Set initial state
+    _isOffline = !connectivityService.hasConnection;
+    
+    _connectivitySubscription = connectivityService.connectionStream.listen((isConnected) {
+      if (mounted) {
+        setState(() {
+          _isOffline = !isConnected;
+        });
+        
+        if (!isConnected) {
+          developer.log('App is offline', name: 'AppWrapper');
+        } else {
+          developer.log('App is online', name: 'AppWrapper');
+          _checkTOSStatus();
+        }
+      }
+    });
+  }
+
+  Widget _buildOfflineBanner() {
+    final double bannerHeight = 60.0;
+    final double topPadding = MediaQuery.of(context).padding.top;
+    
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+      left: 16,
+      right: 16,
+      top: _isOffline ? topPadding + 16 : -bannerHeight - 20,
+      height: bannerHeight,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEF4444).withAlpha(230),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFFEF4444).withAlpha(128),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(102),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.wifi_off_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'No Internet Connection',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      'Internet is required to sync with VRChat.',
+                      style: TextStyle(
+                        color: Colors.white.withAlpha(179),
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () async {
+                  await ConnectivityService().checkConnectionManually();
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.white.withAlpha(38),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'RETRY',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
         // Main app content
         widget.child,
+
+        // Offline Banner
+        _buildOfflineBanner(),
 
         // TOS Modal
         if (_showTOSModal)

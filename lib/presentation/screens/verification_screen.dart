@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../widgets/blurrable_qr_code.dart';
 import '../widgets/step_indicator.dart';
 import '../widgets/tos_modal.dart';
+import 'onboarding_screen.dart';
 
 // Screen for VRChat verification
 class VerificationScreen extends StatefulWidget {
@@ -465,6 +466,18 @@ class _VerificationScreenState extends State<VerificationScreen> {
       appBar: AppBar(
         title: const Text('VRChat Verification'),
         backgroundColor: AppTheme.backgroundColor,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+              );
+            }
+          },
+        ),
       ),
       body: Stack(
         children: [
