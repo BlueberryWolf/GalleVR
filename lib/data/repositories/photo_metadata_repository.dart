@@ -464,12 +464,34 @@ class PhotoMetadataRepository {
       for (var metadata in metadataList) {
         final nameWithoutExt = path.basenameWithoutExtension(metadata.filename);
 
-        final List<Map<String, dynamic>> existing = await txn.query(
+        List<Map<String, dynamic>> existing = await txn.query(
           'photo_metadata',
           where: 'filename = ? OR local_path = ?',
           whereArgs: [metadata.filename, metadata.localPath],
           limit: 1,
         );
+
+        if (existing.isEmpty) {
+          existing = await txn.query(
+            'photo_metadata',
+            where: 'filename LIKE ?',
+            whereArgs: ['%$nameWithoutExt%'],
+            limit: 1,
+          );
+        }
+
+        if (existing.isEmpty) {
+          final match = _vrcFilenameRegex.firstMatch(metadata.filename);
+          if (match != null) {
+            final vrcBaseName = match.group(0)!;
+            existing = await txn.query(
+              'photo_metadata',
+              where: 'filename LIKE ?',
+              whereArgs: ['%$vrcBaseName%'],
+              limit: 1,
+            );
+          }
+        }
 
         String photoId;
         if (existing.isNotEmpty) {

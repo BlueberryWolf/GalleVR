@@ -803,20 +803,32 @@ class VRChatService {
         final List<dynamic> responseData = json.decode(response.body);
         return responseData.map((json) {
           final metadataJson = json['metadata'] as Map<String, dynamic>;
+          final rawTakenDate = metadataJson['takenDate'];
+          int takenDateMs = DateTime.now().millisecondsSinceEpoch;
+
+          if (rawTakenDate is int) {
+            takenDateMs = rawTakenDate;
+          } else if (rawTakenDate is String) {
+            final parsed = DateTime.tryParse(rawTakenDate);
+            if (parsed != null) {
+              takenDateMs = parsed.millisecondsSinceEpoch;
+            }
+          }
+
           return PhotoMetadata(
-            takenDate:
-                metadataJson['takenDate'] as int? ??
-                DateTime.now().millisecondsSinceEpoch,
+            takenDate: takenDateMs,
             filename: (metadataJson['filename'] as String? ?? 'unknown.png')
                 .replaceAll('.webp', '.png'),
             galleryUrl: json['url'] as String?,
             world:
                 metadataJson['world'] != null
-                    ? WorldInfo.fromJson(metadataJson['world'])
+                    ? WorldInfo.fromJson(
+                      metadataJson['world'] as Map<String, dynamic>,
+                    )
                     : null,
             players:
                 (metadataJson['players'] as List<dynamic>?)
-                    ?.map((p) => Player.fromJson(p))
+                    ?.map((p) => Player.fromJson(p as Map<String, dynamic>))
                     .toList() ??
                 [],
           );
