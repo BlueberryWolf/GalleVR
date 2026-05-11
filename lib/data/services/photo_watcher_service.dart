@@ -197,10 +197,6 @@ class PhotoWatcherService {
           'Foreground service started successfully',
           name: 'PhotoWatcherService',
         );
-        PhotoEventService().notifyError(
-          'info',
-          'Foreground service started successfully',
-        );
       }
     } else {
       developer.log(
@@ -221,13 +217,33 @@ class PhotoWatcherService {
           },
         );
 
+        try {
+          final photosDir = Directory(config.photosDirectory);
+          if (await photosDir.exists()) {
+            _watcherSubscription = photosDir
+                .watch(events: FileSystemEvent.create)
+                .listen((event) {
+                  developer.log(
+                    'Native Photos trigger detected, signaling immediate log check',
+                    name: 'PhotoWatcherService',
+                  );
+                  _logFileWatcher?.checkForUpdates();
+                });
+            developer.log(
+              'Native OS Photo Trigger active',
+              name: 'PhotoWatcherService',
+            );
+          }
+        } catch (e) {
+          developer.log(
+            'Native Photo Trigger initialization bypassed ($e), relying solely on polling mode',
+            name: 'PhotoWatcherService',
+          );
+        }
+
         developer.log(
           'Log file watcher started successfully',
           name: 'PhotoWatcherService',
-        );
-        PhotoEventService().notifyError(
-          'info',
-          'Log file watcher started successfully',
         );
       } catch (e) {
         final error = 'Failed to start log file watcher: $e';
@@ -271,12 +287,19 @@ class PhotoWatcherService {
       final photosDirName = path.basename(config.photosDirectory);
       const pathSeparator = r'\';
 
-      final vrchatFolderIndex = finalPath.toLowerCase().lastIndexOf(photosDirName.toLowerCase() + pathSeparator);
+      final vrchatFolderIndex = finalPath.toLowerCase().lastIndexOf(
+        photosDirName.toLowerCase() + pathSeparator,
+      );
 
       if (vrchatFolderIndex != -1) {
-        final relativePath = finalPath.substring(vrchatFolderIndex + photosDirName.length + 1);
-        final platformRelativePath = relativePath.replaceAll(r'\', path.separator);
-        
+        final relativePath = finalPath.substring(
+          vrchatFolderIndex + photosDirName.length + 1,
+        );
+        final platformRelativePath = relativePath.replaceAll(
+          r'\',
+          path.separator,
+        );
+
         finalPath = path.join(config.photosDirectory, platformRelativePath);
 
         developer.log(
@@ -314,17 +337,17 @@ class PhotoWatcherService {
 
     _handledPhotos.add(finalPath);
 
-    developer.log('New screenshot detected from log: $finalPath', name: 'PhotoWatcherService');
+    developer.log(
+      'New screenshot detected from log: $finalPath',
+      name: 'PhotoWatcherService',
+    );
     PhotoEventService().notifyError(
       'info',
       'New screenshot detected: ${path.basename(finalPath)}',
     );
 
     _photoStreamController.add(finalPath);
-    PhotoEventService().notifyPhotoAdded(finalPath);
   }
-
-
 
   Future<void> dispose() async {
     developer.log('Disposing PhotoWatcherService', name: 'PhotoWatcherService');
@@ -334,27 +357,39 @@ class PhotoWatcherService {
       await FlutterForegroundTask.stopService();
       _isForegroundServiceRunning = false;
     } catch (e) {
-      developer.log('Error stopping foreground service: $e', name: 'PhotoWatcherService');
+      developer.log(
+        'Error stopping foreground service: $e',
+        name: 'PhotoWatcherService',
+      );
     }
 
     try {
       FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
     } catch (e) {
-      developer.log('Error removing task data callback: $e', name: 'PhotoWatcherService');
+      developer.log(
+        'Error removing task data callback: $e',
+        name: 'PhotoWatcherService',
+      );
     }
 
     try {
       await _watcherSubscription?.cancel();
       _watcherSubscription = null;
     } catch (e) {
-      developer.log('Error cancelling watcher subscription: $e', name: 'PhotoWatcherService');
+      developer.log(
+        'Error cancelling watcher subscription: $e',
+        name: 'PhotoWatcherService',
+      );
     }
 
     try {
       await _logWatcherSubscription?.cancel();
       _logWatcherSubscription = null;
     } catch (e) {
-      developer.log('Error cancelling log watcher subscription: $e', name: 'PhotoWatcherService');
+      developer.log(
+        'Error cancelling log watcher subscription: $e',
+        name: 'PhotoWatcherService',
+      );
     }
 
     try {
@@ -362,13 +397,19 @@ class PhotoWatcherService {
       _logFileWatcher?.dispose();
       _logFileWatcher = null;
     } catch (e) {
-      developer.log('Error disposing log file watcher: $e', name: 'PhotoWatcherService');
+      developer.log(
+        'Error disposing log file watcher: $e',
+        name: 'PhotoWatcherService',
+      );
     }
 
     try {
       await _photoStreamController.close();
     } catch (e) {
-      developer.log('Error closing photo stream controller: $e', name: 'PhotoWatcherService');
+      developer.log(
+        'Error closing photo stream controller: $e',
+        name: 'PhotoWatcherService',
+      );
     }
 
     developer.log('PhotoWatcherService disposed', name: 'PhotoWatcherService');

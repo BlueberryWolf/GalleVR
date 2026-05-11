@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:windows_single_instance/windows_single_instance.dart';
 
@@ -34,9 +35,12 @@ void main(List<String> args) async {
       "GalleVR-app",
       onSecondWindow: (args) {
         // When a second instance is launched, bring the existing window to front
-        developer.log('Second instance detected with args: $args', name: 'GalleVRApp');
+        developer.log(
+          'Second instance detected with args: $args',
+          name: 'GalleVRApp',
+        );
         WindowsService().showWindow();
-      }
+      },
     );
   }
 
@@ -47,7 +51,8 @@ void main(List<String> args) async {
     DeviceOrientation.landscapeRight,
   ]);
 
-  bool shouldStartMinimized = (Platform.isWindows || Platform.isLinux) && 
+  bool shouldStartMinimized =
+      (Platform.isWindows || Platform.isLinux) &&
       AppArgs.hasStartMinimized(args);
   if (shouldStartMinimized) {
     developer.log('App will start minimized', name: 'GalleVRApp');
@@ -78,7 +83,8 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
 
     // The window visibility is now handled at the native level
     // If the app is starting minimized, show a notification after a delay
-    if ((Platform.isWindows || Platform.isLinux) && AppArgs.hasStartMinimized(widget.args)) {
+    if ((Platform.isWindows || Platform.isLinux) &&
+        AppArgs.hasStartMinimized(widget.args)) {
       developer.log('App configured to start minimized', name: 'GalleVRApp');
 
       // Show a notification after a delay to ensure the app is fully initialized
@@ -90,7 +96,10 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
             await LinuxService().showStartMinimizedNotification();
           }
         } catch (e) {
-          developer.log('Error showing start minimized notification: $e', name: 'GalleVRApp');
+          developer.log(
+            'Error showing start minimized notification: $e',
+            name: 'GalleVRApp',
+          );
         }
       });
     }
@@ -105,72 +114,153 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
   }
 
   Future<void> _initializeApp() async {
-    await _appServiceManager.initialize();
-    await _checkOnboardingStatus();
-  }
+    final initFuture = _appServiceManager.initialize();
 
-  Future<void> _checkOnboardingStatus() async {
-    final onboardingComplete = await _appServiceManager.isOnboardingComplete();
+    try {
+      final onboardingComplete =
+          await _appServiceManager.isOnboardingComplete();
 
-    if (mounted) {
-      setState(() {
-        _showOnboarding = !onboardingComplete;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _showOnboarding = !onboardingComplete;
+          _isLoading = false;
+        });
+      }
+
+      await initFuture;
+    } catch (e) {
+      developer.log('Initialization error: $e', name: 'GalleVRApp');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     // Create the main app content
-    Widget home = _isLoading
-        ? const _LoadingScreen()
-        : (_showOnboarding ? const OnboardingScreen() : const HomeScreen());
+    if (_isLoading) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.getDarkTheme(),
+        home: Scaffold(
+          backgroundColor: const Color(0xFF0F0F0F),
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'assets/images/app_icon.png',
+                  width: 120,
+                  height: 120,
+                  errorBuilder:
+                      (_, __, ___) => const Icon(
+                        Icons.photo_library,
+                        size: 80,
+                        color: Colors.white24,
+                      ),
+                ),
+                const SizedBox(height: 32),
+                const SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppTheme.primaryColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget home =
+        _showOnboarding ? const OnboardingScreen() : const HomeScreen();
+
+    // Identify the active visibility notifier based on environment
+    final ValueListenable<bool> visibilityNotifier =
+        Platform.isWindows
+            ? WindowsService().isHidden
+            : Platform.isLinux
+            ? LinuxService().isHidden
+            : ValueNotifier<bool>(false);
 
     return MaterialApp(
       title: 'GalleVR',
       theme: AppTheme.getLightTheme(),
       darkTheme: AppTheme.getDarkTheme(),
       themeMode: ThemeMode.dark,
-      home: AppWrapper(
-        child: KeyboardListener(
-          focusNode: FocusNode(),
-          autofocus: true,
-          onKeyEvent: (keyEvent) async {
-            if (keyEvent is KeyDownEvent) {
-              if (keyEvent.logicalKey == LogicalKeyboardKey.f4 &&
-                  HardwareKeyboard.instance.isAltPressed) {
-                // exit the app completely
-                if (Platform.isWindows || Platform.isLinux) {
-                  // force exit the app when Alt+F4 is pressed
-                  developer.log('Alt+F4 detected, exiting application', name: 'GalleVRApp');
-
-                try {
-                  // try to stop any foreground tasks directly
-                  developer.log('Stopping foreground tasks', name: 'GalleVRApp');
-                  await FlutterForegroundTask.stopService();
-                } catch (e) {
-                  developer.log('Error stopping foreground tasks: $e', name: 'GalleVRApp');
-                }
-
-                try {
-                  // try the normal exit path
-                  await AppServiceManager().handleWindowClose(forceExit: true);
-                } catch (e) {
-                  developer.log('Error during normal exit: $e', name: 'GalleVRApp');
-                }
-
-                // wtf, force exit
-                developer.log('Forcing immediate exit', name: 'GalleVRApp');
-                exit(0);
-              } else {
-                SystemNavigator.pop();
-              }
-            }
+      home: ValueListenableBuilder<bool>(
+        valueListenable: visibilityNotifier,
+        builder: (context, isHidden, _) {
+          if (isHidden) {
+            return const SizedBox.shrink();
           }
-          },
-          child: home,
-        ),
+
+          return AppWrapper(
+            child: KeyboardListener(
+              focusNode: FocusNode(),
+              autofocus: true,
+              onKeyEvent: (keyEvent) async {
+                if (keyEvent is KeyDownEvent) {
+                  if (keyEvent.logicalKey == LogicalKeyboardKey.f4 &&
+                      HardwareKeyboard.instance.isAltPressed) {
+                    // exit the app completely
+                    if (Platform.isWindows || Platform.isLinux) {
+                      // force exit the app when Alt+F4 is pressed
+                      developer.log(
+                        'Alt+F4 detected, exiting application',
+                        name: 'GalleVRApp',
+                      );
+
+                      try {
+                        // try to stop any foreground tasks directly
+                        developer.log(
+                          'Stopping foreground tasks',
+                          name: 'GalleVRApp',
+                        );
+                        await FlutterForegroundTask.stopService();
+                      } catch (e) {
+                        developer.log(
+                          'Error stopping foreground tasks: $e',
+                          name: 'GalleVRApp',
+                        );
+                      }
+
+                      try {
+                        // try the normal exit path
+                        await AppServiceManager().handleWindowClose(
+                          forceExit: true,
+                        );
+                      } catch (e) {
+                        developer.log(
+                          'Error during normal exit: $e',
+                          name: 'GalleVRApp',
+                        );
+                      }
+
+                      // wtf, force exit
+                      developer.log(
+                        'Forcing immediate exit',
+                        name: 'GalleVRApp',
+                      );
+                      exit(0);
+                    } else {
+                      SystemNavigator.pop();
+                    }
+                  }
+                }
+              },
+              child: home,
+            ),
+          );
+        },
       ),
       debugShowCheckedModeBanner: false,
     );
@@ -194,7 +284,6 @@ class _LoadingScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-
             Container(
               width: 100,
               height: 100,

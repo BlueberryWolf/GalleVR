@@ -11,7 +11,8 @@ class LogFileWatcher {
   );
 
   final String _logsDirectory;
-  final StreamController<String> _screenshotController = StreamController<String>.broadcast();
+  final StreamController<String> _screenshotController =
+      StreamController<String>.broadcast();
 
   Timer? _pollingTimer;
   Timer? _logFileCheckTimer;
@@ -27,7 +28,10 @@ class LogFileWatcher {
 
   /// Start watching for screenshot events in the log files
   Future<void> startWatching() async {
-    developer.log('Starting log file watcher for directory: $_logsDirectory', name: 'LogFileWatcher');
+    developer.log(
+      'Starting log file watcher for directory: $_logsDirectory',
+      name: 'LogFileWatcher',
+    );
 
     await stopWatching();
 
@@ -35,16 +39,26 @@ class LogFileWatcher {
     await _findCurrentLogFile();
 
     if (_currentLogFile == null) {
-      developer.log('No log file found in $_logsDirectory', name: 'LogFileWatcher');
+      developer.log(
+        'No log file found in $_logsDirectory',
+        name: 'LogFileWatcher',
+      );
       return;
     }
 
-    developer.log('Watching log file: $_currentLogFile', name: 'LogFileWatcher');
+    developer.log(
+      'Watching log file: $_currentLogFile',
+      name: 'LogFileWatcher',
+    );
+    _pollingTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => checkForUpdates(),
+    );
 
-    // Start polling for changes
-    _pollingTimer = Timer.periodic(const Duration(milliseconds: 500), (_) => _checkForUpdates());
-
-    _logFileCheckTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkForNewerLogFile());
+    _logFileCheckTimer = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => _checkForNewerLogFile(),
+    );
   }
 
   /// Stop watching for screenshot events
@@ -71,7 +85,10 @@ class LogFileWatcher {
     try {
       final logsDir = Directory(_logsDirectory);
       if (!await logsDir.exists()) {
-        developer.log('Logs directory does not exist: $_logsDirectory', name: 'LogFileWatcher');
+        developer.log(
+          'Logs directory does not exist: $_logsDirectory',
+          name: 'LogFileWatcher',
+        );
         return;
       }
 
@@ -83,7 +100,8 @@ class LogFileWatcher {
           final fileName = path.basename(entity.path);
           if (fileName.startsWith(_logPattern)) {
             final stat = await entity.stat();
-            if (latestModified == null || stat.modified.isAfter(latestModified)) {
+            if (latestModified == null ||
+                stat.modified.isAfter(latestModified)) {
               latestModified = stat.modified;
               latestLogFile = entity;
             }
@@ -97,15 +115,21 @@ class LogFileWatcher {
         // Start from the end of the file to only catch new entries
         final stat = await latestLogFile.stat();
         _lastPosition = stat.size;
-        developer.log('Found current log file: $_currentLogFile (size: $_lastPosition)', name: 'LogFileWatcher');
+        developer.log(
+          'Found current log file: $_currentLogFile (size: $_lastPosition)',
+          name: 'LogFileWatcher',
+        );
       }
     } catch (e) {
-      developer.log('Error finding current log file: $e', name: 'LogFileWatcher');
+      developer.log(
+        'Error finding current log file: $e',
+        name: 'LogFileWatcher',
+      );
     }
   }
 
   /// Check for updates in the current log file
-  Future<void> _checkForUpdates() async {
+  Future<void> checkForUpdates() async {
     if (_currentLogFile == null) {
       // Try to find a log file again
       await _findCurrentLogFile();
@@ -115,7 +139,10 @@ class LogFileWatcher {
     try {
       final logFile = File(_currentLogFile!);
       if (!await logFile.exists()) {
-        developer.log('Log file no longer exists: $_currentLogFile', name: 'LogFileWatcher');
+        developer.log(
+          'Log file no longer exists: $_currentLogFile',
+          name: 'LogFileWatcher',
+        );
         // Try to find a new log file
         await _findCurrentLogFile();
         return;
@@ -126,7 +153,10 @@ class LogFileWatcher {
 
       if (currentSize < _lastPosition) {
         // File was truncated or replaced, start from beginning
-        developer.log('Log file was truncated or replaced, restarting from beginning', name: 'LogFileWatcher');
+        developer.log(
+          'Log file was truncated or replaced, restarting from beginning',
+          name: 'LogFileWatcher',
+        );
         _lastPosition = 0;
       }
 
@@ -134,7 +164,9 @@ class LogFileWatcher {
         // Read new content
         final randomAccessFile = await logFile.open(mode: FileMode.read);
         await randomAccessFile.setPosition(_lastPosition);
-        final newBytes = await randomAccessFile.read(currentSize - _lastPosition);
+        final newBytes = await randomAccessFile.read(
+          currentSize - _lastPosition,
+        );
         await randomAccessFile.close();
 
         final newContent = String.fromCharCodes(newBytes);
@@ -144,7 +176,10 @@ class LogFileWatcher {
         _processNewContent(newContent);
       }
     } catch (e) {
-      developer.log('Error checking for log updates: $e', name: 'LogFileWatcher');
+      developer.log(
+        'Error checking for log updates: $e',
+        name: 'LogFileWatcher',
+      );
       // Try to find a new log file on error
       await _findCurrentLogFile();
     }
@@ -165,7 +200,8 @@ class LogFileWatcher {
           final fileName = path.basename(entity.path);
           if (fileName.startsWith(_logPattern)) {
             final stat = await entity.stat();
-            if (latestModified == null || stat.modified.isAfter(latestModified)) {
+            if (latestModified == null ||
+                stat.modified.isAfter(latestModified)) {
               latestModified = stat.modified;
               latestLogFile = entity;
             }
@@ -177,10 +213,9 @@ class LogFileWatcher {
           latestModified != null &&
           _currentLogFileModified != null &&
           latestModified.isAfter(_currentLogFileModified!)) {
-
         developer.log(
           'Found newer log file: ${latestLogFile.path} (modified: $latestModified vs current: $_currentLogFileModified)',
-          name: 'LogFileWatcher'
+          name: 'LogFileWatcher',
         );
 
         _currentLogFile = latestLogFile.path;
@@ -189,10 +224,16 @@ class LogFileWatcher {
         final stat = await latestLogFile.stat();
         _lastPosition = stat.size;
 
-        developer.log('Switched to newer log file: $_currentLogFile (size: $_lastPosition)', name: 'LogFileWatcher');
+        developer.log(
+          'Switched to newer log file: $_currentLogFile (size: $_lastPosition)',
+          name: 'LogFileWatcher',
+        );
       }
     } catch (e) {
-      developer.log('Error checking for newer log file: $e', name: 'LogFileWatcher');
+      developer.log(
+        'Error checking for newer log file: $e',
+        name: 'LogFileWatcher',
+      );
     }
   }
 
@@ -208,7 +249,10 @@ class LogFileWatcher {
           // Check if we've already processed this screenshot
           if (!_processedScreenshots.contains(screenshotPath)) {
             _processedScreenshots.add(screenshotPath);
-            developer.log('Screenshot detected from log: $screenshotPath', name: 'LogFileWatcher');
+            developer.log(
+              'Screenshot detected from log: $screenshotPath',
+              name: 'LogFileWatcher',
+            );
             _screenshotController.add(screenshotPath);
           }
         }

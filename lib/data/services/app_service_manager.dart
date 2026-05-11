@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,10 +15,13 @@ import '../../core/services/update_service.dart';
 import '../../core/audio/sound_service.dart';
 import 'photo_watcher_service.dart';
 import 'photo_event_service.dart';
+import 'photo_processor_service.dart';
+import 'log_parser_service.dart';
 import 'vrchat_service.dart';
 import '../repositories/photo_metadata_repository.dart';
 import '../../core/isolate/isolate_worker_pool.dart';
 import '../models/verification_models.dart';
+import '../database/app_database.dart';
 
 // Singleton service manager for the application
 // Manages global services that should run throughout the app lifecycle
@@ -50,6 +54,13 @@ class AppServiceManager {
 
   // Sound service
   final SoundService soundService = SoundService();
+
+  late final PhotoProcessorService _photoProcessorService =
+      PhotoProcessorService();
+  late final LogParserService _logParserService = LogParserService();
+
+  // Permanent subscription to the photo stream
+  StreamSubscription<String>? _photoProcessingSubscription;
 
   // VRChat service
   final VRChatService _vrchatService = VRChatService();
@@ -98,7 +109,6 @@ class AppServiceManager {
   // Set the TOS modal visibility
   set isTOSModalVisible(bool value) {
     _isTOSModalVisible = value;
-    developer.log('TOS modal visibility set to: $value', name: 'AppServiceManager');
   }
 
   // Key for storing onboarding completion status
@@ -110,7 +120,10 @@ class AppServiceManager {
       final prefs = await SharedPreferences.getInstance();
       return prefs.getBool(_onboardingCompleteKey) ?? false;
     } catch (e) {
-      developer.log('Error checking onboarding status: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error checking onboarding status: $e',
+        name: 'AppServiceManager',
+      );
       return false;
     }
   }
@@ -120,9 +133,11 @@ class AppServiceManager {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_onboardingCompleteKey, true);
-      developer.log('Onboarding marked as complete', name: 'AppServiceManager');
     } catch (e) {
-      developer.log('Error saving onboarding status: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error saving onboarding status: $e',
+        name: 'AppServiceManager',
+      );
     }
   }
 
@@ -135,19 +150,21 @@ class AppServiceManager {
       // Check if there's saved verification data
       final authData = await _vrchatService.loadAuthData();
       if (authData != null) {
-        developer.log('Checking verification status on app launch', name: 'AppServiceManager');
-
         // Check if the verification is still valid
-        final isVerified = await _vrchatService.checkVerificationStatus(authData);
+        final isVerified = await _vrchatService.checkVerificationStatus(
+          authData,
+        );
 
         if (!isVerified) {
-          developer.log('Verification is invalid, logging out user', name: 'AppServiceManager');
+          developer.log(
+            'Verification is invalid, logging out user',
+            name: 'AppServiceManager',
+          );
           // Clear auth data if verification is invalid
           await _vrchatService.logout();
           _authData = null;
           _authDataStreamController.add(null);
         } else {
-          developer.log('Verification is valid', name: 'AppServiceManager');
           final updatedAuthData = await _vrchatService.loadAuthData();
           _authData = updatedAuthData;
           _authDataStreamController.add(updatedAuthData);
@@ -157,111 +174,157 @@ class AppServiceManager {
         _authDataStreamController.add(null);
       }
     } catch (e) {
-      developer.log('Error checking verification status: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error checking verification status: $e',
+        name: 'AppServiceManager',
+      );
     }
   }
 
-  // Initialize all application services
+  // Initialize
   Future<void> initialize() async {
     if (_isInitialized) return;
 
     try {
-      // Initialize core infrastructure in parallel
+      await Future.wait([
+        _configRepository.loadConfig().then((config) => _config = config),
+        AppDatabase().database,
+      ]).timeout(const Duration(seconds: 5), onTimeout: () => []);
+
+      // Start the rest in the background
+      _initializeBackgroundTasks();
+
+      _isInitialized = true;
+    } catch (e) {
+      developer.log(
+        'Error initializing AppServiceManager: $e',
+        name: 'AppServiceManager',
+      );
+    }
+  }
+
+  Future<void> _initializeBackgroundTasks() async {
+    try {
       await Future.wait([
         IsolateWorkerPool().initialize(),
         _imageCacheService.initialize(),
         soundService.initialize(),
-        _configRepository.loadConfig().then((config) => _config = config),
-      ]);
-      developer.log('Core services and config loaded', name: 'AppServiceManager');
+      ]).timeout(const Duration(seconds: 10), onTimeout: () => []);
 
-      // Load initial auth data from storage
+      PaintingBinding.instance.imageCache.maximumSizeBytes =
+          50 * 1024 * 1024; // 50MB
+      PaintingBinding.instance.imageCache.maximumSize = 50;
+
+      // Load initial auth data
       _authData = await _vrchatService.loadAuthData();
       if (_authData != null) {
         _authDataStreamController.add(_authData);
-        developer.log('Initial auth data loaded: ${_authData!.badges.length} badges', name: 'AppServiceManager');
       }
 
-      // Initialize secondary services in parallel
-      await Future.wait([
-        PhotoMetadataRepository().getAllPhotoMetadata(),
-        checkVerificationStatus(),
-      ]);
+      await checkVerificationStatus();
 
-      if (_config == null) {
-        developer.log('Warning: Configuration could not be loaded', name: 'AppServiceManager');
-      }
-
-      // Initialize platform-specific services
-      if (Platform.isWindows && _config != null) {
-        await windowsService.initialize(
-          minimizeToTray: _config!.minimizeToTray,
-          appTitle: 'GalleVR',
-        );
-
-        // Check if auto-start setting matches registry
-        final isAutoStartEnabled = await windowsService.isStartWithWindowsEnabled();
-        if (isAutoStartEnabled != _config!.startWithWindows) {
-          // Update registry to match settings
-          await windowsService.setStartWithWindows(_config!.startWithWindows);
+      if (_config != null) {
+        if (Platform.isWindows) {
+          await windowsService.initialize(
+            minimizeToTray: _config!.minimizeToTray,
+            appTitle: 'GalleVR',
+          );
+        } else if (Platform.isLinux) {
+          await linuxService.initialize(
+            minimizeToTray: _config!.minimizeToTray,
+            appTitle: 'GalleVR',
+          );
         }
-
-        developer.log('Windows services initialized', name: 'AppServiceManager');
-      } else if (Platform.isLinux && _config != null) {
-        await linuxService.initialize(
-          minimizeToTray: _config!.minimizeToTray,
-          appTitle: 'GalleVR',
-        );
-
-        developer.log('Linux services initialized', name: 'AppServiceManager');
       }
 
-      // Initialize update service and check for updates (for both Windows and Android)
+      // Update service
       if (Platform.isWindows || Platform.isAndroid) {
-        try {
-          await _updateService.initialize();
-          // Check for updates in the background to not delay app startup
-          // Using forceCheckForUpdates to ensure update check happens on every app launch
-          Future.delayed(Duration(seconds: 2), () async {
-            final hasUpdate = await _updateService.forceCheckForUpdates();
-            developer.log('Update check completed. Update available: $hasUpdate, Latest version: ${_updateService.latestVersion}',
-                name: 'AppServiceManager');
-          });
-          developer.log('Update service initialized and force check scheduled', name: 'AppServiceManager');
-        } catch (e) {
-          developer.log('Error initializing update service: $e', name: 'AppServiceManager');
-        }
+        await _updateService.initialize();
+        Future.delayed(const Duration(seconds: 2), () {
+          _updateService.forceCheckForUpdates();
+        });
       }
 
-      // Start watching for photos if directory is set
+      // Start watching for photos
       if (_config != null && _config!.photosDirectory.isNotEmpty) {
         await _startPhotoWatcher();
       }
-
-      _isInitialized = true;
-      developer.log('AppServiceManager initialized successfully', name: 'AppServiceManager');
     } catch (e) {
-      developer.log('Error initializing AppServiceManager: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error in background initialization: $e',
+        name: 'AppServiceManager',
+      );
     }
   }
 
-  // Start the photo watcher service
+  // Start the photo watcher service and wire up the permanent processing subscription
   Future<void> _startPhotoWatcher() async {
     if (_config == null) return;
 
     try {
       await photoWatcherService.startWatching(_config!);
-      developer.log('Photo watcher started', name: 'AppServiceManager');
+
+      await _photoProcessingSubscription?.cancel();
+
+      _photoProcessingSubscription = photoWatcherService.photoStream.listen(
+        (photoPath) => _processPhotoInBackground(photoPath),
+      );
+
+      developer.log(
+        'Permanent photo processing subscription active',
+        name: 'AppServiceManager',
+      );
     } catch (e) {
-      developer.log('Error starting photo watcher: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error starting photo watcher: $e',
+        name: 'AppServiceManager',
+      );
+    }
+  }
+
+  // Process a photo in the background
+  Future<void> _processPhotoInBackground(String photoPath) async {
+    if (_config == null) return;
+    try {
+      developer.log(
+        'Background processing photo: $photoPath',
+        name: 'AppServiceManager',
+      );
+      final metadata = await _logParserService.getLatestLogMetadata(_config!);
+      final outputPath = await _photoProcessorService.processPhoto(
+        photoPath,
+        _config!,
+        metadata,
+      );
+      if (outputPath != null) {
+        photoEventService.notifyPhotoAdded(photoPath);
+        developer.log(
+          'Background photo processed successfully: $photoPath',
+          name: 'AppServiceManager',
+        );
+
+        if (Platform.isWindows && windowsService.isHidden.value) {
+          await windowsService.trimMemory();
+        }
+      }
+    } catch (e) {
+      developer.log(
+        'Error in background photo processing: $e',
+        name: 'AppServiceManager',
+      );
     }
   }
 
   // Update configuration and restart services if needed
   Future<void> updateConfig(ConfigModel config) async {
-    final bool photosDirectoryChanged = _config?.photosDirectory != config.photosDirectory;
-    final bool minimizeToTrayChanged = _config?.minimizeToTray != config.minimizeToTray;
-    final bool startWithWindowsChanged = _config?.startWithWindows != config.startWithWindows;
+    final bool photosDirectoryChanged =
+        _config?.photosDirectory != config.photosDirectory;
+    final bool logsDirectoryChanged =
+        _config?.logsDirectory != config.logsDirectory;
+    final bool minimizeToTrayChanged =
+        _config?.minimizeToTray != config.minimizeToTray;
+    final bool startWithWindowsChanged =
+        _config?.startWithWindows != config.startWithWindows;
 
     // Update the config
     _config = config;
@@ -271,39 +334,28 @@ class AppServiceManager {
       // Update minimize to tray setting
       if (minimizeToTrayChanged) {
         windowsService.updateMinimizeToTray(config.minimizeToTray);
-        developer.log('Updated minimize to tray setting: ${config.minimizeToTray}',
-            name: 'AppServiceManager');
       }
 
       // Update auto-start setting
       if (startWithWindowsChanged) {
         await windowsService.setStartWithWindows(config.startWithWindows);
-        developer.log('Updated start with Windows setting: ${config.startWithWindows}',
-            name: 'AppServiceManager');
       }
     } else if (Platform.isLinux) {
       if (minimizeToTrayChanged) {
         linuxService.updateMinimizeToTray(config.minimizeToTray);
-        developer.log('Updated minimize to tray setting: ${config.minimizeToTray}',
-            name: 'AppServiceManager');
       }
     }
 
-    // Restart photo watcher if photos directory changed
-    if (photosDirectoryChanged) {
-      developer.log('Photos directory changed, restarting watcher', name: 'AppServiceManager');
-      if (config.photosDirectory.isNotEmpty) {
-        await photoWatcherService.stopWatching();
-        await _startPhotoWatcher();
-      } else {
-        await photoWatcherService.stopWatching();
-      }
-    } else if (_config?.photosDirectory.isNotEmpty == true) {
-      // If other settings changed but photos directory is still set, restart the watcher
-      // to ensure it picks up the new configuration
-      developer.log('Configuration changed, restarting watcher with new settings', name: 'AppServiceManager');
+    // Restart photo watcher if important filesystem paths changed
+    if (photosDirectoryChanged || logsDirectoryChanged) {
+      await _photoProcessingSubscription?.cancel();
+      _photoProcessingSubscription = null;
       await photoWatcherService.stopWatching();
-      await _startPhotoWatcher();
+
+      if (config.photosDirectory.isNotEmpty &&
+          config.logsDirectory.isNotEmpty) {
+        await _startPhotoWatcher();
+      }
     }
 
     // Notify listeners about the config change
@@ -316,10 +368,7 @@ class AppServiceManager {
     if (Platform.isWindows) {
       if (forceExit) {
         // Force exit the app
-        developer.log('Force exiting application from AppServiceManager', name: 'AppServiceManager');
-
         // Dispose all services first to ensure clean shutdown
-        developer.log('Disposing all services before exit', name: 'AppServiceManager');
         await dispose();
 
         // Exit the application
@@ -331,7 +380,6 @@ class AppServiceManager {
       }
     } else if (Platform.isLinux) {
       if (forceExit) {
-        developer.log('Force exiting application from AppServiceManager', name: 'AppServiceManager');
         await dispose();
         await linuxService.exitApplication();
         return false;
@@ -344,33 +392,51 @@ class AppServiceManager {
 
   // Dispose all services
   Future<void> dispose() async {
-    developer.log('Disposing all services', name: 'AppServiceManager');
-
     try {
       IsolateWorkerPool().dispose();
-      developer.log('Isolate worker pool disposed', name: 'AppServiceManager');
     } catch (e) {
-      developer.log('Error disposing isolate worker pool: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error disposing isolate worker pool: $e',
+        name: 'AppServiceManager',
+      );
     }
 
     try {
       // Stop foreground tasks first
-      developer.log('Stopping foreground tasks', name: 'AppServiceManager');
       await FlutterForegroundTask.stopService();
     } catch (e) {
-      developer.log('Error stopping foreground tasks: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error stopping foreground tasks: $e',
+        name: 'AppServiceManager',
+      );
+    }
+
+    try {
+      await _photoProcessingSubscription?.cancel();
+      _photoProcessingSubscription = null;
+    } catch (e) {
+      developer.log(
+        'Error cancelling photo processing subscription: $e',
+        name: 'AppServiceManager',
+      );
     }
 
     try {
       await photoWatcherService.dispose();
     } catch (e) {
-      developer.log('Error disposing photo watcher service: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error disposing photo watcher service: $e',
+        name: 'AppServiceManager',
+      );
     }
 
     try {
       soundService.dispose();
     } catch (e) {
-      developer.log('Error disposing sound service: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error disposing sound service: $e',
+        name: 'AppServiceManager',
+      );
     }
 
     // Dispose platform services
@@ -378,13 +444,19 @@ class AppServiceManager {
       try {
         _windowsService?.dispose();
       } catch (e) {
-        developer.log('Error disposing Windows service: $e', name: 'AppServiceManager');
+        developer.log(
+          'Error disposing Windows service: $e',
+          name: 'AppServiceManager',
+        );
       }
     } else if (Platform.isLinux) {
       try {
         _linuxService?.dispose();
       } catch (e) {
-        developer.log('Error disposing Linux service: $e', name: 'AppServiceManager');
+        developer.log(
+          'Error disposing Linux service: $e',
+          name: 'AppServiceManager',
+        );
       }
     }
 
@@ -392,29 +464,39 @@ class AppServiceManager {
       await _configStreamController.close();
       await _authDataStreamController.close();
     } catch (e) {
-      developer.log('Error closing stream controllers: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error closing stream controllers: $e',
+        name: 'AppServiceManager',
+      );
     }
 
     try {
       await _imageCacheService.clearCache();
     } catch (e) {
-      developer.log('Error clearing image cache: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error clearing image cache: $e',
+        name: 'AppServiceManager',
+      );
     }
 
     // Logout from VRChat service if needed
     try {
       await _vrchatService.logout();
     } catch (e) {
-      developer.log('Error during VRChat logout on dispose: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error during VRChat logout on dispose: $e',
+        name: 'AppServiceManager',
+      );
     }
 
     // Dispose update service
     try {
       await _updateService.dispose();
     } catch (e) {
-      developer.log('Error disposing update service: $e', name: 'AppServiceManager');
+      developer.log(
+        'Error disposing update service: $e',
+        name: 'AppServiceManager',
+      );
     }
-
-    developer.log('All services disposed', name: 'AppServiceManager');
   }
 }

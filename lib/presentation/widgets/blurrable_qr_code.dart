@@ -47,27 +47,27 @@ class _BlurrableQrCodeState extends State<BlurrableQrCode> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(51),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(51),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+        ],
+      ),
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            alignment: Alignment.center,
             children: [
               QrImageView(
-                data: _isRevealed ? widget.revealedData : widget.blurredData,
+                data: widget.revealedData,
                 version: QrVersions.auto,
                 size: widget.size,
                 eyeStyle: const QrEyeStyle(
@@ -80,38 +80,59 @@ class _BlurrableQrCodeState extends State<BlurrableQrCode> {
                 ),
                 backgroundColor: Colors.white,
               ),
-              if (_isRevealed) ...[
-                const SizedBox(height: 8),
-                TextButton.icon(
-                  onPressed: _toggleVisibility,
-                  icon: const Icon(Icons.visibility_off, size: 16),
-                  label: const Text('Hide QR Code'),
+              AnimatedOpacity(
+                opacity: _isRevealed ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 300),
+                child: IgnorePointer(
+                  ignoring: _isRevealed,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        width: widget.size,
+                        height: widget.size,
+                        color: Colors.white.withOpacity(0.1),
+                        child: Center(
+                          child: ElevatedButton.icon(
+                            onPressed: _toggleVisibility,
+                            icon: const Icon(Icons.visibility),
+                            label: const Text('Reveal QR Code'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.black87,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ],
+              ),
             ],
           ),
-        ),
-
-        if (!_isRevealed)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(
-                width: widget.size + 16,
-                height: widget.size + 16,
-                color: Colors.black.withAlpha(51),
-                child: Center(
-                  child: ElevatedButton.icon(
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            height: _isRevealed ? 40 : 0,
+            curve: Curves.easeInOut,
+            child: SingleChildScrollView(
+              physics: const NeverScrollableScrollPhysics(),
+              child: AnimatedOpacity(
+                opacity: _isRevealed ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: TextButton.icon(
                     onPressed: _toggleVisibility,
-                    icon: const Icon(Icons.visibility),
-                    label: const Text('Reveal QR Code'),
+                    icon: const Icon(Icons.visibility_off, size: 16),
+                    label: const Text('Hide QR Code'),
                   ),
                 ),
               ),
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 }

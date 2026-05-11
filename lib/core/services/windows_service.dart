@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'dart:ffi';
 import 'dart:io';
 
-import 'package:flutter/services.dart' show MethodChannel, BasicMessageChannel, StringCodec;
+import 'package:flutter/services.dart'
+    show MethodChannel, BasicMessageChannel, StringCodec;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:win32_registry/win32_registry.dart';
+import 'package:flutter/painting.dart';
+import 'package:flutter/foundation.dart';
 
 import 'notification_service.dart';
 
@@ -24,6 +28,9 @@ class WindowsService {
 
   bool _isInitialized = false;
   bool _minimizeToTray = true;
+
+  // State broadcaster indicating if the UI window is hidden (for widget tree virtualization)
+  final ValueNotifier<bool> isHidden = ValueNotifier<bool>(false);
 
   // Singleton instance
   static final WindowsService _instance = WindowsService._internal();
@@ -50,9 +57,15 @@ class WindowsService {
       if (Platform.isWindows) {
         try {
           await _notificationService.initialize();
-          developer.log('Notification service initialized', name: 'WindowsService');
+          developer.log(
+            'Notification service initialized',
+            name: 'WindowsService',
+          );
         } catch (e) {
-          developer.log('Error initializing notification service: $e', name: 'WindowsService');
+          developer.log(
+            'Error initializing notification service: $e',
+            name: 'WindowsService',
+          );
         }
       }
 
@@ -65,8 +78,10 @@ class WindowsService {
       _isInitialized = true;
       developer.log('Windows service initialized', name: 'WindowsService');
     } catch (e) {
-      developer.log('Error initializing Windows service: $e',
-          name: 'WindowsService');
+      developer.log(
+        'Error initializing Windows service: $e',
+        name: 'WindowsService',
+      );
     }
   }
 
@@ -74,16 +89,17 @@ class WindowsService {
   Future<void> _initSystemTray(String appTitle) async {
     try {
       // Set up system tray icon and menu
-      final iconPath = Platform.isWindows
-          ? 'assets/images/app_icon.ico'
-          : 'assets/images/app_icon.png';
+      final iconPath =
+          Platform.isWindows
+              ? 'assets/images/app_icon.ico'
+              : 'assets/images/app_icon.png';
 
-      developer.log('Initializing system tray with icon: $iconPath', name: 'WindowsService');
-
-      await _systemTray.initSystemTray(
-        title: appTitle,
-        iconPath: iconPath,
+      developer.log(
+        'Initializing system tray with icon: $iconPath',
+        name: 'WindowsService',
       );
+
+      await _systemTray.initSystemTray(title: appTitle, iconPath: iconPath);
 
       // Create system tray menu
       final menu = Menu();
@@ -101,7 +117,10 @@ class WindowsService {
           label: 'Exit',
           onClicked: (menuItem) {
             // Clean up before exiting
-            developer.log('Exiting application from system tray', name: 'WindowsService');
+            developer.log(
+              'Exiting application from system tray',
+              name: 'WindowsService',
+            );
             exitApplication();
           },
         ),
@@ -138,8 +157,10 @@ class WindowsService {
 
       developer.log('System tray initialized', name: 'WindowsService');
     } catch (e) {
-      developer.log('Error initializing system tray: $e',
-          name: 'WindowsService');
+      developer.log(
+        'Error initializing system tray: $e',
+        name: 'WindowsService',
+      );
     }
   }
 
@@ -155,14 +176,20 @@ class WindowsService {
 
     // exit pls
     if (forceExit) {
-      developer.log('Force exiting application from handleWindowClose', name: 'WindowsService');
+      developer.log(
+        'Force exiting application from handleWindowClose',
+        name: 'WindowsService',
+      );
       await exitApplication();
       return false;
     }
 
     if (_minimizeToTray) {
       try {
-        developer.log('Minimizing to system tray instead of closing', name: 'WindowsService');
+        developer.log(
+          'Minimizing to system tray instead of closing',
+          name: 'WindowsService',
+        );
 
         await hideWindow(showNotification: true);
 
@@ -183,7 +210,10 @@ class WindowsService {
     if (_isInitialized) {
       try {
         // Try to clean up system tray resources before exiting
-        developer.log('Cleaning up system tray before exit', name: 'WindowsService');
+        developer.log(
+          'Cleaning up system tray before exit',
+          name: 'WindowsService',
+        );
 
         // Hide the window first
         _appWindow.hide();
@@ -199,7 +229,10 @@ class WindowsService {
 
         developer.log('System tray cleanup completed', name: 'WindowsService');
       } catch (e) {
-        developer.log('Error during system tray cleanup: $e', name: 'WindowsService');
+        developer.log(
+          'Error during system tray cleanup: $e',
+          name: 'WindowsService',
+        );
       }
     }
 
@@ -208,7 +241,10 @@ class WindowsService {
       developer.log('Stopping any foreground tasks', name: 'WindowsService');
       await FlutterForegroundTask.stopService();
     } catch (e) {
-      developer.log('Error stopping foreground tasks: $e', name: 'WindowsService');
+      developer.log(
+        'Error stopping foreground tasks: $e',
+        name: 'WindowsService',
+      );
     }
 
     // Force exit the application using a more aggressive approach
@@ -240,8 +276,10 @@ class WindowsService {
       key.close();
       return exists;
     } catch (e) {
-      developer.log('Error checking startup registry: $e',
-          name: 'WindowsService');
+      developer.log(
+        'Error checking startup registry: $e',
+        name: 'WindowsService',
+      );
       return false;
     }
   }
@@ -266,14 +304,19 @@ class WindowsService {
 
         // Add the app to startup registry with the start minimized flag
         key.createValue(RegistryValue.string(_appRegistryKey, startupCommand));
-        developer.log('Added app to Windows startup with minimized flag', name: 'WindowsService');
+        developer.log(
+          'Added app to Windows startup with minimized flag',
+          name: 'WindowsService',
+        );
       } else {
         // Remove the app from startup registry
         for (final value in key.values) {
           if (value.name == _appRegistryKey) {
             key.deleteValue(_appRegistryKey);
-            developer.log('Removed app from Windows startup',
-                name: 'WindowsService');
+            developer.log(
+              'Removed app from Windows startup',
+              name: 'WindowsService',
+            );
             break;
           }
         }
@@ -282,8 +325,10 @@ class WindowsService {
       key.close();
       return true;
     } catch (e) {
-      developer.log('Error setting startup registry: $e',
-          name: 'WindowsService');
+      developer.log(
+        'Error setting startup registry: $e',
+        name: 'WindowsService',
+      );
       return false;
     }
   }
@@ -293,7 +338,16 @@ class WindowsService {
     if (!Platform.isWindows || !_isInitialized) return;
 
     try {
-      developer.log('Showing application window', name: 'WindowsService');
+      developer.log('Restoring application window...', name: 'WindowsService');
+
+      PaintingBinding.instance.imageCache.maximumSize = 1000;
+      PaintingBinding.instance.imageCache.maximumSizeBytes =
+          100 << 20; // 100 MB
+
+      isHidden.value = false;
+
+      await Future.delayed(const Duration(milliseconds: 50));
+
       _appWindow.show();
     } catch (e) {
       developer.log('Error showing window: $e', name: 'WindowsService');
@@ -306,7 +360,12 @@ class WindowsService {
 
     try {
       developer.log('Hiding application window', name: 'WindowsService');
+      isHidden.value = true;
+
       _appWindow.hide();
+
+      // Perform immediate deep memory reclamation now that we are fully hidden
+      await trimMemory();
 
       // Update the tooltip to inform the user that the app is still running
       await _systemTray.setToolTip('GalleVR is running in the background');
@@ -317,6 +376,42 @@ class WindowsService {
       }
     } catch (e) {
       developer.log('Error hiding window: $e', name: 'WindowsService');
+    }
+  }
+
+  /// Performs deep memory reclamation for the application.
+  Future<void> trimMemory() async {
+    if (!Platform.isWindows) return;
+
+    try {
+      PaintingBinding.instance.imageCache.maximumSize = 0;
+      PaintingBinding.instance.imageCache.maximumSizeBytes = 0;
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+
+      PaintingBinding.instance.handleMemoryPressure();
+
+      developer.log(
+        'Purged UI image caches and signaled low-memory pressure.',
+        name: 'WindowsService',
+      );
+    } catch (e) {
+      developer.log('Failed to purge caches: $e', name: 'WindowsService');
+    }
+
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    try {
+      _emptyWorkingSet();
+      developer.log(
+        'Successfully emptied working set.',
+        name: 'WindowsService',
+      );
+    } catch (e) {
+      developer.log(
+        'EmptyWorkingSet invocation failed: $e',
+        name: 'WindowsService',
+      );
     }
   }
 
@@ -347,46 +442,50 @@ class WindowsService {
     if (!Platform.isWindows || !_isInitialized) return;
 
     try {
-      developer.log('System tray will be cleaned up when app exits', name: 'WindowsService');
+      developer.log(
+        'System tray will be cleaned up when app exits',
+        name: 'WindowsService',
+      );
       developer.log('Windows service disposed', name: 'WindowsService');
     } catch (e) {
-      developer.log('Error disposing Windows service: $e',
-          name: 'WindowsService');
+      developer.log(
+        'Error disposing Windows service: $e',
+        name: 'WindowsService',
+      );
     }
   }
 
   /// Set up the window event channel to listen for window events from native code
   void _setupWindowEventChannel() {
     _windowChannel.setMethodCallHandler((call) async {
-      developer.log('Received window event: ${call.method}', name: 'WindowsService');
+      developer.log(
+        'Received window event: ${call.method}',
+        name: 'WindowsService',
+      );
 
-      // The native code sends a message when the window is closed (hidden)
-      if (call.method == 'onWindowHidden') {
-        // Show notification that the app is still running
-        await _showMinimizedNotification();
+      if (call.method == 'onWindowHidden' && !isHidden.value) {
+        developer.log(
+          'Executing central hideWindow pipeline from native intercept...',
+          name: 'WindowsService',
+        );
+        await hideWindow(showNotification: true);
       }
 
       return null;
     });
 
-    // Also set up a basic message handler for the platform message
-    const BasicMessageChannel<String> basicChannel = BasicMessageChannel<String>(
-      _windowChannelName,
-      StringCodec(),
+    developer.log(
+      'Window event channel listener bound successfully',
+      name: 'WindowsService',
     );
+  }
 
-    basicChannel.setMessageHandler((message) async {
-      developer.log('Received window message: $message', name: 'WindowsService');
-
-      // Show notification that the app is still running
-      await _showMinimizedNotification();
-
-      return 'Notification shown';
-    });
-
-    developer.log('Window event channel set up', name: 'WindowsService');
+  void _emptyWorkingSet() {
+    final psapi = DynamicLibrary.open('psapi.dll');
+    final emptyWorkingSet = psapi
+        .lookupFunction<Int32 Function(IntPtr), int Function(int)>(
+          'EmptyWorkingSet',
+        );
+    emptyWorkingSet(-1);
   }
 }
-
-
-

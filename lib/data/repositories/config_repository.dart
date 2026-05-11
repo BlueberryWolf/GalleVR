@@ -45,8 +45,6 @@ class ConfigRepository {
       final jsonString = json.encode(config.toJson());
       await configFile.writeAsString(jsonString);
     } catch (e) {
-      // Handle error (could throw or log)
-      debugPrint('Error saving config: $e');
     }
   }
 

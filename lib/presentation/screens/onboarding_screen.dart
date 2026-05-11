@@ -10,6 +10,7 @@ import '../../data/services/app_service_manager.dart';
 import '../../data/services/vrchat_service.dart';
 import 'home_screen.dart';
 import 'verification_screen.dart';
+import '../widgets/app_card.dart';
 
 // Onboarding screen shown on first app launch
 class OnboardingScreen extends StatefulWidget {
@@ -49,6 +50,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   int _currentStep = 0;
 
   final PageController _pageController = PageController();
+
+  static const Color _brandPurple = Color(0xFF8B5CF6);
+  static const Color _brandMagenta = Color(0xFFEC4899);
 
   @override
   void initState() {
@@ -93,10 +97,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _checkVRChatLoggingStatus() async {
-    developer.log(
-      'Checking VRChat logging status',
-      name: 'OnboardingScreen',
-    );
+    developer.log('Checking VRChat logging status', name: 'OnboardingScreen');
 
     try {
       final isEnabled = await _vrchatRegistryService.isFullLoggingEnabled();
@@ -151,7 +152,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         );
 
         if (exists) {
-          // Check for log files with content
           hasValidLogs = await _checkForValidLogFiles(logsDir);
         }
       }
@@ -184,7 +184,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         name: 'OnboardingScreen',
       );
 
-      // Look for VRChat log files (output_log_*.txt pattern)
       const logPattern = 'output_log_';
       bool foundValidLog = false;
       int totalLogFiles = 0;
@@ -205,7 +204,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               );
 
               if (fileSize > 0) {
-                // Check if the file is recent (not just old cached content)
                 final isRecent = await _isLogFileRecent(entity);
                 if (isRecent) {
                   foundValidLog = true;
@@ -213,7 +211,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     'Valid log file found: $fileName (size: $fileSize bytes)',
                     name: 'OnboardingScreen',
                   );
-                  break; // Found at least one valid log file
+                  break;
                 }
               } else {
                 emptyLogFiles++;
@@ -249,10 +247,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   Future<bool> _isLogFileRecent(File logFile) async {
     try {
-      // Check if the file is recent (not just old cached content)
       final now = DateTime.now();
       final fileModified = await logFile.lastModified();
-      final isRecent = now.difference(fileModified).inDays < 7; // Modified within last week
+      final isRecent = now.difference(fileModified).inDays < 7;
 
       developer.log(
         'Log file recency check - Recent: $isRecent, Modified: $fileModified',
@@ -289,7 +286,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         name: 'OnboardingScreen',
       );
 
-      // Check if VRChat is running
       final isRunning = await _vrchatRegistryService.isVRChatRunning();
 
       developer.log(
@@ -360,7 +356,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         _isLoading = true;
       });
 
-      final granted = await _permissionService.requestStoragePermissions(context);
+      final granted = await _permissionService.requestStoragePermissions(
+        context,
+      );
 
       if (mounted) {
         setState(() {
@@ -378,7 +376,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   void _nextStep() {
-    // All platforms now have logging step: Android (3 steps), Windows (4 steps), Others (3 steps)
     final maxStep = Platform.isAndroid ? 3 : (Platform.isWindows ? 4 : 3);
     if (_currentStep < maxStep) {
       setState(() {
@@ -406,7 +403,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _proceedToWebConnection() async {
-    // Save Windows settings if on Windows
     if (Platform.isWindows) {
       await _saveWindowsSettings();
     }
@@ -421,7 +417,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _proceedToLocalOnly() async {
-    // Save Windows settings if on Windows
     if (Platform.isWindows) {
       await _saveWindowsSettings();
     }
@@ -437,19 +432,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
   }
 
-  // Save Windows settings to config
   Future<void> _saveWindowsSettings() async {
     try {
-      // Load current config
       final currentConfig = _appServiceManager.config;
       if (currentConfig != null) {
-        // Create updated config with Windows settings
         final updatedConfig = currentConfig.copyWith(
           minimizeToTray: _minimizeToTray,
           startWithWindows: _startWithWindows,
         );
 
-        // Save the updated config
         await _appServiceManager.updateConfig(updatedConfig);
         developer.log(
           'Windows settings saved during onboarding: minimizeToTray=$_minimizeToTray, startWithWindows=$_startWithWindows',
@@ -464,6 +455,20 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
   }
 
+  Widget _buildStepContainer(Widget child) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double maxWidth = 640.0;
+        return Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -471,767 +476,710 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     final isAndroid = Platform.isAndroid;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF0a0a12),
-                  Color(0xFF0f0f1a),
-                  Color(0xFF0a0a12),
-                ],
-              ),
-            ),
-          ),
-
-          Positioned(
-            top: size.height * 0.1,
-            right: -size.width * 0.2,
-            child: _buildGlowingOrb(
-              size.width * 0.5,
-              AppTheme.primaryColor.withAlpha(8),
-            ),
-          ),
-          Positioned(
-            bottom: -size.height * 0.1,
-            left: -size.width * 0.3,
-            child: _buildGlowingOrb(
-              size.width * 0.6,
-              AppTheme.primaryLightColor.withAlpha(5),
-            ),
-          ),
-
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.transparent,
-                    AppTheme.primaryColor.withAlpha(51),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          SafeArea(
-            child: PageView(
-              controller: _pageController,
-              physics: const NeverScrollableScrollPhysics(),
-              onPageChanged: (index) {
-                setState(() {
-                  _currentStep = index;
-                });
-              },
-              children: isAndroid
-                ? [
+      backgroundColor: AppTheme.backgroundColor,
+      body: SafeArea(
+        child: PageView(
+          controller: _pageController,
+          physics: const NeverScrollableScrollPhysics(),
+          onPageChanged: (index) {
+            setState(() {
+              _currentStep = index;
+            });
+          },
+          children:
+              isAndroid
+                  ? [
                     _buildWelcomeStep(size, isSmallScreen),
                     _buildPermissionsStep(size, isSmallScreen),
                     _buildNonWindowsLoggingStep(size, isSmallScreen),
                     _buildConnectionStep(size, isSmallScreen),
                   ]
-                : Platform.isWindows
+                  : Platform.isWindows
                   ? [
-                      _buildWelcomeStep(size, isSmallScreen),
-                      _buildVRChatLoggingStep(size, isSmallScreen),
-                      _buildWindowsSettingsStep(size, isSmallScreen),
-                      _buildConnectionStep(size, isSmallScreen),
-                    ]
+                    _buildWelcomeStep(size, isSmallScreen),
+                    _buildVRChatLoggingStep(size, isSmallScreen),
+                    _buildWindowsSettingsStep(size, isSmallScreen),
+                    _buildConnectionStep(size, isSmallScreen),
+                  ]
                   : [
-                      _buildWelcomeStep(size, isSmallScreen),
-                      _buildNonWindowsLoggingStep(size, isSmallScreen),
-                      _buildConnectionStep(size, isSmallScreen),
-                    ],
-            ),
-          ),
-        ],
+                    _buildWelcomeStep(size, isSmallScreen),
+                    _buildNonWindowsLoggingStep(size, isSmallScreen),
+                    _buildConnectionStep(size, isSmallScreen),
+                  ],
+        ),
       ),
     );
   }
 
   Widget _buildWelcomeStep(Size size, bool isSmallScreen) {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: isSmallScreen ? 24 : 48,
-          vertical: 24,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(height: size.height * 0.05),
+    return _buildStepContainer(
+      SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: isSmallScreen ? 24 : 40,
+            vertical: 24,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(height: size.height * 0.05),
 
-            FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, -0.2),
-                  end: Offset.zero,
-                ).animate(_slideAnimation),
-                child: Center(
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.transparent,
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.primaryColor.withAlpha(38),
-                              blurRadius: 50,
-                              spreadRadius: 10,
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      Image.asset(
-                        'assets/images/square.png',
-                        width: 100,
-                        height: 100,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            SizedBox(height: size.height * 0.04),
-
-            FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.2),
-                  end: Offset.zero,
-                ).animate(_slideAnimation),
-                child: Column(
-                  children: [
-                    ShaderMask(
-                      shaderCallback:
-                          (bounds) => LinearGradient(
-                            colors: [
-                              AppTheme.primaryLightColor,
-                              AppTheme.primaryColor,
-                              AppTheme.primaryDarkColor,
-                            ],
-                          ).createShader(bounds),
-                      child: Text(
-                        'Welcome to GalleVR',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 28 : 36,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-
-                    SizedBox(height: size.height * 0.02),
-
-                    Text(
-                      'Your VR photos, organized and accessible',
-                      style: TextStyle(
-                        fontSize: isSmallScreen ? 16 : 18,
-                        color: Color.fromRGBO(255, 255, 255, 0.8),
-                        fontWeight: FontWeight.w500,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            SizedBox(height: size.height * 0.06),
-
-            FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.3),
-                  end: Offset.zero,
-                ).animate(_slideAnimation),
-                child: _buildFeatureCard(
-                  icon: Icons.photo_library_rounded,
-                  title: 'Organize Your VR Memories',
-                  description:
-                      'GalleVR automatically sorts your VRChat photos by world, friends, and more.',
-                ),
-              ),
-            ),
-
-            SizedBox(height: size.height * 0.02),
-
-            FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.3),
-                  end: Offset.zero,
-                ).animate(_slideAnimation),
-                child: _buildFeatureCard(
-                  icon: Icons.search_rounded,
-                  title: 'Find Photos Instantly',
-                  description:
-                      'No more endless scrolling through folders with VR controllers.',
-                ),
-              ),
-            ),
-
-            SizedBox(height: size.height * 0.02),
-
-            FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.3),
-                  end: Offset.zero,
-                ).animate(_slideAnimation),
-                child: _buildFeatureCard(
-                  icon: Icons.shield_rounded,
-                  title: 'Private & Secure',
-                  description:
-                      'Your photos stay private unless you choose to share them.',
-                ),
-              ),
-            ),
-
-            SizedBox(height: size.height * 0.06),
-
-            FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.3),
-                  end: Offset.zero,
-                ).animate(_slideAnimation),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _nextStep,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+              FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, -0.2),
+                    end: Offset.zero,
+                  ).animate(_slideAnimation),
+                  child: Center(
+                    child: Stack(
+                      alignment: Alignment.center,
                       children: [
-                        Text(
-                          'Next',
-                          style: TextStyle(
-                            fontSize: isSmallScreen ? 16 : 18,
-                            fontWeight: FontWeight.bold,
+                        Container(
+                          width: 160,
+                          height: 160,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.transparent,
+                            boxShadow: [
+                              BoxShadow(
+                                color: _brandPurple.withAlpha(48),
+                                blurRadius: 60,
+                                spreadRadius: 15,
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.arrow_forward_rounded),
+                        Image.asset(
+                          'assets/images/logo.png',
+                          height: 120,
+                          fit: BoxFit.contain,
+                        ),
                       ],
                     ),
                   ),
                 ),
               ),
-            ),
 
-            SizedBox(height: size.height * 0.04),
-          ],
+              SizedBox(height: size.height * 0.04),
+
+              FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.2),
+                    end: Offset.zero,
+                  ).animate(_slideAnimation),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Welcome to GalleVR',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.displayMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: -1.0,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        height: 4,
+                        width: 48,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [_brandPurple, _brandMagenta],
+                          ),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Your VR photos, organized and accessible',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.white.withOpacity(0.7),
+                          height: 1.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              SizedBox(height: size.height * 0.05),
+
+              FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.3),
+                    end: Offset.zero,
+                  ).animate(_slideAnimation),
+                  child: _buildFeatureCard(
+                    icon: Icons.photo_library_rounded,
+                    title: 'Organize Your VR Memories',
+                    description:
+                        'GalleVR automatically sorts your VRChat photos by world, friends, and more.',
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.3),
+                    end: Offset.zero,
+                  ).animate(_slideAnimation),
+                  child: _buildFeatureCard(
+                    icon: Icons.search_rounded,
+                    title: 'Find Photos Instantly',
+                    description:
+                        'No more endless scrolling through folders with VR controllers.',
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.3),
+                    end: Offset.zero,
+                  ).animate(_slideAnimation),
+                  child: _buildFeatureCard(
+                    icon: Icons.shield_rounded,
+                    title: 'Private & Secure',
+                    description:
+                        'Your photos stay private unless you choose to share them.',
+                  ),
+                ),
+              ),
+
+              SizedBox(height: size.height * 0.06),
+
+              FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.3),
+                    end: Offset.zero,
+                  ).animate(_slideAnimation),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _nextStep,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _brandPurple,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Get Started'.toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Icon(Icons.arrow_forward_rounded, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildPermissionsStep(Size size, bool isSmallScreen) {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: isSmallScreen ? 24 : 48,
-          vertical: 24,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(height: size.height * 0.05),
+    return _buildStepContainer(
+      SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: isSmallScreen ? 24 : 40,
+            vertical: 24,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(height: size.height * 0.05),
 
-            ShaderMask(
-              shaderCallback:
-                  (bounds) => LinearGradient(
-                    colors: [
-                      AppTheme.primaryLightColor,
-                      AppTheme.primaryColor,
-                      AppTheme.primaryDarkColor,
-                    ],
-                  ).createShader(bounds),
-              child: Text(
+              Text(
                 'Storage Permissions',
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 28 : 36,
-                  fontWeight: FontWeight.bold,
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
                   color: Colors.white,
+                  letterSpacing: -1.0,
                 ),
                 textAlign: TextAlign.center,
               ),
-            ),
-
-            SizedBox(height: size.height * 0.02),
-
-            Text(
-              'GalleVR needs access to your media files',
-              style: TextStyle(
-                fontSize: isSmallScreen ? 16 : 18,
-                color: Color.fromRGBO(255, 255, 255, 0.8),
-                fontWeight: FontWeight.w500,
+              const SizedBox(height: 12),
+              Container(
+                height: 4,
+                width: 48,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [_brandPurple, _brandMagenta],
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
+              const SizedBox(height: 20),
+              Text(
+                'GalleVR needs access to your media files',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white.withOpacity(0.7),
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
 
-            SizedBox(height: size.height * 0.06),
+              SizedBox(height: size.height * 0.06),
 
-            _buildPermissionsCard(),
+              _buildPermissionsCard(),
 
-            SizedBox(height: size.height * 0.06),
+              SizedBox(height: size.height * 0.06),
 
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 56,
-                    child: OutlinedButton(
-                      onPressed: _previousStep,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white30),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: OutlinedButton(
+                        onPressed: _previousStep,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white30),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
+                        child: const Text('Back'),
                       ),
-                      child: const Text('Back'),
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
-
-                Expanded(
-                  child: SizedBox(
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _permissionsGranted ? _nextStep : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: AppTheme.primaryColor
-                            .withAlpha(77),
-                        disabledForegroundColor: const Color.fromRGBO(
-                          255,
-                          255,
-                          255,
-                          0.5,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _permissionsGranted ? _nextStep : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _brandPurple,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: _brandPurple.withAlpha(77),
+                          disabledForegroundColor: Colors.white.withOpacity(
+                            0.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        elevation: 0,
-                      ),
-                      child:
-                          _isLoading
-                              ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
+                        child:
+                            _isLoading
+                                ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                                : const Text(
+                                  'Next',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
-                              )
-                              : const Text('Next'),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-
-            SizedBox(height: size.height * 0.04),
-          ],
+                ],
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildConnectionStep(Size size, bool isSmallScreen) {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: isSmallScreen ? 24 : 48,
-          vertical: 24,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(height: size.height * 0.05),
+    return _buildStepContainer(
+      SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: isSmallScreen ? 24 : 40,
+            vertical: 24,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(height: size.height * 0.05),
 
-            ShaderMask(
-              shaderCallback:
-                  (bounds) => LinearGradient(
-                    colors: [
-                      AppTheme.primaryLightColor,
-                      AppTheme.primaryColor,
-                      AppTheme.primaryDarkColor,
-                    ],
-                  ).createShader(bounds),
-              child: Text(
+              Text(
                 'Unlock the Full Experience',
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 28 : 36,
-                  fontWeight: FontWeight.bold,
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
                   color: Colors.white,
+                  letterSpacing: -1.0,
                 ),
                 textAlign: TextAlign.center,
               ),
-            ),
-
-            SizedBox(height: size.height * 0.02),
-
-            Text(
-              'GalleVR is your personal and social VR hub',
-              style: TextStyle(
-                fontSize: isSmallScreen ? 16 : 18,
-                color: Color.fromRGBO(255, 255, 255, 0.8),
-                fontWeight: FontWeight.w500,
+              const SizedBox(height: 12),
+              Container(
+                height: 4,
+                width: 48,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [_brandPurple, _brandMagenta],
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
-
-            SizedBox(height: size.height * 0.06),
-
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Color.fromRGBO(0, 0, 0, 0.2),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.cardBorderColor, width: 1),
+              const SizedBox(height: 20),
+              Text(
+                'GalleVR is your personal and social VR hub',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white.withOpacity(0.7),
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withAlpha(25),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.public_rounded,
-                          color: AppTheme.primaryColor,
-                          size: 28,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      const Expanded(
-                        child: Text(
-                          'Web & Social Features',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+
+              SizedBox(height: size.height * 0.06),
+
+              AppCard(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.public_rounded,
+                            color: _brandPurple,
+                            size: 24,
                           ),
                         ),
+                        const SizedBox(width: 16),
+                        const Expanded(
+                          child: Text(
+                            'Web & Social Features',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Linking your VRChat account unlocks the core GalleVR experience:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.5,
+                        color: Colors.white.withOpacity(0.7),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildBenefitItem(
+                      'Private by Default: You control your photos',
+                    ),
+                    _buildBenefitItem(
+                      'Social Feed: See what your friends are up to',
+                    ),
+                    _buildBenefitItem(
+                      'Profiles: Showcase your favorite VR moments',
+                    ),
+                    _buildBenefitItem(
+                      'Advanced Sorting: By world, friends, and more',
+                    ),
+                    _buildBenefitItem(
+                      'Access Anywhere: Browse gallery anywhere',
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Ready to link your VRChat account?',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Note: Linking will NOT automatically sync existing photos. Your gallery remains 100% private until shared.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                        color: Colors.white.withOpacity(0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              SizedBox(height: size.height * 0.06),
+
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _proceedToWebConnection,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _brandPurple,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Link VRChat Account'.toUpperCase(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.5,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Icon(Icons.link_rounded, size: 18),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Linking your VRChat account unlocks the core GalleVR experience:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color.fromRGBO(255, 255, 255, 0.7),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildBenefitItem(
-                    'Private by Default: You control your photos',
-                  ),
-                  _buildBenefitItem('Social Feed: See what your friends are up to'),
-                  _buildBenefitItem('Profiles: Showcase your favorite VR moments'),
-                  _buildBenefitItem('Advanced Sorting: By world, friends, and more'),
-                  _buildBenefitItem(
-                    'Access Anywhere: Browse your gallery from any device',
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Ready to link your VRChat account?',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Note: Linking will NOT automatically sync your existing photos. Your gallery remains 100% private until you choose to share.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                      color: Color.fromRGBO(255, 255, 255, 0.5),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: OutlinedButton(
+                        onPressed: _previousStep,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white30),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text('Back'),
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
 
-            SizedBox(height: size.height * 0.06),
+              const SizedBox(height: 16),
 
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 56,
-                    child: OutlinedButton(
-                      onPressed: _previousStep,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white30),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: const Text('Back'),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: _proceedToWebConnection,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Link VRChat Account',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(width: 8),
-                    Icon(Icons.link_rounded),
-                  ],
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: TextButton(
+                  onPressed: _showSkipConnectionDialog,
+                  style: TextButton.styleFrom(foregroundColor: Colors.white54),
+                  child: const Text('Continue without Linking'),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 16),
-
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: TextButton(
-                onPressed: _showSkipConnectionDialog,
-                style: TextButton.styleFrom(foregroundColor: Colors.white54),
-                child: const Text('Continue without Linking'),
-              ),
-            ),
-
-            SizedBox(height: size.height * 0.04),
-          ],
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildVRChatLoggingStep(Size size, bool isSmallScreen) {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: isSmallScreen ? 24 : 48,
-          vertical: 24,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(height: size.height * 0.05),
+    return _buildStepContainer(
+      SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: isSmallScreen ? 24 : 40,
+            vertical: 24,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(height: size.height * 0.05),
 
-            ShaderMask(
-              shaderCallback:
-                  (bounds) => LinearGradient(
-                    colors: [
-                      AppTheme.primaryLightColor,
-                      AppTheme.primaryColor,
-                      AppTheme.primaryDarkColor,
-                    ],
-                  ).createShader(bounds),
-              child: Text(
+              Text(
                 'VRChat Logging',
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 28 : 36,
-                  fontWeight: FontWeight.bold,
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
                   color: Colors.white,
+                  letterSpacing: -1.0,
                 ),
                 textAlign: TextAlign.center,
               ),
-            ),
-
-            SizedBox(height: size.height * 0.02),
-
-            Text(
-              'Enable full logging for photo metadata tagging',
-              style: TextStyle(
-                fontSize: isSmallScreen ? 16 : 18,
-                color: Color.fromRGBO(255, 255, 255, 0.8),
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-
-            SizedBox(height: size.height * 0.06),
-
-            _buildLoggingCard(),
-
-            // Show message when logging is not enabled
-            if (!_isVRChatLoggingEnabled) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.all(16),
+                height: 4,
+                width: 48,
                 decoration: BoxDecoration(
-                  color: const Color.fromRGBO(255, 152, 0, 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: const Color.fromRGBO(255, 152, 0, 0.3),
+                  gradient: const LinearGradient(
+                    colors: [_brandPurple, _brandMagenta],
                   ),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      color: Colors.orange,
-                      size: 20,
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'VRChat full logging is required to process and organize your photos. Please enable it to continue.',
-                        style: TextStyle(
-                          color: Colors.orange,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ],
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ],
+              const SizedBox(height: 20),
+              Text(
+                'Enable full logging for photo metadata tagging',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white.withOpacity(0.7),
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
 
-            SizedBox(height: size.height * 0.06),
+              SizedBox(height: size.height * 0.06),
 
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 56,
-                    child: OutlinedButton(
-                      onPressed: _previousStep,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white30),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: const Text('Back'),
+              _buildLoggingCard(),
+
+              if (!_isVRChatLoggingEnabled) ...[
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color.fromRGBO(255, 152, 0, 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color.fromRGBO(255, 152, 0, 0.3),
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
-
-                Expanded(
-                  child: SizedBox(
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _isVRChatLoggingEnabled ? _nextStep : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: AppTheme.primaryColor
-                            .withAlpha(77),
-                        disabledForegroundColor: const Color.fromRGBO(
-                          255,
-                          255,
-                          255,
-                          0.5,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        elevation: 0,
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: Colors.orange,
+                        size: 20,
                       ),
-                      child: const Text('Next'),
-                    ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'VRChat full logging is required to process and organize your photos. Please enable it to continue.',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
 
-            SizedBox(height: size.height * 0.04),
-          ],
+              SizedBox(height: size.height * 0.06),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: OutlinedButton(
+                        onPressed: _previousStep,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white30),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text('Back'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _isVRChatLoggingEnabled ? _nextStep : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _brandPurple,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: _brandPurple.withAlpha(77),
+                          disabledForegroundColor: Colors.white.withOpacity(
+                            0.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Next',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildLoggingCard() {
-    final loggingColor =
-        _isVRChatLoggingEnabled
-            ? const Color.fromRGBO(0, 128, 0, 0.1)
-            : const Color.fromRGBO(0, 0, 0, 0.2);
+    final accentColor = _isVRChatLoggingEnabled ? Colors.green : _brandPurple;
 
-    final borderColor =
-        _isVRChatLoggingEnabled
-            ? const Color.fromRGBO(0, 128, 0, 0.3)
-            : AppTheme.cardBorderColor;
-
-    final iconBgColor =
-        _isVRChatLoggingEnabled
-            ? const Color.fromRGBO(0, 128, 0, 0.1)
-            : AppTheme.primaryColor.withAlpha(25);
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: loggingColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borderColor, width: 1),
-      ),
+    return AppCard(
+      padding: const EdgeInsets.all(24),
+      borderColor:
+          _isVRChatLoggingEnabled ? Colors.green.withOpacity(0.2) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1240,18 +1188,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: iconBgColor,
+                  color: Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   _isVRChatLoggingEnabled
                       ? Icons.check_circle_rounded
                       : Icons.settings_rounded,
-                  color:
-                      _isVRChatLoggingEnabled
-                          ? Colors.green
-                          : AppTheme.primaryColor,
-                  size: 28,
+                  color: accentColor,
+                  size: 24,
                 ),
               ),
               const SizedBox(width: 16),
@@ -1260,25 +1205,36 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   'VRChat Full Logging',
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
                     color: Colors.white,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'Without VRChat full logging enabled, GalleVR cannot process your photos or extract metadata like world names and player lists. Your photos will remain unorganized.',
+          const SizedBox(height: 20),
+          Text(
+            'Without VRChat full logging enabled, GalleVR cannot process your photos or extract metadata like world names and player lists.',
             style: TextStyle(
               fontSize: 14,
-              color: Color.fromRGBO(255, 255, 255, 0.7),
+              height: 1.5,
+              color: Colors.white.withOpacity(0.7),
             ),
           ),
           const SizedBox(height: 12),
-          _buildBenefitItem('Required for automatic world name detection'),
-          _buildBenefitItem('Required for player tagging in photos'),
-          _buildBenefitItem('Required for enhanced search capabilities'),
+          _buildBenefitItem(
+            'Required for automatic world name detection',
+            iconColor: accentColor,
+          ),
+          _buildBenefitItem(
+            'Required for player tagging in photos',
+            iconColor: accentColor,
+          ),
+          _buildBenefitItem(
+            'Required for enhanced search capabilities',
+            iconColor: accentColor,
+          ),
           const SizedBox(height: 20),
           if (!_isVRChatLoggingEnabled)
             SizedBox(
@@ -1286,7 +1242,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               child: ElevatedButton(
                 onPressed: _isEnablingLogging ? null : _enableVRChatLogging,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
+                  backgroundColor: _brandPurple,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -1330,9 +1286,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Color.fromRGBO(255, 152, 0, 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Color.fromRGBO(255, 152, 0, 0.3)),
+                    color: const Color.fromRGBO(255, 152, 0, 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color.fromRGBO(255, 152, 0, 0.3),
+                    ),
                   ),
                   child: const Row(
                     children: [
@@ -1340,7 +1298,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'VRChat is currently running. Please restart the game for full logging to take effect.',
+                          'VRChat is running. Please restart the game for logging to take effect.',
                           style: TextStyle(
                             color: Colors.orange,
                             fontWeight: FontWeight.w500,
@@ -1371,39 +1329,21 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     );
   }
 
-  Widget _buildBenefitItem(String text) {
+  Widget _buildBenefitItem(String text, {Color? iconColor}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.check_circle,
-            color: AppTheme.primaryColor,
-            size: 18,
-          ),
+          Icon(Icons.check_circle, color: iconColor ?? _brandPurple, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               text,
-              style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.7)),
+              style: const TextStyle(color: Color.fromRGBO(255, 255, 255, 0.7)),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildGlowingOrb(double size, Color color) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [color, color.withAlpha(0)],
-          stops: const [0.2, 1.0],
-        ),
       ),
     );
   }
@@ -1413,22 +1353,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     required String title,
     required String description,
   }) {
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color.fromRGBO(0, 0, 0, 0.2),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.cardBorderColor, width: 1),
-      ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withAlpha(25),
+              color: Colors.white.withOpacity(0.05),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: AppTheme.primaryColor, size: 28),
+            child: Icon(icon, color: _brandPurple, size: 24),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1439,16 +1374,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   title,
                   style: const TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
                     color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   description,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
-                    color: Color.fromRGBO(255, 255, 255, 0.7),
+                    height: 1.4,
+                    color: Colors.white.withOpacity(0.6),
                   ),
                 ),
               ],
@@ -1460,111 +1397,109 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Widget _buildWindowsSettingsStep(Size size, bool isSmallScreen) {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: isSmallScreen ? 24 : 48,
-          vertical: 24,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(height: size.height * 0.05),
+    return _buildStepContainer(
+      SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: isSmallScreen ? 24 : 40,
+            vertical: 24,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(height: size.height * 0.05),
 
-            ShaderMask(
-              shaderCallback:
-                  (bounds) => LinearGradient(
-                    colors: [
-                      AppTheme.primaryLightColor,
-                      AppTheme.primaryColor,
-                      AppTheme.primaryDarkColor,
-                    ],
-                  ).createShader(bounds),
-              child: Text(
+              Text(
                 'Windows Settings',
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 28 : 36,
-                  fontWeight: FontWeight.bold,
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
                   color: Colors.white,
+                  letterSpacing: -1.0,
                 ),
                 textAlign: TextAlign.center,
               ),
-            ),
-
-            SizedBox(height: size.height * 0.02),
-
-            Text(
-              'Configure how GalleVR behaves on your system',
-              style: TextStyle(
-                fontSize: isSmallScreen ? 16 : 18,
-                color: Color.fromRGBO(255, 255, 255, 0.8),
-                fontWeight: FontWeight.w500,
+              const SizedBox(height: 12),
+              Container(
+                height: 4,
+                width: 48,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [_brandPurple, _brandMagenta],
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
+              const SizedBox(height: 20),
+              Text(
+                'Configure how GalleVR behaves on your system',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white.withOpacity(0.7),
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
 
-            SizedBox(height: size.height * 0.06),
+              SizedBox(height: size.height * 0.06),
 
-            _buildWindowsSettingsCard(),
+              _buildWindowsSettingsCard(),
 
-            SizedBox(height: size.height * 0.06),
+              SizedBox(height: size.height * 0.06),
 
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 56,
-                    child: OutlinedButton(
-                      onPressed: _previousStep,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white30),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: OutlinedButton(
+                        onPressed: _previousStep,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white30),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
+                        child: const Text('Back'),
                       ),
-                      child: const Text('Back'),
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
-
-                Expanded(
-                  child: SizedBox(
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _nextStep,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _nextStep,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _brandPurple,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
                         ),
-                        elevation: 0,
+                        child: const Text(
+                          'Next',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
-                      child: const Text('Next'),
                     ),
                   ),
-                ),
-              ],
-            ),
-
-            SizedBox(height: size.height * 0.04),
-          ],
+                ],
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildWindowsSettingsCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color.fromRGBO(0, 0, 0, 0.2),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.cardBorderColor, width: 1),
-      ),
+    return AppCard(
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1573,13 +1508,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withAlpha(25),
+                  color: Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.settings_rounded,
-                  color: AppTheme.primaryColor,
-                  size: 28,
+                  color: _brandPurple,
+                  size: 24,
                 ),
               ),
               const SizedBox(width: 16),
@@ -1588,73 +1523,49 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   'Application Behavior',
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
                     color: Colors.white,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
+          const SizedBox(height: 20),
+          Text(
             'Configure how GalleVR behaves on your Windows system:',
             style: TextStyle(
               fontSize: 14,
-              color: Color.fromRGBO(255, 255, 255, 0.7),
+              height: 1.5,
+              color: Colors.white.withOpacity(0.7),
             ),
           ),
           const SizedBox(height: 20),
 
-          // Minimize to tray switch
-          SwitchListTile(
-            title: const Text(
-              'Minimize to System Tray',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            subtitle: const Text(
-              'Keep GalleVR running in the background when closed',
-              style: TextStyle(
-                color: Color.fromRGBO(255, 255, 255, 0.7),
-                fontSize: 13,
-              ),
-            ),
+          _buildCustomSwitchRow(
+            title: 'Minimize to System Tray',
+            subtitle: 'Keep GalleVR running in the background when closed',
             value: _minimizeToTray,
-            activeColor: AppTheme.primaryColor,
             onChanged: (value) {
               setState(() {
                 _minimizeToTray = value;
               });
             },
+            activeColor: _brandPurple,
           ),
 
-          const Divider(color: Color.fromRGBO(255, 255, 255, 0.1)),
+          const SizedBox(height: 8),
 
-          // Start with Windows switch
-          SwitchListTile(
-            title: const Text(
-              'Start with Windows',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            subtitle: const Text(
-              'Automatically start GalleVR when Windows starts',
-              style: TextStyle(
-                color: Color.fromRGBO(255, 255, 255, 0.7),
-                fontSize: 13,
-              ),
-            ),
+          _buildCustomSwitchRow(
+            title: 'Start with Windows',
+            subtitle: 'Automatically launch GalleVR on system startup',
             value: _startWithWindows,
-            activeColor: AppTheme.primaryColor,
             onChanged: (value) {
               setState(() {
                 _startWithWindows = value;
               });
             },
+            activeColor: _brandPurple,
           ),
 
           const SizedBox(height: 16),
@@ -1672,28 +1583,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Widget _buildPermissionsCard() {
-    final permissionColor =
-        _permissionsGranted
-            ? const Color.fromRGBO(0, 128, 0, 0.1)
-            : const Color.fromRGBO(0, 0, 0, 0.2);
+    final accentColor = _permissionsGranted ? Colors.green : _brandPurple;
 
-    final borderColor =
-        _permissionsGranted
-            ? const Color.fromRGBO(0, 128, 0, 0.3)
-            : AppTheme.cardBorderColor;
-
-    final iconBgColor =
-        _permissionsGranted
-            ? const Color.fromRGBO(0, 128, 0, 0.1)
-            : AppTheme.primaryColor.withAlpha(25);
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: permissionColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borderColor, width: 1),
-      ),
+    return AppCard(
+      padding: const EdgeInsets.all(24),
+      borderColor: _permissionsGranted ? Colors.green.withOpacity(0.2) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1702,18 +1596,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: iconBgColor,
+                  color: Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   _permissionsGranted
                       ? Icons.check_circle_rounded
                       : Icons.folder_rounded,
-                  color:
-                      _permissionsGranted
-                          ? Colors.green
-                          : AppTheme.primaryColor,
-                  size: 28,
+                  color: accentColor,
+                  size: 24,
                 ),
               ),
               const SizedBox(width: 16),
@@ -1722,19 +1613,21 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   'Storage Permissions',
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
                     color: Colors.white,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'GalleVR needs access to your photos, videos, and documents to find and organize your VRChat photos and their metadata.',
+          const SizedBox(height: 20),
+          Text(
+            'GalleVR needs access to your photos and documents to organize your VRChat photos.',
             style: TextStyle(
               fontSize: 14,
-              color: Color.fromRGBO(255, 255, 255, 0.7),
+              height: 1.5,
+              color: Colors.white.withOpacity(0.7),
             ),
           ),
           const SizedBox(height: 20),
@@ -1744,7 +1637,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _requestPermissions,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
+                  backgroundColor: _brandPurple,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -1787,185 +1680,166 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Widget _buildNonWindowsLoggingStep(Size size, bool isSmallScreen) {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: isSmallScreen ? 24 : 48,
-          vertical: 24,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(height: size.height * 0.05),
+    return _buildStepContainer(
+      SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: isSmallScreen ? 24 : 40,
+            vertical: 24,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(height: size.height * 0.05),
 
-            ShaderMask(
-              shaderCallback:
-                  (bounds) => LinearGradient(
-                    colors: [
-                      AppTheme.primaryLightColor,
-                      AppTheme.primaryColor,
-                      AppTheme.primaryDarkColor,
-                    ],
-                  ).createShader(bounds),
-              child: Text(
+              Text(
                 'VRChat Logging',
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 28 : 36,
-                  fontWeight: FontWeight.bold,
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
                   color: Colors.white,
+                  letterSpacing: -1.0,
                 ),
                 textAlign: TextAlign.center,
               ),
-            ),
-
-            SizedBox(height: size.height * 0.02),
-
-            Text(
-              'Enable full logging for photo metadata tagging',
-              style: TextStyle(
-                fontSize: isSmallScreen ? 16 : 18,
-                color: Color.fromRGBO(255, 255, 255, 0.8),
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-
-            SizedBox(height: size.height * 0.06),
-
-            _buildNonWindowsLoggingCard(),
-
-            // Show message when logs directory is not available
-            if (!_isLogsDirectoryAvailable && !_isCheckingLogsDirectory) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.all(16),
+                height: 4,
+                width: 48,
                 decoration: BoxDecoration(
-                  color: const Color.fromRGBO(255, 152, 0, 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: const Color.fromRGBO(255, 152, 0, 0.3),
+                  gradient: const LinearGradient(
+                    colors: [_brandPurple, _brandMagenta],
                   ),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      color: Colors.orange,
-                      size: 20,
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Please enable VRChat full logging to continue with the setup.',
-                        style: TextStyle(
-                          color: Colors.orange,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ],
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ],
+              const SizedBox(height: 20),
+              Text(
+                'Enable full logging for photo metadata tagging',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white.withOpacity(0.7),
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
 
-            SizedBox(height: size.height * 0.06),
+              SizedBox(height: size.height * 0.06),
 
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 56,
-                    child: OutlinedButton(
-                      onPressed: _previousStep,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white30),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: const Text('Back'),
+              _buildNonWindowsLoggingCard(),
+
+              if (!_isLogsDirectoryAvailable && !_isCheckingLogsDirectory) ...[
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color.fromRGBO(255, 152, 0, 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color.fromRGBO(255, 152, 0, 0.3),
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
-
-                Expanded(
-                  child: SizedBox(
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _isLogsDirectoryAvailable ? _nextStep : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: AppTheme.primaryColor
-                            .withAlpha(77),
-                        disabledForegroundColor: const Color.fromRGBO(
-                          255,
-                          255,
-                          255,
-                          0.5,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        elevation: 0,
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: Colors.orange,
+                        size: 20,
                       ),
-                      child: const Text('Next'),
-                    ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Please enable VRChat full logging to continue setup.',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
 
-            // Small skip button
-            if (!_isLogsDirectoryAvailable && !_isCheckingLogsDirectory) ...[
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 32,
-                child: TextButton(
-                  onPressed: _showSkipLoggingDialog,
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.white54,
-                    textStyle: const TextStyle(fontSize: 12),
+              SizedBox(height: size.height * 0.06),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: OutlinedButton(
+                        onPressed: _previousStep,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white30),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text('Back'),
+                      ),
+                    ),
                   ),
-                  child: const Text('Skip (Not Recommended)'),
-                ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _isLogsDirectoryAvailable ? _nextStep : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _brandPurple,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: _brandPurple.withAlpha(77),
+                          disabledForegroundColor: Colors.white.withOpacity(
+                            0.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Next',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
 
-            SizedBox(height: size.height * 0.04),
-          ],
+              if (!_isLogsDirectoryAvailable && !_isCheckingLogsDirectory) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 32,
+                  child: TextButton(
+                    onPressed: _showSkipLoggingDialog,
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white54,
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
+                    child: const Text('Skip (Not Recommended)'),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildNonWindowsLoggingCard() {
-    final loggingColor =
-        _isLogsDirectoryAvailable
-            ? const Color.fromRGBO(0, 128, 0, 0.1)
-            : const Color.fromRGBO(0, 0, 0, 0.2);
+    final accentColor = _isLogsDirectoryAvailable ? Colors.green : _brandPurple;
 
-    final borderColor =
-        _isLogsDirectoryAvailable
-            ? const Color.fromRGBO(0, 128, 0, 0.3)
-            : AppTheme.cardBorderColor;
-
-    final iconBgColor =
-        _isLogsDirectoryAvailable
-            ? const Color.fromRGBO(0, 128, 0, 0.1)
-            : AppTheme.primaryColor.withAlpha(25);
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: loggingColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borderColor, width: 1),
-      ),
+    return AppCard(
+      padding: const EdgeInsets.all(24),
+      borderColor:
+          _isLogsDirectoryAvailable ? Colors.green.withOpacity(0.2) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1974,20 +1848,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: iconBgColor,
+                  color: Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   _isLogsDirectoryAvailable
                       ? Icons.check_circle_rounded
                       : _isCheckingLogsDirectory
-                          ? Icons.refresh_rounded
-                          : Icons.settings_rounded,
-                  color:
-                      _isLogsDirectoryAvailable
-                          ? Colors.green
-                          : AppTheme.primaryColor,
-                  size: 28,
+                      ? Icons.refresh_rounded
+                      : Icons.settings_rounded,
+                  color: accentColor,
+                  size: 24,
                 ),
               ),
               const SizedBox(width: 16),
@@ -1996,36 +1867,40 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   'VRChat Full Logging',
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
                     color: Colors.white,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'GalleVR needs VRChat\'s full logging enabled to extract detailed information about your photos, including world names and player lists. We check for recent log files with content (not just empty files).',
+          const SizedBox(height: 20),
+          Text(
+            'GalleVR needs VRChat\'s full logging enabled to extract detailed information about photos.',
             style: TextStyle(
               fontSize: 14,
-              color: Color.fromRGBO(255, 255, 255, 0.7),
+              height: 1.5,
+              color: Colors.white.withOpacity(0.7),
             ),
           ),
           const SizedBox(height: 12),
-          _buildBenefitItem('Enables automatic world name detection'),
-          _buildBenefitItem('Enables player tagging in photos'),
-          _buildBenefitItem('Enhances search capabilities'),
+          _buildBenefitItem(
+            'Enables automatic world name detection',
+            iconColor: accentColor,
+          ),
+          _buildBenefitItem(
+            'Enables player tagging in photos',
+            iconColor: accentColor,
+          ),
           const SizedBox(height: 20),
 
-          // Manual instructions
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color.fromRGBO(0, 0, 0, 0.3),
+              color: Colors.white.withOpacity(0.03),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppTheme.primaryColor.withAlpha(77),
-              ),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2034,7 +1909,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   children: [
                     Icon(
                       Icons.info_outline_rounded,
-                      color: AppTheme.primaryColor,
+                      color: _brandPurple,
                       size: 20,
                     ),
                     SizedBox(width: 8),
@@ -2043,7 +1918,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
-                        fontSize: 14,
                       ),
                     ),
                   ],
@@ -2057,38 +1931,38 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   ),
                 ),
                 const SizedBox(height: 8),
-                _buildInstructionStep('1. Open VRChat'),
-                _buildInstructionStep('2. Go to Settings'),
-                _buildInstructionStep('3. Navigate to Debug'),
-                _buildInstructionStep('4. Set Logging to "Full"'),
-                _buildInstructionStep('5. Restart VRChat'),
-                _buildInstructionStep('6. Use VRChat briefly to generate logs'),
+                _buildInstructionStep('1. Open VRChat & Go to Settings'),
+                _buildInstructionStep('2. Navigate to Debug tab'),
+                _buildInstructionStep('3. Set Logging to "Full"'),
+                _buildInstructionStep('4. Restart VRChat application'),
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _isCheckingLogsDirectory ? null : _recheckLogsDirectory,
+                    onPressed:
+                        _isCheckingLogsDirectory ? null : _recheckLogsDirectory,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
+                      backgroundColor: _brandPurple,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 8),
                     ),
-                    child: _isCheckingLogsDirectory
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
+                    child:
+                        _isCheckingLogsDirectory
+                            ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                            : const Text(
+                              'Check Again',
+                              style: TextStyle(fontSize: 13),
                             ),
-                          )
-                        : const Text(
-                            'Check Again',
-                            style: TextStyle(fontSize: 13),
-                          ),
                   ),
                 ),
               ],
@@ -2103,7 +1977,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   Icon(Icons.check_circle_outline, color: Colors.green),
                   SizedBox(width: 8),
                   Text(
-                    'Full logging detected with recent content',
+                    'Full logging detected',
                     style: TextStyle(
                       color: Colors.green,
                       fontWeight: FontWeight.w500,
@@ -2125,10 +1999,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         children: [
           const Text(
             '  • ',
-            style: TextStyle(
-              color: AppTheme.primaryColor,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(color: _brandPurple, fontWeight: FontWeight.bold),
           ),
           Expanded(
             child: Text(
@@ -2151,82 +2022,120 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   Future<void> _showSkipLoggingDialog() async {
     final shouldSkip = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color.fromRGBO(20, 20, 30, 1),
-        title: const Text(
-          'Skip Logging Setup?',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Without VRChat full logging enabled, GalleVR will not be able to:\n\n'
-          '• Automatically detect world names\n'
-          '• Tag players in photos\n'
-          '• Provide enhanced search capabilities\n\n'
-          'You can enable logging later in VRChat settings.\n\n'
-          'Are you sure you want to continue?',
-          style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.8)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: const Color.fromRGBO(20, 20, 30, 1),
+            title: const Text(
+              'Skip Logging Setup?',
+              style: TextStyle(color: Colors.white),
             ),
-            child: const Text('Skip Anyway'),
+            content: const Text(
+              'Without full logging enabled, GalleVR cannot auto-detect worlds or tag players.\n\nSkip setup anyway?',
+              style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.8)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Skip Anyway'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
-
-    if (shouldSkip == true) {
-      _nextStep();
-    }
+    if (shouldSkip == true) _nextStep();
   }
 
   Future<void> _showSkipConnectionDialog() async {
     final shouldSkip = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color.fromRGBO(20, 20, 30, 1),
-        title: const Text(
-          'Skip Account Linking?',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Without linking your VRChat account, you will lose access to the core features of GalleVR:\n\n'
-          '• No Social Feed or Profiles\n'
-          '• No Free Unlimited Storage or Multi-device sync\n'
-          '• Limited photo organization\n\n'
-          'Your photos remain 100% private and existing photos are NOT synced automatically even when linked.\n\n'
-          'Continue without linking?',
-          style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.8)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Go Back'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white12,
-              foregroundColor: Colors.white70,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: const Color.fromRGBO(20, 20, 30, 1),
+            title: const Text(
+              'Skip Account Linking?',
+              style: TextStyle(color: Colors.white),
             ),
-            child: const Text('Continue (Limited)'),
+            content: const Text(
+              'Without linking, you lose access to Social Feeds, Profiles and sync.\n\nContinue without linking?',
+              style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.8)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Go Back'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white12,
+                  foregroundColor: Colors.white70,
+                ),
+                child: const Text('Continue (Limited)'),
+              ),
+            ],
           ),
-        ],
+    );
+    if (shouldSkip == true) await _proceedToLocalOnly();
+  }
+
+  Widget _buildCustomSwitchRow({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool>? onChanged,
+    required Color activeColor,
+    bool dense = false,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onChanged != null ? () => onChanged(!value) : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: dense ? 8 : 12,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.38),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: value,
+                onChanged: onChanged,
+                activeColor: activeColor,
+              ),
+            ],
+          ),
+        ),
       ),
     );
-
-    if (shouldSkip == true) {
-      await _proceedToLocalOnly();
-    }
   }
 }
-
-

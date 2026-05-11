@@ -9,6 +9,7 @@ import '../../data/services/photo_processor_service.dart';
 import '../../data/services/photo_event_service.dart';
 import '../../data/models/config_model.dart';
 import '../../data/models/verification_models.dart';
+import '../widgets/app_card.dart';
 
 class MonitorScreen extends StatefulWidget {
   const MonitorScreen({super.key});
@@ -17,11 +18,14 @@ class MonitorScreen extends StatefulWidget {
   State<MonitorScreen> createState() => _MonitorScreenState();
 }
 
-class _MonitorScreenState extends State<MonitorScreen> {
+class _MonitorScreenState extends State<MonitorScreen>
+    with TickerProviderStateMixin {
   final AppServiceManager _appServiceManager = AppServiceManager();
   final LogParserService _logParserService = LogParserService();
   final PhotoProcessorService _photoProcessorService = PhotoProcessorService();
   final PhotoEventService _photoEventService = PhotoEventService();
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   ConfigModel? _config;
   AuthData? _authData;
@@ -38,6 +42,15 @@ class _MonitorScreenState extends State<MonitorScreen> {
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
     _loadConfig();
     _listenForConfigChanges();
     _listenForAuthChanges();
@@ -46,6 +59,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
 
   @override
   void dispose() {
+    _pulseController.dispose();
     _stopWatching();
     _configSubscription?.cancel();
     _authSubscription?.cancel();
@@ -107,14 +121,6 @@ class _MonitorScreenState extends State<MonitorScreen> {
         }
 
         _updateWatcherStatus();
-
-        _addEvent(
-          _ProcessingEvent(
-            type: _EventType.info,
-            message: 'Configuration updated',
-            timestamp: DateTime.now(),
-          ),
-        );
       }
     });
   }
@@ -184,7 +190,14 @@ class _MonitorScreenState extends State<MonitorScreen> {
       final photoWatcherService = _appServiceManager.photoWatcherService;
 
       _photoSubscription = photoWatcherService.photoStream.listen((photoPath) {
-        _processPhoto(photoPath);
+        _addEvent(
+          _ProcessingEvent(
+            type: _EventType.photo,
+            message: 'Processing photo: ${path.basename(photoPath)}',
+            timestamp: DateTime.now(),
+            photoPath: photoPath,
+          ),
+        );
       });
 
       setState(() {
@@ -192,8 +205,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
         _addEvent(
           _ProcessingEvent(
             type: _EventType.info,
-            message:
-                'Started watching VRChat logs for new screenshots',
+            message: 'Started watching VRChat logs for new screenshots',
             timestamp: DateTime.now(),
           ),
         );
@@ -230,68 +242,6 @@ class _MonitorScreenState extends State<MonitorScreen> {
     }
   }
 
-  Future<void> _processPhoto(String photoPath) async {
-    if (_config == null) return;
-
-    _addEvent(
-      _ProcessingEvent(
-        type: _EventType.photo,
-        message: 'Processing photo: ${path.basename(photoPath)}',
-        timestamp: DateTime.now(),
-        photoPath: photoPath,
-      ),
-    );
-
-    try {
-      final metadata = await _logParserService.getLatestLogMetadata(_config!);
-
-      final outputPath = await _photoProcessorService.processPhoto(
-        photoPath,
-        _config!,
-        metadata,
-      );
-
-      if (outputPath != null) {
-        if (_config!.uploadEnabled) {
-          _addEvent(
-            _ProcessingEvent(
-              type: _EventType.upload,
-              message: 'Photo metadata saved locally and uploaded to server',
-              timestamp: DateTime.now(),
-            ),
-          );
-        } else {
-          _addEvent(
-            _ProcessingEvent(
-              type: _EventType.info,
-              message: 'Photo metadata saved locally',
-              timestamp: DateTime.now(),
-            ),
-          );
-        }
-
-        _photoEventService.notifyPhotoAdded(photoPath);
-      } else {
-        _addEvent(
-          _ProcessingEvent(
-            type: _EventType.error,
-            message: 'Failed to process photo: ${path.basename(photoPath)}',
-            timestamp: DateTime.now(),
-          ),
-        );
-      }
-    } catch (e) {
-      developer.log('Error processing photo: $e', name: 'MonitorScreen');
-      _addEvent(
-        _ProcessingEvent(
-          type: _EventType.error,
-          message: 'Error processing photo: $e',
-          timestamp: DateTime.now(),
-        ),
-      );
-    }
-  }
-
   void _addEvent(_ProcessingEvent event) {
     if (!mounted) return;
 
@@ -316,25 +266,37 @@ class _MonitorScreenState extends State<MonitorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
     if (_config == null || _config!.photosDirectory.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.folder_off, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.folder_off_rounded,
+                size: 64,
+                color: Colors.white24,
+              ),
+            ),
+            const SizedBox(height: 24),
             Text(
               'No photos directory set',
-              style: Theme.of(context).textTheme.headlineMedium,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: Colors.white70,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'Please set a photos directory in settings',
-              style: Theme.of(context).textTheme.bodyMedium,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.white38),
               textAlign: TextAlign.center,
             ),
           ],
@@ -343,67 +305,213 @@ class _MonitorScreenState extends State<MonitorScreen> {
     }
 
     return Column(
-      children: [_buildStatusCard(), Expanded(child: _buildEventList())],
+      children: [_buildStatusHeader(), Expanded(child: _buildEventList())],
     );
   }
 
-  Widget _buildStatusCard() {
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+  Widget _buildStatusHeader() {
+    final statusColor =
+        _isWatching ? const Color(0xFF4ade80) : const Color(0xFFf87171);
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: AppCard(
+        padding: const EdgeInsets.all(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            statusColor.withOpacity(0.15),
+            Colors.white.withOpacity(0.05),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(
-                  _isWatching ? Icons.visibility : Icons.visibility_off,
-                  color: _isWatching ? Colors.green : Colors.red,
+                Row(
+                  children: [
+                    const Text(
+                      'Watcher',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: statusColor.withOpacity(0.3)),
+                      ),
+                      child: Icon(
+                        _isWatching
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
+                        color: statusColor,
+                        size: 16,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  _isWatching ? 'Watching for photos' : 'Not watching',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const Spacer(),
-                ElevatedButton(
+                _buildModernButton(
                   onPressed: _isWatching ? _stopWatching : _startWatching,
-                  child: Text(_isWatching ? 'Stop' : 'Start'),
+                  label: _isWatching ? 'Stop Monitor' : 'Start Monitor',
+                  color: _isWatching ? Colors.redAccent : statusColor,
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Photos directory: ${_config!.photosDirectory}',
-              style: Theme.of(context).textTheme.bodyMedium,
+            const SizedBox(height: 20),
+            _buildDirectoryRow(
+              Icons.photo_library_rounded,
+              'Photos',
+              _config!.photosDirectory,
             ),
             if (_config!.logsDirectory.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Logs directory: ${_config!.logsDirectory}',
-                style: Theme.of(context).textTheme.bodyMedium,
+              const SizedBox(height: 12),
+              _buildDirectoryRow(
+                Icons.article_rounded,
+                'Logs',
+                _config!.logsDirectory,
               ),
             ],
-            const SizedBox(height: 8),
+            const SizedBox(height: 20),
             Row(
               children: [
-                Icon(
-                  _config!.uploadEnabled ? Icons.cloud_upload : Icons.cloud_off,
-                  color: _config!.uploadEnabled ? Colors.blue : Colors.grey,
+                _buildInteractiveBadge(
+                  icon:
+                      _config!.uploadEnabled
+                          ? Icons.cloud_done_rounded
+                          : Icons.cloud_off_rounded,
+                  label:
+                      _config!.uploadEnabled
+                          ? 'Uploading Enabled'
+                          : 'Uploading Disabled',
+                  color:
+                      _config!.uploadEnabled
+                          ? const Color(0xFF60a5fa)
+                          : Colors.white30,
+                  onTap: () {
+                    if (_config != null) {
+                      final newConfig = _config!.copyWith(
+                        uploadEnabled: !_config!.uploadEnabled,
+                      );
+                      _appServiceManager.updateConfig(newConfig);
+                    }
+                  },
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  _config!.uploadEnabled
-                      ? 'Photo uploading enabled'
-                      : 'Photo uploading disabled',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+                const SizedBox(width: 12),
+                _buildSupporterStatus(),
               ],
             ),
-            const SizedBox(height: 12),
-            _buildSupporterStatus(),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDirectoryRow(IconData icon, String label, String pathStr) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.white38),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white24,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              pathStr,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInteractiveBadge({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernButton({
+    required VoidCallback onPressed,
+    required String label,
+    required Color color,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
         ),
       ),
     );
@@ -417,47 +525,31 @@ class _MonitorScreenState extends State<MonitorScreen> {
     final color = colorValue != null ? Color(colorValue) : Colors.grey;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            tier == SupporterTier.none ? Icons.person : Icons.stars,
+            tier == SupporterTier.none
+                ? Icons.person_rounded
+                : Icons.stars_rounded,
             color: color,
-            size: 20,
+            size: 14,
           ),
           const SizedBox(width: 8),
           Text(
-            tier.name,
+            tier.name.toUpperCase(),
             style: TextStyle(
               color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              fontSize: 11,
             ),
           ),
-          if (tier != SupporterTier.none) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text(
-                'ACTIVE',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -466,9 +558,18 @@ class _MonitorScreenState extends State<MonitorScreen> {
   Widget _buildEventList() {
     if (_events.isEmpty) {
       return Center(
-        child: Text(
-          'No events yet',
-          style: Theme.of(context).textTheme.bodyLarge,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.history_rounded, size: 48, color: Colors.white10),
+            const SizedBox(height: 16),
+            Text(
+              'Activity stream is empty',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(color: Colors.white24),
+            ),
+          ],
         ),
       );
     }
@@ -496,42 +597,68 @@ class _MonitorScreenState extends State<MonitorScreen> {
 
     switch (event.type) {
       case _EventType.info:
-        iconData = Icons.info;
-        iconColor = Colors.blue;
+        iconData = Icons.info_outline_rounded;
+        iconColor = const Color(0xFF60a5fa);
         break;
       case _EventType.photo:
-        iconData = Icons.photo;
-        iconColor = Colors.purple;
+        iconData = Icons.photo_rounded;
+        iconColor = const Color(0xFFf472b6);
         break;
       case _EventType.success:
-        iconData = Icons.check_circle;
-        iconColor = Colors.green;
+        iconData = Icons.check_circle_rounded;
+        iconColor = const Color(0xFF4ade80);
         break;
       case _EventType.error:
-        iconData = Icons.error;
-        iconColor = Colors.red;
+        iconData = Icons.error_outline_rounded;
+        iconColor = const Color(0xFFf87171);
         break;
       case _EventType.upload:
-        iconData = Icons.cloud_upload;
-        iconColor = Colors.blue;
+        iconData = Icons.cloud_upload_rounded;
+        iconColor = const Color(0xFF3b82f6);
         break;
     }
 
-    const cardMargin = EdgeInsets.only(bottom: 8);
-
-    return Card(
-      margin: cardMargin,
-      child: ListTile(
-        leading: Icon(iconData, color: iconColor),
-        title: Text(event.message),
-        subtitle: Text(
-          _formatTimestamp(event.timestamp),
-          style: Theme.of(context).textTheme.bodySmall,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: AppCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        borderRadius: 12,
+        child: Row(
+          children: [
+            Icon(iconData, color: iconColor.withOpacity(0.7), size: 18),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    event.message,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatTimestamp(event.timestamp),
+                    style: const TextStyle(color: Colors.white30, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            if (event.photoPath != null) ...[
+              const SizedBox(width: 12),
+              IconButton(
+                icon: const Icon(Icons.visibility_rounded, size: 18),
+                onPressed: () => _showPhotoPreview(event.photoPath!),
+                color: Colors.white38,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ],
         ),
-        onTap:
-            event.photoPath != null
-                ? () => _showPhotoPreview(event.photoPath!)
-                : null,
       ),
     );
   }

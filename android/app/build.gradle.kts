@@ -32,6 +32,13 @@ android {
         versionName = flutter.versionName
     }
 
+    packaging {
+        resources {
+            excludes.add("assets/flutter_assets/assets/bin/linux/**")
+            excludes.add("assets/flutter_assets/assets/bin/windows/**")
+        }
+    }
+
     val keystorePropertiesFile = rootProject.file("key.properties")
     val keystoreProperties = Properties()
     if (keystorePropertiesFile.exists()) {

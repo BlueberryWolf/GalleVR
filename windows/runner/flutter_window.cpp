@@ -86,19 +86,18 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
         break;
       }
 
-      // Send a message to Flutter to show a notification
-      // We'll use the method channel mechanism that's already set up
+      // Send onWindowHidden to Flutter so Dart can unmount the UI and trim memory.
       if (flutter_controller_ && flutter_controller_->engine()) {
-        // Create a method channel to communicate with Flutter
         flutter::MethodChannel<> channel(
             flutter_controller_->engine()->messenger(),
             "gallevr/window",
             &flutter::StandardMethodCodec::GetInstance());
 
-        // Invoke a method on the channel
         channel.InvokeMethod("onWindowHidden", nullptr);
       }
-      break;
+
+      ::ShowWindow(hwnd, SW_HIDE);
+      return 0;
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);

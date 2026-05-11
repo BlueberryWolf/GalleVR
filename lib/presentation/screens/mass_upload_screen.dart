@@ -12,6 +12,7 @@ import '../../data/services/vrchat_service.dart';
 import '../../data/repositories/photo_metadata_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cached_image.dart';
+import '../widgets/app_card.dart';
 
 class MassUploadScreen extends StatefulWidget {
   const MassUploadScreen({super.key});
@@ -20,11 +21,12 @@ class MassUploadScreen extends StatefulWidget {
   State<MassUploadScreen> createState() => _MassUploadScreenState();
 }
 
-class _MassUploadScreenState extends State<MassUploadScreen> with TickerProviderStateMixin {
+class _MassUploadScreenState extends State<MassUploadScreen>
+    with TickerProviderStateMixin {
   final MassUploadService _massUploadService = MassUploadService();
   final ConfigRepository _configRepository = ConfigRepository();
   final VRChatService _vrchatService = VRChatService();
-  
+
   final List<FileTask> _tasks = [];
   bool _isProcessing = false;
   int _completedCount = 0;
@@ -55,10 +57,11 @@ class _MassUploadScreenState extends State<MassUploadScreen> with TickerProvider
     );
 
     if (result != null && result.files.isNotEmpty) {
-      final newTasks = result.files
-          .where((f) => f.path != null)
-          .map((f) => FileTask(path: f.path!))
-          .toList();
+      final newTasks =
+          result.files
+              .where((f) => f.path != null)
+              .map((f) => FileTask(path: f.path!))
+              .toList();
 
       setState(() {
         _tasks.addAll(newTasks);
@@ -75,7 +78,8 @@ class _MassUploadScreenState extends State<MassUploadScreen> with TickerProvider
           final metadata = metadataMap[task.path];
           task.hasMetadata = metadata != null && metadata.world != null;
           if (!task.hasMetadata) {
-            task.message = 'No metadata found. Rename to match original VRChat filename.';
+            task.message =
+                'No metadata found. Rename to match original VRChat filename.';
           }
         }
       });
@@ -119,8 +123,11 @@ class _MassUploadScreenState extends State<MassUploadScreen> with TickerProvider
       });
 
       try {
-        final result = await _massUploadService.processFile(_tasks[i].path, config);
-        
+        final result = await _massUploadService.processFile(
+          _tasks[i].path,
+          config,
+        );
+
         if (!mounted) return;
         setState(() {
           if (result.success) {
@@ -179,12 +186,20 @@ class _MassUploadScreenState extends State<MassUploadScreen> with TickerProvider
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color: Colors.black.withOpacity(0.2),
-            border: Border(bottom: BorderSide(color: AppTheme.cardBorderColor.withOpacity(0.5))),
+            border: Border(
+              bottom: BorderSide(
+                color: AppTheme.cardBorderColor.withOpacity(0.5),
+              ),
+            ),
           ),
           child: Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white70, size: 20),
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: Colors.white70,
+                  size: 20,
+                ),
                 onPressed: () => Navigator.of(context).pop(),
               ),
               const SizedBox(width: 8),
@@ -203,7 +218,9 @@ class _MassUploadScreenState extends State<MassUploadScreen> with TickerProvider
                   onPressed: _pickFiles,
                   icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
                   label: const Text('Add More'),
-                  style: TextButton.styleFrom(foregroundColor: AppTheme.primaryLightColor),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.primaryLightColor,
+                  ),
                 ),
             ],
           ),
@@ -220,36 +237,97 @@ class _MassUploadScreenState extends State<MassUploadScreen> with TickerProvider
           Container(
             padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.05),
+              color: AppTheme.primaryColor.withOpacity(0.1),
               shape: BoxShape.circle,
-              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.1), width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primaryColor.withOpacity(0.2),
+                  blurRadius: 40,
+                  spreadRadius: 10,
+                ),
+              ],
             ),
-            child: Icon(Icons.cloud_upload_outlined, size: 80, color: AppTheme.primaryColor.withOpacity(0.4)),
+            child: Icon(
+              Icons.cloud_upload_rounded,
+              size: 80,
+              color: AppTheme.primaryColor,
+            ),
           ),
           const SizedBox(height: 32),
           const Text(
-            'Ready for Mass Upload',
-            style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+            'Mass Upload',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const SizedBox(height: 12),
           Text(
-            'Select edited PNGs from your computer\nto batch process and upload them.',
+            'Batch process and upload edited photos.\nSelect PNGs from your computer to begin.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 16),
-          ),
-          const SizedBox(height: 48),
-          ElevatedButton.icon(
-            onPressed: _pickFiles,
-            icon: const Icon(Icons.add_photo_alternate_rounded),
-            label: const Text('Select Files'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-              elevation: 10,
-              shadowColor: AppTheme.primaryColor.withOpacity(0.4),
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 16,
+              height: 1.5,
             ),
           ),
+          const SizedBox(height: 48),
+          _buildActionButton(
+            onPressed: _pickFiles,
+            label: 'Select Files',
+            color: AppTheme.primaryColor,
+            icon: Icons.add_photo_alternate_rounded,
+            large: true,
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required VoidCallback? onPressed,
+    required String label,
+    required Color color,
+    required IconData icon,
+    bool large = false,
+    bool outlined = false,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: large ? 32 : 20,
+            vertical: large ? 16 : 12,
+          ),
+          decoration: BoxDecoration(
+            color: outlined ? Colors.transparent : color.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: color.withOpacity(outlined ? 0.3 : 0.5),
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: large ? 24 : 18, color: color),
+              const SizedBox(width: 12),
+              Text(
+                label.toUpperCase(),
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                  fontSize: large ? 15 : 12,
+                  letterSpacing: 1,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -266,14 +344,15 @@ class _MassUploadScreenState extends State<MassUploadScreen> with TickerProvider
               final task = _tasks[index];
               return _TaskTile(
                 task: task,
-                onRemove: _isProcessing
-                    ? null
-                    : () {
-                        setState(() {
-                          _tasks.removeAt(index);
-                          if (_tasks.isEmpty) _summaryController.reverse();
-                        });
-                      },
+                onRemove:
+                    _isProcessing
+                        ? null
+                        : () {
+                          setState(() {
+                            _tasks.removeAt(index);
+                            if (_tasks.isEmpty) _summaryController.reverse();
+                          });
+                        },
               );
             },
           ),
@@ -284,41 +363,64 @@ class _MassUploadScreenState extends State<MassUploadScreen> with TickerProvider
 
   Widget _buildSummaryCard() {
     return SizeTransition(
-      sizeFactor: CurvedAnimation(parent: _summaryController, curve: Curves.easeOutBack),
+      sizeFactor: CurvedAnimation(
+        parent: _summaryController,
+        curve: Curves.easeOutBack,
+      ),
       child: Container(
         margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AppTheme.cardBackgroundColor.withOpacity(0.8),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppTheme.cardBorderColor),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildSummaryStat('Queue', _tasks.length.toString(), Icons.list_alt_rounded, Colors.white70),
-            _buildSummaryStat('Done', _completedCount.toString(), Icons.check_circle_rounded, Colors.greenAccent),
-            _buildSummaryStat('Failed', _failedCount.toString(), Icons.error_rounded, Colors.redAccent),
-          ],
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildSummaryStat(
+                'Queue',
+                _tasks.length.toString(),
+                Icons.list_alt_rounded,
+                Colors.white70,
+              ),
+              _buildSummaryStat(
+                'Done',
+                _completedCount.toString(),
+                Icons.check_circle_rounded,
+                const Color(0xFF4ade80),
+              ),
+              _buildSummaryStat(
+                'Failed',
+                _failedCount.toString(),
+                Icons.error_rounded,
+                const Color(0xFFf87171),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSummaryStat(String label, String value, IconData icon, Color color) {
+  Widget _buildSummaryStat(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Column(
       children: [
         Icon(icon, color: color.withOpacity(0.5), size: 20),
         const SizedBox(height: 8),
-        Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.4))),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.4)),
+        ),
       ],
     );
   }
@@ -326,52 +428,35 @@ class _MassUploadScreenState extends State<MassUploadScreen> with TickerProvider
   Widget _buildActionFooter() {
     if (_tasks.isEmpty) return const SizedBox.shrink();
 
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.3),
-            border: Border(top: BorderSide(color: AppTheme.cardBorderColor.withOpacity(0.5))),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.4),
+        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildActionButton(
+            onPressed:
+                _isProcessing
+                    ? null
+                    : () => setState(() {
+                      _tasks.clear();
+                      _summaryController.reverse();
+                    }),
+            label: 'Clear',
+            color: Colors.white38,
+            icon: Icons.delete_sweep_rounded,
+            outlined: true,
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _isProcessing ? null : () => setState(() {
-                    _tasks.clear();
-                    _summaryController.reverse();
-                  }),
-                  icon: const Icon(Icons.delete_sweep_rounded),
-                  label: const Text('Clear All'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: const BorderSide(color: Colors.white12),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: _isProcessing ? null : _startUpload,
-                  icon: _isProcessing 
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.rocket_launch_rounded),
-                  label: Text(_isProcessing ? 'Processing...' : 'Upload ${_tasks.length} Photos'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    elevation: 5,
-                    shadowColor: AppTheme.primaryColor.withOpacity(0.3),
-                  ),
-                ),
-              ),
-            ],
+          _buildActionButton(
+            onPressed: _isProcessing ? null : _startUpload,
+            label: _isProcessing ? 'Processing...' : 'Start Upload',
+            color: AppTheme.primaryColor,
+            icon: Icons.cloud_upload_rounded,
           ),
-        ),
+        ],
       ),
     );
   }
@@ -387,114 +472,110 @@ class _TaskTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.cardBackgroundColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: task.status == TaskStatus.completed 
-              ? Colors.greenAccent.withOpacity(0.3) 
-              : task.status == TaskStatus.failed 
-                  ? Colors.redAccent.withOpacity(0.3)
-                  : AppTheme.cardBorderColor,
-        ),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        leading: _buildLeading(context),
-        title: Text(
-          path.basename(task.path),
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 14),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: task.message != null
-            ? Text(
-                task.message!,
-                style: TextStyle(
-                  color: task.status == TaskStatus.failed 
-                      ? Colors.redAccent 
-                      : !task.hasMetadata 
-                          ? Colors.orangeAccent 
-                          : Colors.white54,
-                  fontSize: 12,
-                ),
-              )
-            : Text(
-                task.hasMetadata ? 'Ready for processing' : 'Metadata missing - Rename to original',
-                style: TextStyle(
-                  color: task.hasMetadata ? Colors.white.withOpacity(0.3) : Colors.orangeAccent.withOpacity(0.8),
-                  fontSize: 12,
-                  fontWeight: task.hasMetadata ? FontWeight.normal : FontWeight.bold,
-                ),
-              ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+      child: AppCard(
+        padding: const EdgeInsets.all(12),
+        borderColor:
+            task.status == TaskStatus.completed
+                ? const Color(0xFF4ade80).withOpacity(0.3)
+                : task.status == TaskStatus.failed
+                ? const Color(0xFFf87171).withOpacity(0.3)
+                : Colors.white.withOpacity(0.05),
+        child: Row(
           children: [
-            if (!task.hasMetadata)
-              IconButton(
-                icon: const Icon(Icons.info_outline_rounded, color: Colors.orangeAccent, size: 20),
-                onPressed: () => _showMetadataInfo(context),
-                tooltip: 'Metadata Help',
-              ),
-            if (onRemove != null)
-              IconButton(
-                icon: const Icon(Icons.close_rounded, color: Colors.white24, size: 20),
-                onPressed: onRemove,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showMetadataInfo(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.info_outline_rounded, color: Colors.orangeAccent),
-            SizedBox(width: 12),
-            Text('Missing Metadata'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'GalleVR cannot find VRChat or VRCX metadata for this photo.',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'To fix this, ensure the filename is identical or very similar to the original photo taken in VRChat. This allows the app to correlate the edited image with the original session data.',
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Column(
+            _buildLeading(context),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Example:', style: TextStyle(fontSize: 12, color: Colors.white54)),
-                  SizedBox(height: 4),
-                  Text('Original: VRChat_2024-01-01_...png', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                  Text('Edited:   VRChat_2024-01-01_..._EDIT.png', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                  Text(
+                    path.basename(task.path),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      letterSpacing: 0.3,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  if (task.message != null)
+                    Text(
+                      task.message!,
+                      style: TextStyle(
+                        color:
+                            task.status == TaskStatus.failed
+                                ? const Color(0xFFf87171)
+                                : !task.hasMetadata
+                                ? Colors.orangeAccent
+                                : Colors.white54,
+                        fontSize: 12,
+                      ),
+                    )
+                  else
+                    Row(
+                      children: [
+                        Icon(
+                          task.hasMetadata
+                              ? Icons.check_circle_outline_rounded
+                              : Icons.warning_amber_rounded,
+                          size: 12,
+                          color:
+                              task.hasMetadata
+                                  ? Colors.white38
+                                  : Colors.orangeAccent,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          task.hasMetadata
+                              ? 'Ready for processing'
+                              : 'Missing metadata',
+                          style: TextStyle(
+                            color:
+                                task.hasMetadata
+                                    ? Colors.white38
+                                    : Colors.orangeAccent.withOpacity(0.9),
+                            fontSize: 11,
+                            fontWeight:
+                                task.hasMetadata
+                                    ? FontWeight.normal
+                                    : FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),
+            const SizedBox(width: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!task.hasMetadata)
+                  IconButton(
+                    icon: const Icon(
+                      Icons.info_outline_rounded,
+                      color: Colors.orangeAccent,
+                      size: 20,
+                    ),
+                    onPressed: () => _showMetadataInfo(context),
+                    tooltip: 'Metadata Help',
+                  ),
+                if (onRemove != null)
+                  IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white24,
+                      size: 20,
+                    ),
+                    onPressed: onRemove,
+                  ),
+              ],
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Got it'),
-          ),
-        ],
       ),
     );
   }
@@ -504,15 +585,15 @@ class _TaskTile extends StatelessWidget {
       clipBehavior: Clip.none,
       children: [
         Container(
-          width: 60,
-          height: 40,
+          width: 100,
+          height: 56,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: Colors.white10),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 4,
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
             ],
@@ -522,7 +603,7 @@ class _TaskTile extends StatelessWidget {
             child: CachedImage(
               filePath: task.path,
               fit: BoxFit.cover,
-              thumbnailSize: 150,
+              useOriginal: true,
             ),
           ),
         ),
@@ -548,9 +629,16 @@ class _TaskTile extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.orangeAccent.withOpacity(small ? 1.0 : 0.1),
               shape: BoxShape.circle,
-              border: small ? Border.all(color: AppTheme.backgroundColor, width: 2) : null,
+              border:
+                  small
+                      ? Border.all(color: AppTheme.backgroundColor, width: 2)
+                      : null,
             ),
-            child: Icon(Icons.warning_amber_rounded, color: small ? Colors.black : Colors.orangeAccent, size: iconSize),
+            child: Icon(
+              Icons.warning_amber_rounded,
+              color: small ? Colors.black : Colors.orangeAccent,
+              size: iconSize,
+            ),
           );
         }
         return Container(
@@ -559,21 +647,41 @@ class _TaskTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppTheme.surfaceColor,
             shape: BoxShape.circle,
-            border: small ? Border.all(color: AppTheme.backgroundColor, width: 2) : null,
+            border:
+                small
+                    ? Border.all(color: AppTheme.backgroundColor, width: 2)
+                    : null,
           ),
-          child: Icon(Icons.hourglass_bottom_rounded, color: Colors.white24, size: iconSize),
+          child: Icon(
+            Icons.hourglass_bottom_rounded,
+            color: Colors.white24,
+            size: iconSize,
+          ),
         );
       case TaskStatus.processing:
         return Container(
           width: size,
           height: size,
           padding: EdgeInsets.all(small ? 4 : 8),
-          decoration: small ? BoxDecoration(
-            color: AppTheme.surfaceColor,
-            shape: BoxShape.circle,
-            border: Border.all(color: AppTheme.backgroundColor, width: 2),
-          ) : null,
-          child: CircularProgressIndicator(strokeWidth: 2),
+          decoration:
+              small
+                  ? BoxDecoration(
+                    color: AppTheme.surfaceColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: AppTheme.backgroundColor,
+                      width: 2,
+                    ),
+                  )
+                  : null,
+          child: const SizedBox(
+            width: 10,
+            height: 10,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
+          ),
         );
       case TaskStatus.completed:
         return Container(
@@ -582,9 +690,16 @@ class _TaskTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.greenAccent.withOpacity(small ? 1.0 : 0.1),
             shape: BoxShape.circle,
-            border: small ? Border.all(color: AppTheme.backgroundColor, width: 2) : null,
+            border:
+                small
+                    ? Border.all(color: AppTheme.backgroundColor, width: 2)
+                    : null,
           ),
-          child: Icon(Icons.check_rounded, color: small ? Colors.black : Colors.greenAccent, size: iconSize),
+          child: Icon(
+            Icons.check_rounded,
+            color: small ? Colors.black : Colors.greenAccent,
+            size: iconSize,
+          ),
         );
       case TaskStatus.failed:
         return Container(
@@ -593,11 +708,80 @@ class _TaskTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.redAccent.withOpacity(small ? 1.0 : 0.1),
             shape: BoxShape.circle,
-            border: small ? Border.all(color: AppTheme.backgroundColor, width: 2) : null,
+            border:
+                small
+                    ? Border.all(color: AppTheme.backgroundColor, width: 2)
+                    : null,
           ),
-          child: Icon(Icons.error_outline_rounded, color: small ? Colors.white : Colors.redAccent, size: iconSize),
+          child: Icon(
+            Icons.error_outline_rounded,
+            color: small ? Colors.white : Colors.redAccent,
+            size: iconSize,
+          ),
         );
     }
+  }
+
+  void _showMetadataInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.info_outline_rounded, color: Colors.orangeAccent),
+                SizedBox(width: 12),
+                Text('Missing Metadata'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'GalleVR cannot find VRChat or VRCX metadata for this photo.',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'To fix this, ensure the filename is identical or very similar to the original photo taken in VRChat. This allows the app to correlate the edited image with the original session data.',
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Example:',
+                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Original: VRChat_2024-01-01_...png',
+                        style: TextStyle(fontFamily: 'monospace', fontSize: 12),
+                      ),
+                      Text(
+                        'Edited:   VRChat_2024-01-01_..._EDIT.png',
+                        style: TextStyle(fontFamily: 'monospace', fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Got it'),
+              ),
+            ],
+          ),
+    );
   }
 }
 
@@ -612,17 +796,26 @@ class _MeshBackground extends StatelessWidget {
         Positioned(
           top: -150,
           right: -50,
-          child: _MeshCircle(color: AppTheme.primaryColor.withOpacity(0.15), size: 450),
+          child: _MeshCircle(
+            color: AppTheme.primaryColor.withOpacity(0.15),
+            size: 450,
+          ),
         ),
         Positioned(
           bottom: -200,
           left: -100,
-          child: _MeshCircle(color: const Color(0xFF8B5CF6).withOpacity(0.12), size: 600),
+          child: _MeshCircle(
+            color: const Color(0xFF8B5CF6).withOpacity(0.12),
+            size: 600,
+          ),
         ),
         Positioned(
           top: 300,
           left: -200,
-          child: _MeshCircle(color: const Color(0xFF3B82F6).withOpacity(0.08), size: 500),
+          child: _MeshCircle(
+            color: const Color(0xFF3B82F6).withOpacity(0.08),
+            size: 500,
+          ),
         ),
       ],
     );
@@ -659,7 +852,7 @@ class FileTask {
   bool hasMetadata;
 
   FileTask({
-    required this.path, 
+    required this.path,
     this.status = TaskStatus.pending,
     this.hasMetadata = true, // Assume true until checked
   });

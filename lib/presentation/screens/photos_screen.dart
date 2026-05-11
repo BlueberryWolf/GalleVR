@@ -1,2104 +1,281 @@
-import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:path/path.dart' as path;
-import 'dart:developer' as developer;
-import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter/foundation.dart';
-import 'package:pasteboard/pasteboard.dart';
-import '../../data/repositories/config_repository.dart';
-import '../../data/models/config_model.dart';
-import '../../data/models/photo_metadata.dart';
-import '../../data/repositories/photo_metadata_repository.dart';
-import '../../data/services/photo_event_service.dart';
-import '../../data/services/manual_upload_service.dart';
-import '../../core/image/thumbnail_provider.dart';
+import '../controllers/photos_controller.dart';
+import 'photos/widgets/photo_grid_item.dart';
+import 'photos/widgets/photo_detail_view.dart';
+import 'photos/photos_utils.dart';
 import '../theme/app_theme.dart';
-import '../widgets/photo_metadata_panel.dart';
-import '../widgets/cached_image.dart';
-
-class _PhotoScanParams {
-  final String directoryPath;
-  final String fileExtension;
-
-  _PhotoScanParams({required this.directoryPath, required this.fileExtension});
-}
+import '../../data/models/photo_metadata.dart';
 
 class PhotosScreen extends StatefulWidget {
-  const PhotosScreen({super.key});
+  final PhotosController controller;
+  const PhotosScreen({super.key, required this.controller});
 
   @override
-  State<PhotosScreen> createState() => _PhotosScreenState();
+  State<PhotosScreen> createState() => PhotosScreenState();
 }
 
-class _PhotosScreenState extends State<PhotosScreen> {
-  final ConfigRepository _configRepository = ConfigRepository();
-  final PhotoEventService _photoEventService = PhotoEventService();
-  final PhotoMetadataRepository _metadataRepository = PhotoMetadataRepository();
-  ConfigModel? _config;
-
-  List<FileSystemEntity> _allPhotos = [];
-  List<FileSystemEntity> _displayedPhotos = [];
-  final Map<String, PhotoMetadata?> _photoMetadataMap = {};
-  int _currentLoadId = 0;
-
-  bool _isLoading = true;
-  bool _isLoadingMore = false;
-  int _currentPage = 0;
-  static const int _pageSize = 20;
-
+class PhotosScreenState extends State<PhotosScreen> {
   final ScrollController _scrollController = ScrollController();
 
-  StreamSubscription<String>? _photoAddedSubscription;
-  StreamSubscription<String>? _photoUploadedSubscription;
-
   @override
   void initState() {
     super.initState();
-
-    _scrollController.addListener(_scrollListener);
-
-    _configureImageCacheSettings();
-
-
-    _loadConfig();
-    _subscribeToPhotoEvents();
-  }
-
-  void _configureImageCacheSettings() {
-    PaintingBinding.instance.imageCache.maximumSize = 500; 
-    PaintingBinding.instance.imageCache.maximumSizeBytes =
-        100 * 1024 * 1024; 
-
-    developer.log(
-      'Configured image cache limits: 500 images, 100MB max',
-      name: 'PhotosScreen',
-    );
+    widget.controller.init();
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
-    _photoAddedSubscription?.cancel();
-    _photoUploadedSubscription?.cancel();
-    _scrollController.removeListener(_scrollListener);
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-
-    // Clear image caches to prevent memory leaks
-    _clearImageCaches();
-
     super.dispose();
   }
 
-  void _clearImageCaches() {
-    try {
-      // Clear Flutter's image cache
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-
-      // Clear thumbnail provider cache
-      final thumbnailProvider = ThumbnailProvider();
-      thumbnailProvider.clearThumbnails();
-
-      developer.log('Cleared image caches on dispose', name: 'PhotosScreen');
-    } catch (e) {
-      developer.log('Error clearing image caches: $e', name: 'PhotosScreen');
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 800) {
+      widget.controller.loadMore();
     }
   }
 
-  void _scrollListener() {
-    // Only load more photos when near the end
-    if (_scrollController.position.pixels >
-            _scrollController.position.maxScrollExtent - 1000 &&
-        !_isLoadingMore &&
-        _displayedPhotos.length < _allPhotos.length) {
-      _loadMorePhotos();
-    }
-    // Removed periodic cache cleanup - it was causing scroll jank
-  }
-
-  void _subscribeToPhotoEvents() {
-    developer.log('Subscribing to photo events', name: 'PhotosScreen');
-    _photoAddedSubscription = _photoEventService.photoAdded.listen((photoPath) {
-      developer.log('Photo event received: $photoPath', name: 'PhotosScreen');
-
-      _photoMetadataMap.remove(photoPath);
-
-      if (mounted) {
-        developer.log('Refreshing photos list', name: 'PhotosScreen');
-        _loadPhotos();
-      }
-    });
-
-    _photoUploadedSubscription = _photoEventService.photoUploaded.listen((photoPath) {
-      developer.log('Photo uploaded event received: $photoPath', name: 'PhotosScreen');
-
-      if (mounted) {
-        developer.log('Refreshing photo status after upload', name: 'PhotosScreen');
-        _refreshMetadataCache(photoPath);
-      }
-    });
-  }
-
-  Future<void> _loadConfig() async {
-    developer.log('Loading config...', name: 'PhotosScreen');
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final config = await _configRepository.loadConfig();
-      developer.log(
-        'Config loaded, photos directory: ${config.photosDirectory}',
-        name: 'PhotosScreen',
-      );
-      setState(() {
-        _config = config;
-      });
-
-      await _loadPhotos();
-    } catch (e) {
-      developer.log('Error loading config: $e', name: 'PhotosScreen', error: e);
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _loadPhotos() async {
-    final loadId = ++_currentLoadId;
-    developer.log('Loading photos (ID: $loadId)...', name: 'PhotosScreen');
-
-    if (_config == null || _config!.photosDirectory.isEmpty) {
-      developer.log('No photos directory set', name: 'PhotosScreen');
-      setState(() {
-        _allPhotos = [];
-        _displayedPhotos = [];
-        _currentPage = 0;
-      });
-      return;
-    }
-
-    try {
-      final directory = Directory(_config!.photosDirectory);
-      if (!await directory.exists()) {
-        developer.log(
-          'Photos directory does not exist: ${_config!.photosDirectory}',
-          name: 'PhotosScreen',
-        );
-        setState(() {
-          _allPhotos = [];
-          _displayedPhotos = [];
-          _currentPage = 0;
-        });
-        return;
-      }
-
-      developer.log(
-        'Scanning directory: ${_config!.photosDirectory}',
-        name: 'PhotosScreen',
-      );
-
-      final photos = await compute(
-        _findPhotosInDirectory,
-        _PhotoScanParams(
-          directoryPath: _config!.photosDirectory,
-          fileExtension: '.png',
-        ),
-      );
-
-      if (loadId != _currentLoadId || !mounted) return;
-      developer.log('Found ${photos.length} total PNG files', name: 'PhotosScreen');
-
-      if (_allPhotos.isEmpty) {
-        setState(() {
-          _isLoading = true;
-        });
-      }
-
-      developer.log('Processing priority chunk...', name: 'PhotosScreen');
-      const int prioritySize = 50;
-      final priorityChunk = photos.take(prioritySize).toList();
-      
-      final priorityMetadata = await _metadataRepository.getMetadataForFiles(
-        priorityChunk.map((e) => e.path).toList(),
-      );
-
-      if (loadId != _currentLoadId || !mounted) return;
-
-      final filteredPriority = priorityChunk.where((photo) {
-        final meta = priorityMetadata[photo.path];
-        return meta != null && (meta.world != null || meta.players.isNotEmpty || meta.galleryUrl != null);
-      }).toList();
-
-      setState(() {
-        _isLoading = false;
-        _photoMetadataMap.addAll(priorityMetadata);
-        
-        _allPhotos = filteredPriority;
-        _displayedPhotos = [];
-        _currentPage = 0;
-      });
-
-      // load initial batch of grid items
-      _loadMorePhotos();
-
-      if (photos.length > prioritySize) {
-        _processRemainingPhotos(photos.skip(prioritySize).toList(), loadId);
-      }
-    } catch (e) {
-      developer.log('Error loading photos: $e', name: 'PhotosScreen', error: e);
-      if (loadId == _currentLoadId && mounted) {
-        setState(() {
-          _allPhotos = [];
-          _displayedPhotos = [];
-          _currentPage = 0;
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _processRemainingPhotos(List<FileSystemEntity> remaining, int loadId) async {
-    const int backgroundChunkSize = 200;
-    
-    for (int i = 0; i < remaining.length; i += backgroundChunkSize) {
-      await Future.delayed(const Duration(milliseconds: 10));
-      if (loadId != _currentLoadId || !mounted) return;
-
-      final end = (i + backgroundChunkSize < remaining.length) ? i + backgroundChunkSize : remaining.length;
-      final chunk = remaining.sublist(i, end);
-      
-      final chunkMetadata = await _metadataRepository.getMetadataForFiles(
-        chunk.map((e) => e.path).toList(),
-      );
-
-      if (loadId != _currentLoadId || !mounted) return;
-
-      final filteredChunk = chunk.where((photo) {
-        final meta = chunkMetadata[photo.path];
-        return meta != null && (meta.world != null || meta.players.isNotEmpty || meta.galleryUrl != null);
-      }).toList();
-
-      if (filteredChunk.isNotEmpty) {
-        setState(() {
-          _photoMetadataMap.addAll(chunkMetadata);
-          _allPhotos.addAll(filteredChunk);
-        });
-      }
-    }
-    
-    developer.log('Background photo processing complete for ID: $loadId', name: 'PhotosScreen');
-  }
-
-  Future<void> _loadMorePhotos() async {
-    if (_isLoadingMore || _currentPage * _pageSize >= _allPhotos.length) {
-      return;
-    }
-
-    setState(() {
-      _isLoadingMore = true;
-    });
-
-    try {
-      final start = _currentPage * _pageSize;
-      final end =
-          (start + _pageSize < _allPhotos.length)
-              ? start + _pageSize
-              : _allPhotos.length;
-
-      final nextPagePhotos = _allPhotos.sublist(start, end);
-
-      final folderMetadata = await _metadataRepository.getMetadataForFiles(
-        nextPagePhotos.map((e) => e.path).toList(),
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _photoMetadataMap.addAll(folderMetadata);
-        _displayedPhotos.addAll(nextPagePhotos);
-        _currentPage++;
-        _isLoadingMore = false;
-      });
-
-      developer.log(
-        'Loaded more photos and metadata: ${_displayedPhotos.length}/${_allPhotos.length}',
-        name: 'PhotosScreen',
-      );
-    } catch (e) {
-      developer.log('Error loading more photos: $e', name: 'PhotosScreen');
-      if (mounted) {
-        setState(() {
-          _isLoadingMore = false;
-        });
-      }
-    }
-  }
-
-  static List<FileSystemEntity> _findPhotosInDirectory(
-    _PhotoScanParams params,
-  ) {
-    final directory = Directory(params.directoryPath);
-    if (!directory.existsSync()) {
-      return [];
-    }
-
-    final entities = directory.listSync(recursive: true);
-
-    final photos =
-        entities.where((entity) {
-          if (entity is! File) return false;
-          final extension = path.extension(entity.path).toLowerCase();
-          return extension == params.fileExtension.toLowerCase();
-        }).toList();
-
-    photos.sort((a, b) {
-      final aTime = a.statSync().modified;
-      final bTime = b.statSync().modified;
-      return bTime.compareTo(aTime);
-    });
-
-    return photos;
+  void refresh() {
+    widget.controller.refresh();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_allPhotos.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.photo_library, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(
-              'No photos found',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _config?.photosDirectory.isEmpty == true
-                  ? 'Please set a photos directory in settings'
-                  : 'Take some photos in VRChat to see them here',
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadPhotos,
-              child: const Text('Refresh'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded),
-                onPressed: _loadPhotos,
-                tooltip: 'Refresh',
-              ),
-            ],
-          ),
-        ),
-
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: _loadPhotos,
-            color: AppTheme.primaryColor,
-            backgroundColor: AppTheme.surfaceColor,
-            child: GridView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
-                childAspectRatio: 16 / 9,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              addAutomaticKeepAlives: true, 
-              addRepaintBoundaries: true, 
-              cacheExtent: 1000, 
-              itemCount:
-                  _displayedPhotos.length +
-                  (_isLoadingMore || _displayedPhotos.length < _allPhotos.length
-                      ? 1
-                      : 0),
-              itemBuilder: (context, index) {
-                if (index >= _displayedPhotos.length) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2.0),
-                      ),
-                    ),
-                  );
-                }
-
-                final photo = _displayedPhotos[index];
-                final metadata = _photoMetadataMap[photo.path];
-                return _buildPhotoItem(photo, metadata);
-              },
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _refreshMetadataCache(String filePath) async {
-    final metadata = await _metadataRepository.getPhotoMetadataForFile(filePath);
-    
-    if (mounted) {
-      setState(() {
-        _photoMetadataMap[filePath] = metadata;
-      });
-    }
-  }
-
-  Widget _buildPhotoItem(FileSystemEntity entity, PhotoMetadata? metadata) {
-    return _PhotoGridItem(
-      entity: entity,
-      metadata: metadata,
-      onTap: () => _openPhotoDetails(entity),
-      onOptionsPressed: () => _showPhotoOptions(entity, metadata),
-    );
-  }
-
-  void _showPhotoOptions(FileSystemEntity entity, PhotoMetadata? metadata) {
-    showStyledBottomSheet(
-      context: context,
-      builder:
-          (context) {
-              final hasMetadata =
-                  metadata != null &&
-                  (metadata.world != null || metadata.players.isNotEmpty);
-
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.info_outline_rounded),
-                    title: const Text('View Photo Info'),
-                    subtitle:
-                        hasMetadata
-                            ? const Text(
-                                'World and player information available',
-                              )
-                            : const Text('Basic photo information'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _openPhotoDetails(entity);
-                    },
-                  ),
-                  if (metadata?.players.isNotEmpty == true)
-                    ListTile(
-                      leading: const Icon(Icons.people_alt_rounded),
-                      title: Text('Players (${metadata!.players.length})'),
-                      subtitle: Text(
-                        metadata.players.length > 3
-                            ? '${metadata.players.take(3).map((p) => p.name).join(', ')}...'
-                            : metadata.players.map((p) => p.name).join(', '),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _openPhotoDetails(entity);
-                      },
-                    ),
-                  if (metadata?.world != null)
-                    ListTile(
-                      leading: const Icon(Icons.public),
-                      title: const Text('World'),
-                      subtitle: Text(metadata!.world!.name),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _openPhotoDetails(entity);
-                      },
-                    ),
-                  if (hasMetadata && metadata.galleryUrl == null)
-                    ListTile(
-                      leading: const Icon(Icons.cloud_upload_rounded),
-                      title: const Text('Upload to Gallery'),
-                      subtitle: const Text('Compress and upload this photo'),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _openPhotoDetails(entity);
-                      },
-                    ),
-                  const Divider(),
-                  ListTile(
-                    leading: const Icon(Icons.copy),
-                    title: const Text('Copy Photo Link'),
-                    onTap: () async {
-                      Navigator.pop(context);
-
-                      if (metadata?.galleryUrl != null) {
-                        await copyToClipboard(
-                          text: metadata!.galleryUrl!,
-                          context: context,
-                          successMessage: 'Gallery link copied to clipboard',
-                          loggerName: 'PhotosScreen',
-                        );
-                      } else {
-                        await copyToClipboard(
-                          text: entity.path,
-                          context: context,
-                          successMessage:
-                              'Photo path copied to clipboard (no gallery link available)',
-                          loggerName: 'PhotosScreen',
-                        );
-                      }
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.folder_open),
-                    title: const Text('Show in File Explorer'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      showFileInExplorer(entity.path, context);
-                    },
-                  ),
-                ],
-              );
-            },
-    );
-  }
-
-  void _openPhotoDetails(FileSystemEntity entity) {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder:
-            (context, animation, secondaryAnimation) =>
-                _PhotoDetailScreen(
-                  entity: entity, 
-                  allPhotos: _displayedPhotos,
-                  onMetadataUpdated: () => _refreshMetadataCache(entity.path),
-                ),
-        transitionDuration: const Duration(milliseconds: 250),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-            child: child,
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _PhotoGridItem extends StatefulWidget {
-  final FileSystemEntity entity;
-  final PhotoMetadata? metadata;
-  final VoidCallback onTap;
-  final VoidCallback onOptionsPressed;
-
-  const _PhotoGridItem({
-    required this.entity,
-    required this.metadata,
-    required this.onTap,
-    required this.onOptionsPressed,
-  });
-
-  @override
-  State<_PhotoGridItem> createState() => _PhotoGridItemState();
-}
-
-class _PhotoGridItemState extends State<_PhotoGridItem> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final metadata = widget.metadata;
-    final entity = widget.entity;
-    final hasWorld = metadata?.world != null;
-    final hasPlayers = metadata?.players.isNotEmpty == true;
-    final isUploaded = metadata?.galleryUrl != null;
-    final bool isGreyedOut = !isUploaded && !_isHovered;
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: _isHovered
-              ? [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withOpacity(0.3),
-                    blurRadius: 15,
-                    spreadRadius: 2,
-                  )
-                ]
-              : [],
-        ),
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          elevation: _isHovered ? 8 : 2,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: _isHovered
-                  ? AppTheme.primaryColor.withOpacity(0.5)
-                  : AppTheme.cardBorderColor,
-              width: 1.5,
-            ),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: widget.onTap,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _buildImage(entity, isGreyedOut: isGreyedOut),
-
-                  // Bottom overlay with filename
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      height: 32,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withAlpha(_isHovered ? 200 : 120)
-                          ],
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        child: Text(
-                          metadata?.filename ?? path.basename(entity.path),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w400,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Metadata indicators
-                  if (hasWorld || hasPlayers)
-                    Positioned(
-                      top: 4,
-                      left: 4,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (hasWorld)
-                            Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(
-                                color: Colors.blue,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.public,
-                                color: Colors.white,
-                                size: 8,
-                              ),
-                            ),
-                          if (hasWorld && hasPlayers) const SizedBox(width: 2),
-                          if (hasPlayers)
-                            Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(
-                                color: Colors.green,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.people,
-                                color: Colors.white,
-                                size: 8,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-
-                  // Upload status indicator
-                  Positioned(
-                    top: 4,
-                    right: 36,
-                    child: _buildUploadStatusIndicator(metadata),
-                  ),
-
-                  // Options button
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withAlpha(_isHovered ? 180 : 100),
-                        shape: BoxShape.circle,
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.more_vert, size: 12),
-                        color: Colors.white,
-                        onPressed: widget.onOptionsPressed,
-                        padding: const EdgeInsets.all(2),
-                        constraints: const BoxConstraints(
-                          minWidth: 20,
-                          minHeight: 20,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildImage(FileSystemEntity entity, {bool isGreyedOut = false}) {
-    Widget image = CachedImage(
-      filePath: entity.path,
-      fit: BoxFit.cover,
-      thumbnailSize: 400,
-      highQuality: false,
-    );
-
-    if (isGreyedOut) {
-      image = ColorFiltered(
-        colorFilter: const ColorFilter.matrix([
-          0.2126, 0.7152, 0.0722, 0, 0,
-          0.2126, 0.7152, 0.0722, 0, 0,
-          0.2126, 0.7152, 0.0722, 0, 0,
-          0,      0,      0,      1, 0,
-        ]),
-        child: Opacity(opacity: 0.7, child: image),
-      );
-    }
-
-    return AnimatedScale(
-      scale: _isHovered ? 1.05 : 1.0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutBack,
-      child: image,
-    );
-  }
-
-  Widget _buildUploadStatusIndicator(PhotoMetadata? metadata) {
-    Color indicatorColor;
-    IconData iconData;
-    String tooltip;
-
-    if (metadata?.galleryUrl != null) {
-      indicatorColor = Colors.green;
-      iconData = Icons.cloud_done_rounded;
-      tooltip = 'Photo uploaded to gallery';
-    } else if (metadata != null &&
-        (metadata.world != null || metadata.players.isNotEmpty)) {
-      indicatorColor = AppTheme.primaryColor;
-      iconData = Icons.cloud_upload_rounded;
-      tooltip = 'Photo can be uploaded';
-    } else {
-      indicatorColor = Colors.grey;
-      iconData = Icons.cloud_off_rounded;
-      tooltip = 'Photo cannot be uploaded (no metadata)';
-    }
-
-    return Tooltip(
-      message: tooltip,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: indicatorColor,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(100),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Icon(iconData, color: Colors.white, size: 10),
-      ),
-    );
-  }
-}
-
-class _PhotoDetailScreen extends StatefulWidget {
-  final FileSystemEntity entity;
-  final List<FileSystemEntity>? allPhotos;
-  final VoidCallback? onMetadataUpdated;
-
-  const _PhotoDetailScreen({
-    required this.entity, 
-    this.allPhotos,
-    this.onMetadataUpdated,
-  });
-
-  @override
-  State<_PhotoDetailScreen> createState() => _PhotoDetailScreenState();
-}
-
-class _PhotoDetailScreenState extends State<_PhotoDetailScreen>
-    with AutomaticKeepAliveClientMixin, SingleTickerProviderStateMixin {
-  final PhotoMetadataRepository _metadataRepository = PhotoMetadataRepository();
-  final ManualUploadService _manualUploadService = ManualUploadService();
-  final ConfigRepository _configRepository = ConfigRepository();
-  PhotoMetadata? _metadata;
-  ConfigModel? _config;
-  bool _isMetadataPanelOpen = false;
-  bool _isLoading = true;
-  bool _isUploading = false;
-  String _uploadStatus = '';
-  double _uploadProgress = 0.0;
-
-  final FocusNode _focusNode = FocusNode();
-
-  int _currentIndex = 0;
-
-  final GlobalKey _imageKey = GlobalKey();
-
-  late AnimationController _indicatorController;
-  bool _showNavigationIndicators = false;
-
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  void initState() {
-    super.initState();
-
-    if (widget.allPhotos != null) {
-      _currentIndex = widget.allPhotos!.indexWhere(
-        (photo) => photo.path == widget.entity.path,
-      );
-    }
-    
-    _listenToUploadEvents();
-
-    _indicatorController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    );
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
-    });
-
-    _loadConfig();
-    Future.delayed(const Duration(milliseconds: 300), _loadMetadata);
-
-    _showIndicators();
-  }
-
-  void _listenToUploadEvents() {
-    PhotoEventService().photoUploaded.listen((uploadedPath) {
-      if (!mounted) return;
-      
-      final currentFilename = path.basenameWithoutExtension(widget.entity.path);
-      final uploadedFilename = path.basenameWithoutExtension(uploadedPath);
-      
-      if (currentFilename == uploadedFilename) {
-        developer.log('Photo uploaded while viewing, reloading metadata', name: 'PhotoDetailScreen');
-        _loadMetadata();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _focusNode.dispose();
-    _indicatorController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadConfig() async {
-    try {
-      final config = await _configRepository.loadConfig();
-      if (mounted) {
-        setState(() {
-          _config = config;
-        });
-      }
-    } catch (e) {
-      developer.log('Error loading config: $e', name: 'PhotoDetailScreen', error: e);
-    }
-  }
-
-  Future<void> _manualUpload() async {
-    if (_config == null || _isUploading) return;
-
-    setState(() {
-      _isUploading = true;
-      _uploadStatus = 'Starting upload...';
-      _uploadProgress = 0.0;
-    });
-
-    try {
-      final galleryUrl = await _manualUploadService.uploadPhoto(
-        widget.entity.path,
-        _config!,
-        onStatusUpdate: (status) {
-          if (mounted) {
-            setState(() {
-              _uploadStatus = status;
-            });
-          }
-        },
-        onProgress: (progress) {
-          if (mounted) {
-            setState(() {
-              _uploadProgress = progress;
-            });
-          }
-        },
-      );
-
-      if (mounted) {
-        if (galleryUrl != null) {
-          // Reload metadata to get the updated gallery URL
-          await _loadMetadata();
-          
-          if (!mounted) return;
-
-          // Notify parent to refresh the photo grid
-          widget.onMetadataUpdated?.call();
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Photo uploaded successfully!'),
-              backgroundColor: Colors.green,
-              action: SnackBarAction(
-                label: 'View',
-                textColor: Colors.white,
-                onPressed: () => _openInGallery(),
-              ),
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Upload failed: $_uploadStatus'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Upload failed: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-          _uploadStatus = '';
-          _uploadProgress = 0.0;
-        });
-      }
-    }
-  }
-
-  Future<void> _loadMetadata() async {
-    if (!mounted) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      developer.log(
-        'Loading metadata for file: ${widget.entity.path}',
-        name: 'PhotoDetailScreen',
-      );
-
-      final metadata = await _metadataRepository.getPhotoMetadataForFile(
-        widget.entity.path,
-      );
-
-      if (metadata != null) {
-        developer.log(
-          'Metadata found: ${metadata.filename}',
-          name: 'PhotoDetailScreen',
-        );
-      } else {
-        developer.log('No metadata found for file', name: 'PhotoDetailScreen');
-      }
-
-      if (mounted) {
-        setState(() {
-          _metadata = metadata;
-        });
-      }
-    } catch (e) {
-      developer.log(
-        'Error loading metadata: $e',
-        name: 'PhotoDetailScreen',
-        error: e,
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _toggleMetadataPanel() {
-    setState(() {
-      _isMetadataPanelOpen = !_isMetadataPanelOpen;
-    });
-  }
-
-  void _navigateToNext() {
-    developer.log(
-      'Attempting to navigate to next photo, current index: $_currentIndex, total photos: ${widget.allPhotos?.length}',
-      name: 'PhotoDetailScreen',
-    );
-
-    if (widget.allPhotos == null) {
-      developer.log(
-        'Cannot navigate: allPhotos is null',
-        name: 'PhotoDetailScreen',
-      );
-      return;
-    }
-
-    if (_currentIndex >= widget.allPhotos!.length - 1) {
-      developer.log(
-        'Cannot navigate: already at last photo',
-        name: 'PhotoDetailScreen',
-      );
-      return;
-    }
-
-    developer.log(
-      'Navigating to next photo at index: ${_currentIndex + 1}',
-      name: 'PhotoDetailScreen',
-    );
-    _navigateToPhoto(_currentIndex + 1);
-  }
-
-  void _navigateToPrevious() {
-    developer.log(
-      'Attempting to navigate to previous photo, current index: $_currentIndex',
-      name: 'PhotoDetailScreen',
-    );
-
-    if (widget.allPhotos == null) {
-      developer.log(
-        'Cannot navigate: allPhotos is null',
-        name: 'PhotoDetailScreen',
-      );
-      return;
-    }
-
-    if (_currentIndex <= 0) {
-      developer.log(
-        'Cannot navigate: already at first photo',
-        name: 'PhotoDetailScreen',
-      );
-      return;
-    }
-
-    developer.log(
-      'Navigating to previous photo at index: ${_currentIndex - 1}',
-      name: 'PhotoDetailScreen',
-    );
-    _navigateToPhoto(_currentIndex - 1);
-  }
-
-  void _navigateToPhoto(int index) {
-    developer.log(
-      '_navigateToPhoto called with index: $index',
-      name: 'PhotoDetailScreen',
-    );
-
-    if (widget.allPhotos == null) {
-      developer.log(
-        'Cannot navigate: allPhotos is null',
-        name: 'PhotoDetailScreen',
-      );
-      return;
-    }
-
-    if (index < 0 || index >= widget.allPhotos!.length) {
-      developer.log(
-        'Cannot navigate: index out of bounds',
-        name: 'PhotoDetailScreen',
-      );
-      return;
-    }
-
-    if (index == _currentIndex) {
-      developer.log(
-        'Cannot navigate: already at requested index',
-        name: 'PhotoDetailScreen',
-      );
-      return;
-    }
-
-    final targetPhoto = widget.allPhotos![index];
-    developer.log(
-      'Target photo path: ${targetPhoto.path}',
-      name: 'PhotoDetailScreen',
-    );
-
-    _directNavigateToPhoto(targetPhoto);
-  }
-
-  void _directNavigateToPhoto(FileSystemEntity targetPhoto) {
-    developer.log(
-      'Direct navigating to photo: ${targetPhoto.path}',
-      name: 'PhotoDetailScreen',
-    );
-
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        pageBuilder:
-            (context, animation, secondaryAnimation) => _PhotoDetailScreen(
-              entity: targetPhoto,
-              allPhotos: widget.allPhotos,
-            ),
-        transitionDuration: const Duration(milliseconds: 250),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-            child: child,
-          );
-        },
-      ),
-    );
-  }
-
-  void _showIndicators() {
-    setState(() {
-      _showNavigationIndicators = true;
-    });
-
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _showNavigationIndicators = false;
-        });
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    final hasMetadata =
-        _metadata != null &&
-        (_metadata!.world != null || _metadata!.players.isNotEmpty);
-
     return Scaffold(
-      backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.black.withAlpha(100),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.arrow_back, color: Colors.white),
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          if (hasMetadata)
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color:
-                      _isMetadataPanelOpen
-                          ? AppTheme.primaryColor.withAlpha(150)
-                          : Colors.black.withAlpha(100),
-                  shape: BoxShape.circle,
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    const Icon(Icons.people_alt_rounded, color: Colors.white),
-                    if (_metadata?.players.isNotEmpty == true)
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            '${_metadata!.players.length}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 8,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              onPressed: _toggleMetadataPanel,
-              tooltip: 'Show metadata',
-            ),
-          if (_metadata?.galleryUrl != null)
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withAlpha(100),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.share_rounded, color: Colors.white),
-              ),
-              onPressed: () async {
-                if (_metadata?.galleryUrl != null) {
-                  await copyToClipboard(
-                    text: _metadata!.galleryUrl!,
-                    context: context,
-                    successMessage: 'Gallery URL copied to clipboard',
-                    loggerName: 'PhotoDetailScreen',
-                    onSuccess: _openInGallery,
-                  );
+      backgroundColor: Colors.transparent,
+      body: ValueListenableBuilder<PhotosState>(
+        valueListenable: widget.controller,
+        builder: (context, state, child) {
+          if (state.allPhotos.isEmpty && !state.isLoading) {
+            return _buildEmptyState();
+          }
+
+          return RepaintBoundary(
+            child: NotificationListener<ScrollMetricsNotification>(
+              onNotification: (notification) {
+                if (notification.metrics.maxScrollExtent < 200 &&
+                    state.allPhotos.length > state.displayedPhotos.length &&
+                    !state.isLoadingMore) {
+                  widget.controller.loadMore();
                 }
+                return false;
               },
-              tooltip: 'Copy gallery link',
-            ),
-          // Copy image button
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.black.withAlpha(100),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.copy, color: Colors.white),
-            ),
-            onPressed: _copyImageToClipboard,
-            tooltip: 'Copy image to clipboard',
-          ),
-          // Show in file explorer button
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.black.withAlpha(100),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.folder_open, color: Colors.white),
-            ),
-            onPressed: _showInFileExplorer,
-            tooltip: 'Show in File Explorer',
-          ),
-          // Manual upload button - show if photo has metadata but no gallery URL
-          if (hasMetadata && _metadata?.galleryUrl == null && !_isUploading)
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withAlpha(150),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.cloud_upload_rounded, color: Colors.white),
-              ),
-              onPressed: _manualUpload,
-              tooltip: 'Upload to Gallery',
-            ),
-          // Upload progress indicator
-          if (_isUploading)
-            Container(
-              padding: const EdgeInsets.all(8),
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  value: _uploadProgress > 0 ? _uploadProgress : null,
-                  strokeWidth: 2,
-                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-            ),
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.black.withAlpha(100),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.more_vert_rounded, color: Colors.white),
-            ),
-            onPressed: () {
-              showStyledBottomSheet(
-                context: context,
-                builder:
-                    (context) => Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ListTile(
-                          leading: const Icon(Icons.info_outline_rounded),
-                          title: const Text('Properties'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _toggleMetadataPanel();
-                          },
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.share_rounded),
-                          title: const Text('Copy Gallery Link'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _copyPhotoLinkToClipboard();
-                          },
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.copy),
-                          title: const Text('Copy Image to Clipboard'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _copyImageToClipboard();
-                          },
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.folder_open),
-                          title: const Text('Show in File Explorer'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _showInFileExplorer();
-                          },
-                        ),
-                        if (hasMetadata && _metadata?.galleryUrl == null && !_isUploading)
-                          ListTile(
-                            leading: const Icon(Icons.cloud_upload_rounded),
-                            title: const Text('Upload to Gallery'),
-                            subtitle: const Text('Compress and upload this photo'),
-                            onTap: () {
-                              Navigator.pop(context);
-                              _manualUpload();
-                            },
-                          ),
-                      ],
+              child: CustomScrollView(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                cacheExtent:
+                    0, // Force aggressive disposal of off-screen items to save RAM
+                key: const PageStorageKey('photos_grid_scroll'),
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.all(16),
+                    sliver: _PhotoGridView(
+                      state: state,
+                      onOpenDetails: _openPhotoDetails,
+                      onShowOptions: _showPhotoOptions,
                     ),
-              );
-            },
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.photo_library, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            'No photos found',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Take some photos in VRChat to see them here',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: widget.controller.refresh,
+            child: const Text('Refresh'),
           ),
         ],
       ),
-      body: Focus(
-        autofocus: true,
-        focusNode: _focusNode,
-        onKeyEvent: (FocusNode node, KeyEvent event) {
-          developer.log(
-            'Key event received: ${event.logicalKey}',
-            name: 'PhotoDetailScreen',
-          );
+    );
+  }
 
-          if (event is KeyDownEvent) {
-            if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-              developer.log(
-                'Right arrow key pressed',
-                name: 'PhotoDetailScreen',
-              );
-              _navigateToNext();
-              return KeyEventResult.handled;
-            } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-              developer.log(
-                'Left arrow key pressed',
-                name: 'PhotoDetailScreen',
-              );
-              _navigateToPrevious();
-              return KeyEventResult.handled;
-            } else if (event.logicalKey == LogicalKeyboardKey.escape) {
-              developer.log('Escape key pressed', name: 'PhotoDetailScreen');
-              Navigator.of(context).pop();
-              return KeyEventResult.handled;
-            }
-          }
-          return KeyEventResult.ignored;
+  void _openPhotoDetails(int index) {
+    final displayedPhoto = widget.controller.value.displayedPhotos[index];
+    final allIndex = widget.controller.value.allPhotos.indexOf(displayedPhoto);
+    final finalIndex = allIndex != -1 ? allIndex : 0;
+
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder:
+            (context, animation, secondaryAnimation) => PhotoDetailView(
+              photos: widget.controller.value.allPhotos,
+              initialIndex: finalIndex,
+              onMetadataUpdated: () => widget.controller.refresh(),
+            ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
         },
-        child: GestureDetector(
-          onTap: () {
-            _showIndicators();
-          },
+      ),
+    );
+  }
 
-          onTapDown: (details) {
-            final size = MediaQuery.of(context).size;
-            final tapX = details.globalPosition.dx;
-            final tapY = details.globalPosition.dy;
-
-            final centerX = size.width / 2;
-            final centerY = size.height / 2;
-            final centerWidth = size.width * 0.7;
-            final centerHeight = size.height * 0.7;
-
-            final isOutsideX =
-                tapX < centerX - centerWidth / 2 ||
-                tapX > centerX + centerWidth / 2;
-            final isOutsideY =
-                tapY < centerY - centerHeight / 2 ||
-                tapY > centerY + centerHeight / 2;
-
-            if (isOutsideX || isOutsideY) {
-              Navigator.of(context).pop();
-            }
-          },
-          onHorizontalDragEnd: (details) {
-            if (details.primaryVelocity == null) return;
-
-            final bool canNavigatePrevious =
-                widget.allPhotos != null && _currentIndex > 0;
-            final bool canNavigateNext =
-                widget.allPhotos != null &&
-                _currentIndex < widget.allPhotos!.length - 1;
-
-            if (details.primaryVelocity! > 300 && canNavigatePrevious) {
-              _navigateToPrevious();
-            } else if (details.primaryVelocity! < -300 && canNavigateNext) {
-              _navigateToNext();
-            }
-
-            _showIndicators();
-          },
-          child: Stack(
+  void _showPhotoOptions(FileSystemEntity photo, PhotoMetadata? metadata) {
+    showStyledBottomSheet(
+      context: context,
+      builder:
+          (context) => Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Center(
-                child: SizedBox(
-                  width: MediaQuery.of(context).size.width,
-                  height: MediaQuery.of(context).size.height,
-                  child: Hero(
-                    tag: widget.entity.path,
-                    createRectTween: (begin, end) {
-                      return RectTween(begin: begin, end: end);
-                    },
-                    flightShuttleBuilder: (
-                      BuildContext flightContext,
-                      Animation<double> animation,
-                      HeroFlightDirection flightDirection,
-                      BuildContext fromHeroContext,
-                      BuildContext toHeroContext,
-                    ) {
-                      return Material(
-                        color: Colors.transparent,
-                        child: CachedImage(
-                          filePath: widget.entity.path,
-                          fit: BoxFit.contain,
-                          thumbnailSize: 800, 
-                          highQuality: true,
-                        ),
-                      );
-                    },
-                    child: InteractiveViewer(
-                      minScale: 0.5,
-                      maxScale: 4.0,
-                      child: RepaintBoundary(
-                        key: _imageKey,
-                        child: CachedImage(
-                          filePath: widget.entity.path,
-                          fit: BoxFit.contain,
-                          width: MediaQuery.of(context).size.width,
-                          height: MediaQuery.of(context).size.height,
-                          useOriginal: true,
-                          highQuality: true,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              ListTile(
+                leading: const Icon(Icons.info_outline_rounded),
+                title: const Text('View Photo Info'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _openPhotoDetails(
+                    widget.controller.value.displayedPhotos.indexOf(photo),
+                  );
+                },
               ),
-
-              if (_isLoading)
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.black.withAlpha(76),
-                    child: const Center(
-                      child: SizedBox(
-                        width: 30,
-                        height: 30,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.0,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              if (widget.allPhotos != null && _currentIndex > 0)
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: MediaQuery.of(context).size.width * 0.2,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () {
-                        developer.log(
-                          'Left navigation area tapped',
-                          name: 'PhotoDetailScreen',
-                        );
-                        _navigateToPrevious();
-                      },
-                      child: Center(
-                        child: AnimatedOpacity(
-                          opacity: _showNavigationIndicators ? 1.0 : 0.3,
-                          duration: const Duration(milliseconds: 200),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withAlpha(150),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.arrow_back_ios_rounded,
-                              color: Colors.white,
-                              size: 32,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              if (widget.allPhotos != null &&
-                  _currentIndex < widget.allPhotos!.length - 1)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: MediaQuery.of(context).size.width * 0.2,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () {
-                        developer.log(
-                          'Right navigation area tapped',
-                          name: 'PhotoDetailScreen',
-                        );
-                        _navigateToNext();
-                      },
-                      child: Center(
-                        child: AnimatedOpacity(
-                          opacity: _showNavigationIndicators ? 1.0 : 0.3,
-                          duration: const Duration(milliseconds: 200),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withAlpha(150),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.arrow_forward_ios_rounded,
-                              color: Colors.white,
-                              size: 32,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              Positioned(
-                top: 0,
-                right: 0,
-                bottom: 0,
-                child: AnimatedSlide(
-                  offset:
-                      _isMetadataPanelOpen ? Offset.zero : const Offset(1, 0),
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  child: PhotoMetadataPanel(
-                    metadata: _metadata,
-                    isOpen: _isMetadataPanelOpen,
-                    onClose: _toggleMetadataPanel,
-                  ),
-                ),
+              ListTile(
+                leading: const Icon(Icons.folder_open),
+                title: const Text('Show in File Explorer'),
+                onTap: () {
+                  Navigator.pop(context);
+                  showFileInExplorer(photo.path, context);
+                },
               ),
-
-              // Upload status overlay
-              if (_isUploading)
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.black.withAlpha(150),
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(24),
-                        margin: const EdgeInsets.symmetric(horizontal: 32),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withAlpha(200),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 60,
-                              height: 60,
-                              child: CircularProgressIndicator(
-                                value: _uploadProgress > 0 ? _uploadProgress : null,
-                                strokeWidth: 4,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  AppTheme.primaryColor,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Uploading Photo',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _uploadStatus,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            if (_uploadProgress > 0)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text(
-                                  '${(_uploadProgress * 100).toInt()}%',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              ListTile(
+                leading: const Icon(Icons.copy),
+                title: const Text('Copy Photo Path'),
+                onTap: () {
+                  Navigator.pop(context);
+                  copyToClipboard(
+                    text: photo.path,
+                    context: context,
+                    successMessage: 'Path copied',
+                  );
+                },
+              ),
             ],
           ),
-        ),
-      ),
-      bottomNavigationBar: Container(
-        color: Colors.black.withAlpha(150),
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _metadata?.filename ?? path.basename(widget.entity.path),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _metadata != null
-                        ? _formatDate(
-                          DateTime.fromMillisecondsSinceEpoch(
-                            _metadata!.takenDate,
-                          ),
-                        )
-                        : _formatDate(widget.entity.statSync().modified),
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            if (_metadata?.galleryUrl != null)
-              ElevatedButton.icon(
-                icon: const Icon(Icons.open_in_browser_rounded),
-                label: const Text('Open in Gallery'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () => _openInGallery(),
-              ),
-          ],
-        ),
-      ),
     );
   }
+}
 
-  Future<void> _openInGallery() async {
-    if (_metadata?.galleryUrl == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No gallery link available')),
+class _PhotoGridView extends StatelessWidget {
+  final PhotosState state;
+  final Function(int) onOpenDetails;
+  final Function(FileSystemEntity, PhotoMetadata?) onShowOptions;
+
+  const _PhotoGridView({
+    required this.state,
+    required this.onOpenDetails,
+    required this.onShowOptions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverLayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.crossAxisExtent;
+        int crossAxisCount = (width / 350).floor();
+        crossAxisCount = crossAxisCount.clamp(1, 6);
+
+        return _ThrottledGrid(
+          key: const ValueKey('throttled_photo_grid'),
+          crossAxisCount: crossAxisCount,
+          state: state,
+          onOpenDetails: onOpenDetails,
+          onShowOptions: onShowOptions,
         );
-      }
-      return;
-    }
-
-    await openUrl(
-      _metadata!.galleryUrl!,
-      context,
-      loggerName: 'PhotoDetailScreen',
+      },
     );
   }
+}
 
-  Future<void> _copyPhotoLinkToClipboard() async {
-    if (_metadata?.galleryUrl != null) {
-      final String galleryUrl = _metadata!.galleryUrl!;
+class _ThrottledGrid extends StatefulWidget {
+  final int crossAxisCount;
+  final PhotosState state;
+  final Function(int) onOpenDetails;
+  final Function(FileSystemEntity, PhotoMetadata?) onShowOptions;
 
-      await copyToClipboard(
-        text: galleryUrl,
-        context: context,
-        successMessage: 'Gallery link copied to clipboard',
-        loggerName: 'PhotoDetailScreen',
-        onSuccess: _openInGallery,
-      );
-    } else {
-      final String fallbackMessage =
-          'No gallery link available for this photo.';
+  const _ThrottledGrid({
+    super.key,
+    required this.crossAxisCount,
+    required this.state,
+    required this.onOpenDetails,
+    required this.onShowOptions,
+  });
 
-      await copyToClipboard(
-        text: fallbackMessage,
-        context: context,
-        successMessage: 'No gallery link available for this photo',
-        loggerName: 'PhotoDetailScreen',
-      );
-    }
-  }
+  @override
+  State<_ThrottledGrid> createState() => _ThrottledGridState();
+}
 
-  Future<void> _showInFileExplorer() async {
-    await showFileInExplorer(widget.entity.path, context);
-  }
+class _ThrottledGridState extends State<_ThrottledGrid> {
+  @override
+  Widget build(BuildContext context) {
+    return SliverGrid(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: widget.crossAxisCount,
+        childAspectRatio: 16 / 9,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          // loading skeletons
+          if (widget.state.isLoading && widget.state.displayedPhotos.isEmpty) {
+            return PhotoGridItem.skeleton();
+          }
 
-  Future<void> _copyImageToClipboard() async {
-    try {
-      final filePath = widget.entity.path;
-      final file = File(filePath);
-
-      if (!await file.exists()) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Image file not found')));
-        }
-        return;
-      }
-
-      final result = await Pasteboard.writeFiles([filePath]);
-
-      if (mounted) {
-        if (result) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Image copied to clipboard')),
-          );
-
-          developer.log(
-            'Copied image to clipboard: $filePath',
-            name: 'PhotoDetailScreen',
-          );
-        } else {
-          // Try an alternative method if the first one failed
-          try {
-            // Try to use the image data directly
-            final bytes = await File(filePath).readAsBytes();
-            await Pasteboard.writeImage(bytes);
-
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Image copied to clipboard')),
-              );
-
-              developer.log(
-                'Copied image data to clipboard: $filePath',
-                name: 'PhotoDetailScreen',
-              );
-            }
-          } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Failed to copy image to clipboard: $e'),
+          if (index >= widget.state.displayedPhotos.length) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(8.0),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.0),
                 ),
-              );
-            }
-
-            developer.log(
-              'Error copying image data to clipboard: $e',
-              name: 'PhotoDetailScreen',
-              error: e,
+              ),
             );
           }
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error copying image: $e')));
-      }
 
-      developer.log(
-        'Error copying image to clipboard: $e',
-        name: 'PhotoDetailScreen',
-        error: e,
-      );
-    }
-  }
+          final photo = widget.state.displayedPhotos[index];
+          final metadata = widget.state.metadataMap[photo.path];
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays == 0) {
-      return 'Today, ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday, ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
-    }
-  }
-}
-
-/// Utility function to copy text to clipboard and show a snackbar
-Future<void> copyToClipboard({
-  required String text,
-  required BuildContext context,
-  required String successMessage,
-  String? fallbackText,
-  String? fallbackMessage,
-  String loggerName = 'ClipboardUtil',
-  VoidCallback? onSuccess,
-}) async {
-  final bool isContextMounted = context.mounted;
-
-  try {
-    await Clipboard.setData(ClipboardData(text: text));
-
-    if (isContextMounted && context.mounted) {
-      final snackBar = SnackBar(
-        content: Text(successMessage),
-        action:
-            onSuccess != null
-                ? SnackBarAction(label: 'Open', onPressed: onSuccess)
-                : null,
-      );
-      ScaffoldMessenger.of(context).showSnackBar(snackBar);
-    }
-
-    developer.log('Copied to clipboard: $text', name: loggerName);
-  } catch (e) {
-    if (fallbackText != null) {
-      try {
-        await Clipboard.setData(ClipboardData(text: fallbackText));
-
-        if (isContextMounted && context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                fallbackMessage ?? 'Fallback text copied to clipboard',
-              ),
-            ),
+          return PhotoGridItem(
+            key: ValueKey(photo.path),
+            entity: photo,
+            metadata: metadata,
+            onTap: () => widget.onOpenDetails(index),
+            onOptionsPressed: () => widget.onShowOptions(photo, metadata),
           );
-        }
-
-        developer.log(
-          'Copied fallback text to clipboard: $fallbackText',
-          name: loggerName,
-        );
-      } catch (e) {
-        if (isContextMounted && context.mounted) {
-          _handleClipboardError(e, context, loggerName);
-        } else {
-          _handleClipboardError(e, null, loggerName);
-        }
-      }
-    } else {
-      if (isContextMounted && context.mounted) {
-        _handleClipboardError(e, context, loggerName);
-      } else {
-        _handleClipboardError(e, null, loggerName);
-      }
-    }
-  }
-}
-
-/// Helper function to handle clipboard errors
-void _handleClipboardError(
-  dynamic error,
-  BuildContext? context,
-  String loggerName,
-) {
-  if (context != null && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error copying to clipboard: $error')),
-    );
-  }
-
-  developer.log(
-    'Error copying to clipboard: $error',
-    name: loggerName,
-    error: error,
-  );
-}
-
-/// Shows a modal bottom sheet with consistent styling
-void showStyledBottomSheet({
-  required BuildContext context,
-  required Widget Function(BuildContext) builder,
-}) {
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: AppTheme.surfaceColor,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: builder,
-  );
-}
-
-/// Utility function to open a URL in the default browser
-Future<void> openUrl(
-  String url,
-  BuildContext context, {
-  String loggerName = 'UrlOpener',
-}) async {
-  try {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-
-      developer.log('Opened URL: $url', name: loggerName);
-    } else {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Could not open URL')));
-      }
-
-      developer.log('Could not launch URL: $url', name: loggerName);
-    }
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error opening URL: $e')));
-    }
-
-    developer.log('Error opening URL: $e', name: loggerName, error: e);
-  }
-}
-
-/// Utility function to show a file in the system's file explorer
-Future<void> showFileInExplorer(String filePath, BuildContext context) async {
-  try {
-    final uri = Uri.parse('file:${filePath.replaceAll('\\', '/')}');
-
-    if (Platform.isWindows) {
-      await Process.run('explorer.exe', [
-        '/select,$filePath',
-      ], runInShell: true);
-
-      // Note: explorer.exe often returns exit code 1 even when successful,
-      // so we don't check the exit code here
-      developer.log(
-        'Opened file explorer and selected file: $filePath',
-        name: 'FileExplorerUtil',
-      );
-    } else if (await canLaunchUrl(uri)) {
-      final directoryPath = path.dirname(filePath);
-      final directoryUri = Uri.parse('file:$directoryPath');
-      await launchUrl(directoryUri);
-
-      developer.log(
-        'Opened file explorer at: $directoryPath',
-        name: 'FileExplorerUtil',
-      );
-    } else {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open file explorer')),
-        );
-      }
-
-      developer.log(
-        'Could not open file explorer for path: $filePath',
-        name: 'FileExplorerUtil',
-      );
-    }
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error opening file explorer: $e')),
-      );
-    }
-
-    developer.log(
-      'Error opening file explorer: $e',
-      name: 'FileExplorerUtil',
-      error: e,
+        },
+        childCount:
+            (widget.state.isLoading && widget.state.displayedPhotos.isEmpty)
+                ? 12
+                : widget.state.displayedPhotos.length +
+                    (widget.state.isLoadingMore ? 1 : 0),
+        addRepaintBoundaries: true,
+        addAutomaticKeepAlives: false,
+      ),
     );
   }
 }

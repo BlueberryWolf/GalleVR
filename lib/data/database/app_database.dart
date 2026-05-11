@@ -1,0 +1,94 @@
+import 'dart:io';
+import 'package:path/path.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:path_provider/path_provider.dart';
+
+class AppDatabase {
+  static final AppDatabase _instance = AppDatabase._internal();
+  static Database? _database;
+
+  factory AppDatabase() => _instance;
+
+  AppDatabase._internal();
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDatabase();
+    return _database!;
+  }
+
+  Future<Database> _initDatabase() async {
+    if (Platform.isWindows || Platform.isLinux) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
+
+    final dbDirectory = await getApplicationSupportDirectory();
+    final path = join(dbDirectory.path, 'gallevr.db');
+
+    return await openDatabase(path, version: 1, onCreate: _onCreate);
+  }
+
+  Future<void> _onCreate(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE photo_metadata (
+        id TEXT PRIMARY KEY,
+        filename TEXT NOT NULL,
+        taken_date INTEGER NOT NULL,
+        local_path TEXT,
+        gallery_url TEXT,
+        views INTEGER DEFAULT 0,
+        is_non_vrcx INTEGER DEFAULT 0,
+        is_edited INTEGER DEFAULT 0,
+  
+        world_id TEXT,
+        world_name TEXT,
+        world_instance_id TEXT,
+        world_access_type TEXT,
+        world_region TEXT,
+        world_owner_id TEXT,
+        world_group_id TEXT,
+        world_group_access_type TEXT,
+        world_can_request_invite INTEGER,
+        world_invite_only INTEGER
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE players (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE photo_players (
+        photo_id TEXT NOT NULL,
+        player_id TEXT NOT NULL,
+        PRIMARY KEY (photo_id, player_id),
+        FOREIGN KEY (photo_id) REFERENCES photo_metadata (id) ON DELETE CASCADE,
+        FOREIGN KEY (player_id) REFERENCES players (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_filename ON photo_metadata (filename)');
+    await db.execute(
+      'CREATE INDEX idx_local_path ON photo_metadata (local_path)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_photo_players_photo ON photo_players (photo_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_photo_players_player ON photo_players (player_id)',
+    );
+  }
+
+  Future<void> close() async {
+    final db = _database;
+    if (db != null) {
+      await db.close();
+      _database = null;
+    }
+  }
+}

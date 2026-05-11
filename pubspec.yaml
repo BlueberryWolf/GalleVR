@@ -2,7 +2,7 @@ name: gallevr
 description: "GalleVR is a VR image sharing and sorting app."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+publish_to: "none" # Remove this line if you wish to publish to pub.dev
 
 # The following defines the version and build number for your application.
 # A version number is three numbers separated by dots, like 1.2.43
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.4+3
+version: 1.0.5+0
 
 environment:
   sdk: ^3.7.2
@@ -56,6 +56,9 @@ dependencies:
   flutter_local_notifications: ^19.2.0
   pasteboard: ^0.4.0
   ffi: ^2.2.0
+  sqflite: ^2.4.2
+  sqflite_common_ffi: ^2.3.7+1
+  sqlite3_flutter_libs: ^0.5.42
 
 dev_dependencies:
   # The "flutter_lints" package below contains a set of recommended lints to
@@ -95,13 +98,11 @@ inno_bundle:
   languages:
     - english
 
-
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
 # The following section is specific to Flutter packages.
 flutter:
-
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

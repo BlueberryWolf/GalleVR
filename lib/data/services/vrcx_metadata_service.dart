@@ -25,7 +25,6 @@ class VrcxMetadataService {
     _nonVrcxFiles.clear();
     _metadataCache.clear();
     _fileModTimeCache.clear();
-    developer.log('Cleared all VRCX metadata caches', name: _logName);
   }
 
   /// Batch process multiple files for better performance

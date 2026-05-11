@@ -1,8 +1,5 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:ui' as ui;
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -17,20 +14,10 @@ class ImageCacheService {
 
   ImageCacheService._internal();
 
-  final Map<String, Uint8List> _thumbnailCache = {};
-
-  int _currentCacheSize = 0;
-
-  static const int _maxCacheEntries = 300;
-
-  static const int _maxMemoryCacheSize = 80 * 1024 * 1024;
-
   Directory? _cacheDir;
 
-  final List<String> _cacheAccessOrder = [];
-  
-  final Map<String, Future<Uint8List?>> _pendingRequests = {};
-  
+  final Map<String, Future<File?>> _pendingRequests = {};
+
   int _activeDecodes = 0;
   static const int _maxConcurrentDecodes = 4;
   final List<Completer<void>> _decodeQueue = [];
@@ -43,11 +30,6 @@ class ImageCacheService {
       if (!await _cacheDir!.exists()) {
         await _cacheDir!.create(recursive: true);
       }
-
-      developer.log(
-        'Image cache initialized at ${_cacheDir!.path}',
-        name: 'ImageCacheService',
-      );
     } catch (e) {
       developer.log(
         'Error initializing image cache: $e',
@@ -56,21 +38,16 @@ class ImageCacheService {
     }
   }
 
-  Future<Uint8List?> getThumbnail(String filePath, {int size = 300}) async {
-    if (_thumbnailCache.containsKey(filePath)) {
-      _updateAccessOrder(filePath);
-      return _thumbnailCache[filePath];
-    }
-
+  Future<File?> getThumbnailFile(String filePath, {int size = 300}) async {
     if (_pendingRequests.containsKey(filePath)) {
       return _pendingRequests[filePath];
     }
 
-    final completer = Completer<Uint8List?>();
+    final completer = Completer<File?>();
     _pendingRequests[filePath] = completer.future;
 
     try {
-      final result = await _loadThumbnailInternal(filePath, size);
+      final result = await _getThumbnailInternal(filePath, size);
       completer.complete(result);
       return result;
     } catch (e) {
@@ -81,73 +58,53 @@ class ImageCacheService {
     }
   }
 
-  Future<Uint8List?> _loadThumbnailInternal(String filePath, int size) async {
+  Future<File?> _getThumbnailInternal(String filePath, int size) async {
     try {
       if (_cacheDir == null) await initialize();
-      
+
       final file = File(filePath);
       if (!await file.exists()) return null;
 
+      if (Platform.isWindows) {
+        return file;
+      }
+
       final stat = await file.stat();
-      final cacheKey = '${path.basenameWithoutExtension(filePath)}-${stat.modified.millisecondsSinceEpoch}-$size${path.extension(filePath)}';
+      final cacheKey =
+          '${path.basenameWithoutExtension(filePath)}-${stat.modified.millisecondsSinceEpoch}-$size${path.extension(filePath)}';
       final cacheFile = File(path.join(_cacheDir!.path, cacheKey));
 
       if (await cacheFile.exists()) {
-        try {
-          final data = await cacheFile.readAsBytes();
-          _addToMemoryCache(filePath, data);
-          return data;
-        } catch (e) {
-          developer.log('Error reading disk cache: $e', name: 'ImageCacheService');
-        }
+        return cacheFile;
       }
 
+      await _waitForDecodeSlot();
       try {
-        final result = await FlutterImageCompress.compressWithFile(
+        final result = await FlutterImageCompress.compressAndGetFile(
           filePath,
+          cacheFile.path,
           minWidth: size,
           minHeight: (size * 9 / 16).round(),
           quality: 80,
           format: CompressFormat.jpeg,
         );
-        
-        if (result != null) {
-          _saveToDiskCache(cacheFile, result);
-          _addToMemoryCache(filePath, result);
-          return result;
-        }
-      } catch (e) {
-        developer.log('Native compression failed for $filePath: $e', name: 'ImageCacheService');
-      }
 
-      await _waitForDecodeSlot();
-      try {
-        developer.log('Using Flutter Engine fallback for $filePath', name: 'ImageCacheService');
-        final bytes = await file.readAsBytes();
-        
-        final ui.Codec codec = await ui.instantiateImageCodec(
-          bytes,
-          targetWidth: size,
-          allowUpscaling: false,
-        );
-        
-        final ui.FrameInfo frameInfo = await codec.getNextFrame();
-        final ui.Image image = frameInfo.image;
-        
-        final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData != null) {
-          final result = byteData.buffer.asUint8List();
-          _saveToDiskCache(cacheFile, result);
-          _addToMemoryCache(filePath, result);
-          return result;
+        if (result != null) {
+          return File(result.path);
         }
       } catch (e) {
-        developer.log('Flutter Engine fallback failed for $filePath: $e', name: 'ImageCacheService');
+        developer.log(
+          'Native compression failed for $filePath: $e',
+          name: 'ImageCacheService',
+        );
       } finally {
         _releaseDecodeSlot();
       }
     } catch (e) {
-      developer.log('Critical error generating thumbnail for $filePath: $e', name: 'ImageCacheService');
+      developer.log(
+        'Critical error generating thumbnail for $filePath: $e',
+        name: 'ImageCacheService',
+      );
     }
 
     return null;
@@ -172,53 +129,17 @@ class ImageCacheService {
     }
   }
 
-  Future<void> _saveToDiskCache(File cacheFile, Uint8List data) async {
-    try {
-      if (!await cacheFile.parent.exists()) {
-        await cacheFile.parent.create(recursive: true);
-      }
-      await cacheFile.writeAsBytes(data);
-    } catch (_) {}
-  }
-
-  void _updateAccessOrder(String key) {
-    if (_cacheAccessOrder.contains(key)) {
-      _cacheAccessOrder.remove(key);
-    }
-    _cacheAccessOrder.add(key);
-  }
-
-  void _addToMemoryCache(String key, Uint8List bytes) {
-    _updateAccessOrder(key);
-
-    if (_thumbnailCache.containsKey(key)) {
-      _currentCacheSize -= _thumbnailCache[key]!.length;
-    }
-
-    while (_currentCacheSize + bytes.length > _maxMemoryCacheSize && _cacheAccessOrder.isNotEmpty) {
-      final oldestKey = _cacheAccessOrder.removeAt(0);
-      final oldBytes = _thumbnailCache.remove(oldestKey);
-      if (oldBytes != null) _currentCacheSize -= oldBytes.length;
-    }
-
-    while (_thumbnailCache.length >= _maxCacheEntries && _cacheAccessOrder.isNotEmpty) {
-      final oldestKey = _cacheAccessOrder.removeAt(0);
-      final oldBytes = _thumbnailCache.remove(oldestKey);
-      if (oldBytes != null) _currentCacheSize -= oldBytes.length;
-    }
-
-    _thumbnailCache[key] = bytes;
-    _currentCacheSize += bytes.length;
-  }
-
   Future<void> clearCache() async {
-    _thumbnailCache.clear();
-    _cacheAccessOrder.clear();
-    _currentCacheSize = 0;
-
     if (_cacheDir != null && await _cacheDir!.exists()) {
-      await _cacheDir!.delete(recursive: true);
-      await _cacheDir!.create(recursive: true);
+      try {
+        await _cacheDir!.delete(recursive: true);
+        await _cacheDir!.create(recursive: true);
+      } catch (e) {
+        developer.log(
+          'Error clearing disk cache: $e',
+          name: 'ImageCacheService',
+        );
+      }
     }
   }
 }

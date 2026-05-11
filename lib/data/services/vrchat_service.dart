@@ -45,7 +45,7 @@ class VRChatService {
           version: packageInfo.version,
           contactInfo: 'https://github.com/BlueberryWolf/GalleVR',
         ),
-        cookiePath: '${(await _platformService.getConfigDirectory())}/.cookies'
+        cookiePath: '${(await _platformService.getConfigDirectory())}/.cookies',
       );
 
       await _clearAuthCookies();
@@ -321,7 +321,7 @@ class VRChatService {
     }
   }
 
-  Future<bool> updateBio(String newBio) async {
+  Future<bool> updateStatusDescription(String newStatus) async {
     if (!_isInitialized) {
       await initialize();
     }
@@ -334,14 +334,14 @@ class VRChatService {
       final userId = _api.auth.currentUser?.id;
       if (userId == null) {
         developer.log(
-          'User ID is null when updating bio',
+          'User ID is null when updating status description',
           name: 'VRChatService',
         );
         throw Exception('User ID is null');
       }
 
       developer.log(
-        'Updating bio to: $newBio for user ID: $userId',
+        'Updating status to: $newStatus for user ID: $userId',
         name: 'VRChatService',
       );
 
@@ -350,37 +350,42 @@ class VRChatService {
               .getUsersApi()
               .updateUser(
                 userId: userId,
-                updateUserRequest: UpdateUserRequest(statusDescription: newBio),
+                updateUserRequest: UpdateUserRequest(
+                  statusDescription: newStatus,
+                ),
               )
               .validateVrc();
 
       if (response.failure == null) {
         developer.log(
-          'Successfully updated bio for user ID: $userId',
+          'Successfully updated status description for user ID: $userId',
           name: 'VRChatService',
         );
         return true;
       } else {
         developer.log(
-          'Failed to update bio: ${response.failure}',
+          'Failed to update status: ${response.failure}',
           name: 'VRChatService',
         );
         return false;
       }
     } catch (e) {
-      developer.log('Error updating bio: $e', name: 'VRChatService');
+      developer.log(
+        'Error updating status description: $e',
+        name: 'VRChatService',
+      );
       return false;
     }
   }
 
-  Future<String?> getCurrentBio() async {
+  Future<String?> getCurrentStatusDescription() async {
     if (!_isInitialized) {
       await initialize();
     }
 
     if (!isLoggedIn) {
       developer.log(
-        'Attempted to get bio while not logged in',
+        'Attempted to get status while not logged in',
         name: 'VRChatService',
       );
       throw Exception('Not logged in');
@@ -389,7 +394,7 @@ class VRChatService {
     try {
       if (_api.auth.currentUser == null) {
         developer.log(
-          'Current user is null when getting bio',
+          'Current user is null when getting status',
           name: 'VRChatService',
         );
         throw Exception('Current user is null');
@@ -397,13 +402,13 @@ class VRChatService {
 
       final statusDescription = _api.auth.currentUser!.statusDescription;
       developer.log(
-        'Retrieved bio directly from currentUser',
+        'Retrieved status directly from currentUser',
         name: 'VRChatService',
       );
 
       return statusDescription;
     } catch (e) {
-      developer.log('Error getting current bio: $e', name: 'VRChatService');
+      developer.log('Error getting current status: $e', name: 'VRChatService');
       return null;
     }
   }
@@ -448,16 +453,64 @@ class VRChatService {
         name: 'VRChatService',
       );
 
-      String originalBio = '';
       try {
-        onProgress?.call('Backing up your current bio...');
-        originalBio = await getCurrentBio() ?? '';
+        const botId = 'usr_cfd81636-0ad1-4454-883e-e5c75ac9bafb';
+        onProgress?.call('Verifying bot connection...');
+
+        final statusRes =
+            await _api.rawApi
+                .getFriendsApi()
+                .getFriendStatus(userId: botId)
+                .validateVrc();
+        bool isFriend = statusRes.success?.data.isFriend ?? false;
+
+        if (!isFriend) {
+          onProgress?.call('Connecting to GalleVR...');
+          developer.log(
+            'Sending client-side friend request to GalleVR ($botId)',
+            name: 'VRChatService',
+          );
+
+          // silently try to friend the bot.
+          await _api.rawApi.getFriendsApi().friend(userId: botId).validateVrc();
+
+          // briefly wait for the server's websocket bot listener to automatically accept request
+          for (int attempt = 1; attempt <= 3; attempt++) {
+            await Future.delayed(const Duration(seconds: 2));
+            final verifyRes =
+                await _api.rawApi
+                    .getFriendsApi()
+                    .getFriendStatus(userId: botId)
+                    .validateVrc();
+            if (verifyRes.success?.data.isFriend == true) {
+              developer.log(
+                'Successfully automatically friended GalleVR bot locally',
+                name: 'VRChatService',
+              );
+              break;
+            }
+          }
+        }
+      } catch (e) {
         developer.log(
-          'Successfully retrieved current bio: $originalBio',
+          'Non-blocking bot connection logic completed with notice: $e',
+          name: 'VRChatService',
+        );
+      }
+
+      String originalStatus = '';
+      try {
+        onProgress?.call('Backing up your current status...');
+        originalStatus = await getCurrentStatusDescription() ?? '';
+        developer.log(
+          'Successfully retrieved current status: $originalStatus',
           name: 'VRChatService',
         );
       } catch (e) {
-        developer.log('Error getting current bio: $e', name: 'VRChatService');
+        developer.log(
+          'Error getting current status: $e',
+          name: 'VRChatService',
+        );
       }
 
       onProgress?.call('Requesting verification token...');
@@ -494,21 +547,25 @@ class VRChatService {
 
       onProgress?.call('Setting your VRChat status to token...');
       developer.log(
-        'Updating bio with verification token',
+        'Updating status with verification token',
         name: 'VRChatService',
       );
-      final bioUpdateSuccess = await updateBio(verificationResponse.token);
-      if (!bioUpdateSuccess) {
+      final statusUpdateSuccess = await updateStatusDescription(
+        verificationResponse.token,
+      );
+      if (!statusUpdateSuccess) {
         return VerificationResult.failure(
-          'Failed to update bio with verification token',
+          'Failed to update status with verification token',
         );
       }
 
       bool verificationSuccessful = false;
-      const maxAttempts = 30; // Increased from 10
+      const maxAttempts = 30;
 
       for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-        onProgress?.call('Waiting for VRChat to sync (Attempt $attempt/$maxAttempts)...');
+        onProgress?.call(
+          'Waiting for VRChat to sync (Attempt $attempt/$maxAttempts)...',
+        );
         developer.log(
           'Checking verification status (attempt $attempt/$maxAttempts)',
           name: 'VRChatService',
@@ -520,12 +577,12 @@ class VRChatService {
           break;
         }
 
-        await Future.delayed(const Duration(seconds: 2)); // Increased from 1s
+        await Future.delayed(const Duration(seconds: 2));
       }
 
-      onProgress?.call('Restoring your original bio...');
-      developer.log('Restoring original bio', name: 'VRChatService');
-      await updateBio(originalBio);
+      onProgress?.call('Restoring your original status...');
+      developer.log('Restoring original status', name: 'VRChatService');
+      await updateStatusDescription(originalStatus);
 
       if (verificationSuccessful) {
         onProgress?.call('Verification successful!');
@@ -587,6 +644,28 @@ class VRChatService {
     }
   }
 
+  Future<Map<String, dynamic>?> lookupAccount(String identifier) async {
+    try {
+      final url = Uri.parse(
+        'https://api.blueberry.coffee/vrchat/account-lookup/${Uri.encodeComponent(identifier)}',
+      );
+
+      developer.log(
+        'Looking up user identifier: $identifier',
+        name: 'VRChatService',
+      );
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      developer.log('Account lookup request failed: $e', name: 'VRChatService');
+      return null;
+    }
+  }
+
   Future<bool> checkVerificationStatus(AuthData authData) async {
     try {
       final url = Uri.parse(
@@ -622,7 +701,10 @@ class VRChatService {
           try {
             await fetchMe(authData, forceRefresh: true);
           } catch (e) {
-            developer.log('Error fetching profile after verification: $e', name: 'VRChatService');
+            developer.log(
+              'Error fetching profile after verification: $e',
+              name: 'VRChatService',
+            );
           }
         }
 
@@ -639,10 +721,13 @@ class VRChatService {
     }
   }
 
-  Future<AuthData?> fetchMe(AuthData authData, {bool forceRefresh = false}) async {
+  Future<AuthData?> fetchMe(
+    AuthData authData, {
+    bool forceRefresh = false,
+  }) async {
     try {
       final url = Uri.parse(
-        'https://api.blueberry.coffee/vrchat/auth/me?includeVRChatData=false${forceRefresh ? '&cache=false' : ''}',
+        'https://api.blueberry.coffee/vrchat/auth/me${forceRefresh ? '&cache=false' : ''}',
       );
       developer.log('Fetching user profile from $url', name: 'VRChatService');
 
@@ -656,25 +741,41 @@ class VRChatService {
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
-        final badges = (responseData['badges'] as List<dynamic>?)
+        final badges =
+            (responseData['badges'] as List<dynamic>?)
                 ?.map((e) => e.toString())
                 .toList() ??
             const [];
-        
-        developer.log('Received badges from API: $badges', name: 'VRChatService');
+
+        developer.log(
+          'Received badges from API: $badges',
+          name: 'VRChatService',
+        );
 
         final updatedAuthData = AuthData(
           accessKey: authData.accessKey,
           userId: authData.userId,
           ageVerified: responseData['ageVerified'] == true,
           badges: badges,
+          displayName:
+              responseData['displayName'] as String? ??
+              responseData['name'] as String?,
+          avatarUrl:
+              responseData['avatarUrl'] as String? ??
+              responseData['pfp'] as String?,
         );
 
         await saveAuthData(updatedAuthData);
-        developer.log('Successfully fetched and saved updated auth data with ${badges.length} badges', name: 'VRChatService');
+        developer.log(
+          'Successfully fetched and saved updated auth data for ${updatedAuthData.displayName}',
+          name: 'VRChatService',
+        );
         return updatedAuthData;
       } else {
-        developer.log('Failed to fetch profile: ${response.statusCode} ${response.body}', name: 'VRChatService');
+        developer.log(
+          'Failed to fetch profile: ${response.statusCode} ${response.body}',
+          name: 'VRChatService',
+        );
       }
     } catch (e) {
       developer.log('Error fetching user profile: $e', name: 'VRChatService');
@@ -703,17 +804,28 @@ class VRChatService {
         return responseData.map((json) {
           final metadataJson = json['metadata'] as Map<String, dynamic>;
           return PhotoMetadata(
-            takenDate: metadataJson['takenDate'] as int? ?? DateTime.now().millisecondsSinceEpoch,
-            filename: (metadataJson['filename'] as String? ?? 'unknown.png').replaceAll('.webp', '.png'),
+            takenDate:
+                metadataJson['takenDate'] as int? ??
+                DateTime.now().millisecondsSinceEpoch,
+            filename: (metadataJson['filename'] as String? ?? 'unknown.png')
+                .replaceAll('.webp', '.png'),
             galleryUrl: json['url'] as String?,
-            world: metadataJson['world'] != null ? WorldInfo.fromJson(metadataJson['world']) : null,
-            players: (metadataJson['players'] as List<dynamic>?)
-                ?.map((p) => Player.fromJson(p))
-                .toList() ?? [],
+            world:
+                metadataJson['world'] != null
+                    ? WorldInfo.fromJson(metadataJson['world'])
+                    : null,
+            players:
+                (metadataJson['players'] as List<dynamic>?)
+                    ?.map((p) => Player.fromJson(p))
+                    .toList() ??
+                [],
           );
         }).toList();
       } else {
-        developer.log('Failed to fetch photo list: ${response.statusCode} ${response.body}', name: 'VRChatService');
+        developer.log(
+          'Failed to fetch photo list: ${response.statusCode} ${response.body}',
+          name: 'VRChatService',
+        );
       }
     } catch (e) {
       developer.log('Error fetching photo list: $e', name: 'VRChatService');
@@ -781,6 +893,40 @@ class VRChatService {
     }
   }
 
+  Future<bool> setAgeVerified(bool verified) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('gallevr_age_verified', verified);
+      return true;
+    } catch (e) {
+      developer.log('Error saving age verification: $e', name: 'VRChatService');
+      return false;
+    }
+  }
+
+  Future<bool> loadAgeVerified() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isVerified = prefs.getBool('gallevr_age_verified') ?? false;
+
+      if (!isVerified) {
+        final authData = await loadAuthData();
+        if (authData?.ageVerified ?? false) {
+          await setAgeVerified(true);
+          return true;
+        }
+      }
+
+      return isVerified;
+    } catch (e) {
+      developer.log(
+        'Error loading age verification: $e',
+        name: 'VRChatService',
+      );
+      return false;
+    }
+  }
+
   Future<VerificationResponse?> _verifyWithServer(
     String userId,
     bool isManual, {
@@ -792,9 +938,10 @@ class VRChatService {
               ? 'https://api.blueberry.coffee/vrchat/verify/manual'
               : 'https://api.blueberry.coffee/vrchat/verify';
 
-      final body = isManual
-          ? {'username': userId, 'ageVerified': ageVerified}
-          : {'userId': userId, 'ageVerified': ageVerified};
+      final body =
+          isManual
+              ? {'username': userId, 'ageVerified': ageVerified}
+              : {'userId': userId, 'ageVerified': ageVerified};
 
       developer.log(
         'Making verification request to $endpoint with body: ${json.encode(body)}',
@@ -910,5 +1057,3 @@ class LoginResult {
     this.user,
   });
 }
-
-

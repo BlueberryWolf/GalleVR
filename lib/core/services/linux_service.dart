@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -7,6 +8,8 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:system_tray/system_tray.dart';
+import 'package:flutter/painting.dart';
+import 'package:flutter/foundation.dart';
 
 import 'notification_service.dart';
 
@@ -18,6 +21,9 @@ class LinuxService {
 
   bool _isInitialized = false;
   bool _minimizeToTray = true;
+
+  // State broadcaster indicating if the UI window is hidden
+  final ValueNotifier<bool> isHidden = ValueNotifier<bool>(false);
 
   // Singleton instance
   static final LinuxService _instance = LinuxService._internal();
@@ -43,7 +49,10 @@ class LinuxService {
         await _notificationService.initialize();
         developer.log('Notification service initialized', name: 'LinuxService');
       } catch (e) {
-        developer.log('Error initializing notification service: $e', name: 'LinuxService');
+        developer.log(
+          'Error initializing notification service: $e',
+          name: 'LinuxService',
+        );
       }
 
       // Initialize system tray
@@ -52,7 +61,10 @@ class LinuxService {
       _isInitialized = true;
       developer.log('Linux service initialized', name: 'LinuxService');
     } catch (e) {
-      developer.log('Error initializing Linux service: $e', name: 'LinuxService');
+      developer.log(
+        'Error initializing Linux service: $e',
+        name: 'LinuxService',
+      );
     }
   }
 
@@ -60,12 +72,12 @@ class LinuxService {
     try {
       final iconPath = 'assets/images/app_icon_32.png';
 
-      developer.log('Initializing system tray with icon: $iconPath', name: 'LinuxService');
-
-      await _systemTray.initSystemTray(
-        title: appTitle,
-        iconPath: iconPath,
+      developer.log(
+        'Initializing system tray with icon: $iconPath',
+        name: 'LinuxService',
       );
+
+      await _systemTray.initSystemTray(title: appTitle, iconPath: iconPath);
 
       // Create system tray menu
       final menu = Menu();
@@ -82,7 +94,10 @@ class LinuxService {
         MenuItemLabel(
           label: 'Exit',
           onClicked: (menuItem) {
-            developer.log('Exiting application from system tray', name: 'LinuxService');
+            developer.log(
+              'Exiting application from system tray',
+              name: 'LinuxService',
+            );
             exitApplication();
           },
         ),
@@ -138,7 +153,10 @@ class LinuxService {
     try {
       await FlutterForegroundTask.stopService();
     } catch (e) {
-      developer.log('Error stopping foreground tasks: $e', name: 'LinuxService');
+      developer.log(
+        'Error stopping foreground tasks: $e',
+        name: 'LinuxService',
+      );
     }
     exit(0);
   }
@@ -146,11 +164,38 @@ class LinuxService {
   Future<void> showWindow() async {
     if (!Platform.isLinux || !_isInitialized) return;
     _appWindow.show();
+    isHidden.value = false;
+
+    PaintingBinding.instance.imageCache.maximumSize = 1000;
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 100 << 20; // 100 MB
   }
 
   Future<void> hideWindow({bool showNotification = false}) async {
     if (!Platform.isLinux || !_isInitialized) return;
+
+    isHidden.value = true;
     _appWindow.hide();
+
+    try {
+      PaintingBinding.instance.imageCache.maximumSize = 0;
+      PaintingBinding.instance.imageCache.maximumSizeBytes = 0;
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+      PaintingBinding.instance.handleMemoryPressure();
+      developer.log(
+        'Purged UI image cache and triggered low-memory reclamation',
+        name: 'LinuxService',
+      );
+    } catch (memErr) {
+      developer.log('Error purging memory: $memErr', name: 'LinuxService');
+    }
+
+    try {
+      _trimHeap();
+    } catch (trimErr) {
+      developer.log('Heap trim skipped: $trimErr', name: 'LinuxService');
+    }
+
     if (showNotification) {
       await _notificationService.showMinimizedNotification();
     }
@@ -161,4 +206,13 @@ class LinuxService {
   }
 
   void dispose() {}
+
+  void _trimHeap() {
+    final libc = DynamicLibrary.open('libc.so.6');
+    final mallocTrim = libc
+        .lookupFunction<Int32 Function(IntPtr), int Function(int)>(
+          'malloc_trim',
+        );
+    mallocTrim(0);
+  }
 }

@@ -84,12 +84,17 @@ class AuthData extends Equatable {
   // List of badge IDs for the user
   final List<String> badges;
 
+  final String? displayName;
+  final String? avatarUrl;
+
   // Default constructor
   const AuthData({
     required this.accessKey,
     required this.userId,
     this.ageVerified = false,
     this.badges = const [],
+    this.displayName,
+    this.avatarUrl,
   });
 
   // Create an AuthData from JSON
@@ -98,7 +103,13 @@ class AuthData extends Equatable {
       accessKey: json['accessKey'] as String,
       userId: json['userId'] as String,
       ageVerified: json['ageVerified'] as bool? ?? false,
-      badges: (json['badges'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? const [],
+      badges:
+          (json['badges'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
+      displayName: json['displayName'] as String? ?? json['name'] as String?,
+      avatarUrl: json['avatarUrl'] as String? ?? json['pfp'] as String?,
     );
   }
 
@@ -109,50 +120,54 @@ class AuthData extends Equatable {
       'userId': userId,
       'ageVerified': ageVerified,
       'badges': badges,
+      'displayName': displayName,
+      'avatarUrl': avatarUrl,
     };
   }
 
   @override
-  List<Object?> get props => [accessKey, userId, ageVerified, badges];
+  List<Object?> get props => [
+    accessKey,
+    userId,
+    ageVerified,
+    badges,
+    displayName,
+    avatarUrl,
+  ];
 
   /// Returns the highest supporter tier based on user badges
   SupporterTier get supporterTier {
     final lowerBadges = badges.map((b) => b.toLowerCase()).toList();
-    
+
     // Mega Tier
     if (lowerBadges.contains('mega_supporter')) {
       return SupporterTier.megaSupporter;
     }
-    
+
     // Super Tier
     if (lowerBadges.contains('super_supporter')) {
       return SupporterTier.superSupporter;
     }
-    
+
     // Standard Supporter
     if (lowerBadges.contains('supporter') || lowerBadges.contains('donator')) {
       return SupporterTier.supporter;
     }
-    
+
     return SupporterTier.none;
   }
 
   /// Returns true if the user has editor or higher permissions
   bool get isEditor {
     final lowerBadges = badges.map((b) => b.toLowerCase()).toList();
-    return lowerBadges.contains('editor') || 
-           lowerBadges.contains('admin') || 
-           lowerBadges.contains('furality_team') ||
-           lowerBadges.contains('owner');
+    return lowerBadges.contains('editor') ||
+        lowerBadges.contains('admin') ||
+        lowerBadges.contains('furality_team') ||
+        lowerBadges.contains('owner');
   }
 }
 
-enum SupporterTier {
-  none,
-  supporter,
-  superSupporter,
-  megaSupporter,
-}
+enum SupporterTier { none, supporter, superSupporter, megaSupporter }
 
 extension SupporterTierExtension on SupporterTier {
   String get name {
@@ -213,7 +228,10 @@ class VerificationResult extends Equatable {
   });
 
   // Create a success result
-  factory VerificationResult.success(AuthData authData, {String? verificationToken}) {
+  factory VerificationResult.success(
+    AuthData authData, {
+    String? verificationToken,
+  }) {
     return VerificationResult(
       success: true,
       authData: authData,
@@ -241,5 +259,12 @@ class VerificationResult extends Equatable {
   }
 
   @override
-  List<Object?> get props => [success, errorMessage, authData, status, verificationToken, ageVerified];
+  List<Object?> get props => [
+    success,
+    errorMessage,
+    authData,
+    status,
+    verificationToken,
+    ageVerified,
+  ];
 }

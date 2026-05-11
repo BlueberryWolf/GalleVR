@@ -18,6 +18,8 @@ import '../../core/services/vrchat_registry_service.dart';
 import '../../data/services/vrchat_service.dart';
 import '../../data/models/verification_models.dart';
 import '../widgets/tos_modal.dart';
+import '../widgets/app_card.dart';
+import '../theme/app_theme.dart';
 import 'mass_upload_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -59,7 +61,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadAppVersion();
 
     // Listen for update status changes
-    _updateSubscription = _updateService.updateAvailableStream.listen((hasUpdate) {
+    _updateSubscription = _updateService.updateAvailableStream.listen((
+      hasUpdate,
+    ) {
       if (mounted) {
         setState(() {
           _updateAvailable = hasUpdate;
@@ -70,7 +74,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     // Listen for config changes from other parts of the app
     AppServiceManager().configStream.listen((updatedConfig) {
-      if (mounted && _config != null && _config!.uploadEnabled != updatedConfig.uploadEnabled) {
+      if (mounted &&
+          _config != null &&
+          _config!.uploadEnabled != updatedConfig.uploadEnabled) {
         setState(() {
           _config = updatedConfig;
         });
@@ -106,8 +112,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _latestVersion = _updateService.latestVersion;
         });
       }
-      developer.log('Update check completed. Update available: $_updateAvailable, Latest version: $_latestVersion',
-          name: 'SettingsScreen');
+      developer.log(
+        'Update check completed. Update available: $_updateAvailable, Latest version: $_latestVersion',
+        name: 'SettingsScreen',
+      );
     } catch (e) {
       developer.log('Error checking for updates: $e', name: 'SettingsScreen');
     }
@@ -132,20 +140,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: _updateAvailable
-            ? Text('Update available! Version $_latestVersion is ready to download.')
-            : const Text('You have the latest version.'),
-          backgroundColor: _updateAvailable
-            ? Theme.of(context).colorScheme.primary
-            : Colors.green,
+          content:
+              _updateAvailable
+                  ? Text(
+                    'Update available! Version $_latestVersion is ready to download.',
+                  )
+                  : const Text('You have the latest version.'),
+          backgroundColor:
+              _updateAvailable
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.green,
           duration: const Duration(seconds: 3),
-          action: _updateAvailable ? SnackBarAction(
-            label: 'DOWNLOAD',
-            textColor: Colors.white,
-            onPressed: () {
-              _updateService.openReleasesPage();
-            },
-          ) : null,
+          action:
+              _updateAvailable
+                  ? SnackBarAction(
+                    label: 'DOWNLOAD',
+                    textColor: Colors.white,
+                    onPressed: () {
+                      _updateService.openReleasesPage();
+                    },
+                  )
+                  : null,
         ),
       );
     }
@@ -167,9 +182,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       developer.log('Loading config...', name: 'SettingsScreen');
       final config = await _configRepository.loadConfig();
       developer.log('Config loaded successfully', name: 'SettingsScreen');
-      
+
       final authData = await _vrchatService.loadAuthData();
-      
+
       setState(() {
         _config = config;
         _authData = authData;
@@ -251,7 +266,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Terms of Service accepted. Photo uploading has been enabled.'),
+          content: Text(
+            'Terms of Service accepted. Photo uploading has been enabled.',
+          ),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 5),
         ),
@@ -270,7 +287,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Show warning message
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('You must accept the Terms of Service to enable photo uploading.'),
+        content: Text(
+          'You must accept the Terms of Service to enable photo uploading.',
+        ),
         backgroundColor: Colors.orange,
         duration: Duration(seconds: 5),
       ),
@@ -282,9 +301,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _buildSettingsForm(),
+          _buildSettingsForm(),
 
           // TOS Modal
           if (_showTOSModal)
@@ -311,97 +328,161 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Calculate item count based on platform
     final int itemCount = Platform.isWindows ? 12 : 10;
 
-    return RepaintBoundary(
-      child: ListView.builder(
-        controller: _scrollController,
-        padding: edgeInsets,
-        addAutomaticKeepAlives: false,
-        addRepaintBoundaries: true,
-        cacheExtent: 500,
-        itemCount: itemCount,
-        itemBuilder: (context, index) {
-          switch (index) {
-            case 0:
-              return _buildDirectoriesSection(isSmallScreen);
-            case 1:
-              return SizedBox(height: sectionSpacing);
-            case 2:
-              return _buildPhotoProcessingSection(isSmallScreen);
-            case 3:
-              return _authData?.isEditor == true 
-                  ? _buildEditorSection(isSmallScreen)
-                  : const SizedBox.shrink();
-            case 4:
-              return SizedBox(height: sectionSpacing);
-            case 5:
-              return _buildNotificationsSection(isSmallScreen);
-            case 6:
-              return SizedBox(height: sectionSpacing);
-            case 7:
-              return _buildSharingSection(isSmallScreen);
-            case 8:
-              return SizedBox(height: sectionSpacing);
-            case 9:
-              return Platform.isWindows
-                  ? _buildWindowsSection(isSmallScreen)
-                  : _buildAboutSection(isSmallScreen);
-            case 10:
-              return Platform.isWindows
-                  ? SizedBox(height: sectionSpacing * 2)
-                  : const SizedBox.shrink();
-            case 11:
-              return Platform.isWindows
-                  ? _buildAboutSection(isSmallScreen)
-                  : const SizedBox.shrink();
-            default:
-              return const SizedBox.shrink();
-          }
-        },
+    return Theme(
+      data: Theme.of(context).copyWith(
+        listTileTheme: ListTileThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      child: RepaintBoundary(
+        child: ListView.builder(
+          controller: _scrollController,
+          padding: edgeInsets,
+          addAutomaticKeepAlives: false,
+          addRepaintBoundaries: true,
+          cacheExtent: 500,
+          itemCount: itemCount,
+          itemBuilder: (context, index) {
+            switch (index) {
+              case 0:
+                return _buildDirectoriesSection(isSmallScreen);
+              case 1:
+                return SizedBox(height: sectionSpacing);
+              case 2:
+                return _buildPhotoProcessingSection(isSmallScreen);
+              case 3:
+                return _authData?.isEditor == true
+                    ? Padding(
+                      padding: EdgeInsets.only(top: sectionSpacing),
+                      child: _buildEditorSection(isSmallScreen),
+                    )
+                    : const SizedBox.shrink();
+              case 4:
+                return SizedBox(height: sectionSpacing);
+              case 5:
+                return _buildNotificationsSection(isSmallScreen);
+              case 6:
+                return SizedBox(height: sectionSpacing);
+              case 7:
+                return _buildSharingSection(isSmallScreen);
+              case 8:
+                return SizedBox(height: sectionSpacing);
+              case 9:
+                return Platform.isWindows
+                    ? _buildWindowsSection(isSmallScreen)
+                    : _buildAboutSection(isSmallScreen);
+              case 10:
+                return Platform.isWindows
+                    ? SizedBox(height: sectionSpacing)
+                    : const SizedBox.shrink();
+              case 11:
+                return Platform.isWindows
+                    ? _buildAboutSection(isSmallScreen)
+                    : const SizedBox.shrink();
+              default:
+                return const SizedBox.shrink();
+            }
+          },
+        ),
       ),
     );
   }
 
   Widget _buildEditorSection([bool isSmallScreen = false]) {
-    final padding = isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
-    
+    final padding =
+        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
+
     return RepaintBoundary(
-      child: Card(
-        color: Theme.of(context).colorScheme.primaryContainer.withAlpha(50),
-        child: Padding(
-          padding: padding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.edit_note, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Editor Tools',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.blueAccent,
-                  child: Icon(Icons.cloud_upload, color: Colors.white),
+      child: AppCard(
+        color: const Color(0xFF8b5cf6).withOpacity(0.1),
+        borderColor: const Color(0xFF8b5cf6).withOpacity(0.2),
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.edit_note_rounded,
+                  color: Color(0xFFa78bfa),
+                  size: 24,
                 ),
-                title: const Text('Mass Upload Screenshots'),
-                subtitle: const Text('Upload edited photos in bulk'),
+                const SizedBox(width: 12),
+                const Text(
+                  'Editor Tools',
+                  style: TextStyle(
+                    color: Color(0xFFa78bfa),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
                 onTap: () {
                   Navigator.of(context).push(
-                    MaterialPageRoute(builder: (context) => const MassUploadScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const MassUploadScreen(),
+                    ),
                   );
                 },
-                trailing: const Icon(Icons.chevron_right),
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF8b5cf6).withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.cloud_upload_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Mass Upload Screenshots',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'Upload edited photos in bulk',
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: Colors.white24,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -409,50 +490,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildDirectoriesSection([bool isSmallScreen = false]) {
     final padding =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
-    final spacing = isSmallScreen ? 12.0 : 16.0;
+        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
+    final spacing = isSmallScreen ? 16.0 : 20.0;
 
     return RepaintBoundary(
-      child: Card(
-        child: Padding(
-          padding: padding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Directories',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              SizedBox(height: spacing),
-              _buildDirectoryPicker(
-                label: 'Photos Directory',
-                value: _config!.photosDirectory,
-                isSmallScreen: isSmallScreen,
-                onChanged: (value) {
-                  if (value != null) {
-                    final updatedConfig = _config!.copyWith(
-                      photosDirectory: value,
-                    );
-                    _saveConfig(updatedConfig);
-                  }
-                },
-              ),
-              SizedBox(height: spacing),
-              _buildDirectoryPicker(
-                label: 'Logs Directory',
-                value: _config!.logsDirectory,
-                isSmallScreen: isSmallScreen,
-                onChanged: (value) {
-                  if (value != null) {
-                    final updatedConfig = _config!.copyWith(
-                      logsDirectory: value,
-                    );
-                    _saveConfig(updatedConfig);
-                  }
-                },
-              ),
-            ],
-          ),
+      child: AppCard(
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(
+                  Icons.folder_copy_rounded,
+                  color: Color(0xFF60a5fa),
+                  size: 20,
+                ),
+                SizedBox(width: 12),
+                Text(
+                  'Directories',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: spacing),
+            _buildDirectoryPicker(
+              label: 'Photos Directory',
+              value: _config!.photosDirectory,
+              isSmallScreen: isSmallScreen,
+              onChanged: (value) {
+                if (value != null) {
+                  _saveConfig(_config!.copyWith(photosDirectory: value));
+                }
+              },
+            ),
+            SizedBox(height: spacing),
+            _buildDirectoryPicker(
+              label: 'Logs Directory',
+              value: _config!.logsDirectory,
+              isSmallScreen: isSmallScreen,
+              onChanged: (value) {
+                if (value != null) {
+                  _saveConfig(_config!.copyWith(logsDirectory: value));
+                }
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -460,88 +547,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildPhotoProcessingSection([bool isSmallScreen = false]) {
     final padding =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
-    final spacing = isSmallScreen ? 12.0 : 16.0;
-    final sliderWidth = isSmallScreen ? 150.0 : 200.0;
+        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
+    final accentColor = const Color(0xFFf472b6);
 
     return RepaintBoundary(
-      child: Card(
-        child: Padding(
-          padding: padding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Photo Processing',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              SizedBox(height: spacing),
-              RepaintBoundary(
-                child:
-                    isSmallScreen
-                        ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                              child: Text(
-                                'Compression Delay',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                              child: Text(
-                                '${_config!.compressionDelay.toStringAsFixed(1)} seconds',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                              child: Slider(
-                                value: _config!.compressionDelay,
-                                min: 0.1,
-                                max: 5.0,
-                                divisions: 49,
-                                label: _config!.compressionDelay
-                                    .toStringAsFixed(1),
-                                onChanged: (value) {
-                                  final updatedConfig = _config!.copyWith(
-                                    compressionDelay: value,
-                                  );
-                                  _saveConfig(updatedConfig);
-                                },
-                              ),
-                            ),
-                          ],
-                        )
-                        : ListTile(
-                          title: const Text('Compression Delay'),
-                          subtitle: Text(
-                            '${_config!.compressionDelay.toStringAsFixed(1)} seconds',
-                          ),
-                          trailing: SizedBox(
-                            width: sliderWidth,
-                            child: Slider(
-                              value: _config!.compressionDelay,
-                              min: 0.1,
-                              max: 5.0,
-                              divisions: 49,
-                              label: _config!.compressionDelay.toStringAsFixed(
-                                1,
-                              ),
-                              onChanged: (value) {
-                                final updatedConfig = _config!.copyWith(
-                                  compressionDelay: value,
-                                );
-                                _saveConfig(updatedConfig);
-                              },
-                            ),
-                          ),
+      child: AppCard(
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.auto_fix_high_rounded, color: accentColor, size: 20),
+                const SizedBox(width: 12),
+                const Text(
+                  'Processing',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              child: Row(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Compression Delay',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
                         ),
+                      ),
+                      Text(
+                        '${_config!.compressionDelay.toStringAsFixed(1)} seconds',
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 24),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: accentColor,
+                        inactiveTrackColor: accentColor.withOpacity(0.2),
+                        thumbColor: accentColor,
+                        overlayColor: accentColor.withOpacity(0.1),
+                      ),
+                      child: Slider(
+                        value: _config!.compressionDelay,
+                        min: 0.1,
+                        max: 5.0,
+                        divisions: 49,
+                        onChanged: (value) {
+                          _saveConfig(
+                            _config!.copyWith(compressionDelay: value),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -549,107 +627,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildNotificationsSection([bool isSmallScreen = false]) {
     final padding =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
-    final spacing = isSmallScreen ? 12.0 : 16.0;
-    final sliderWidth = isSmallScreen ? 150.0 : 200.0;
+        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
+    final accentColor = const Color(0xFF60a5fa);
 
     return RepaintBoundary(
-      child: Card(
-        child: Padding(
-          padding: padding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Notifications',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              SizedBox(height: spacing),
-              RepaintBoundary(
-                child: SwitchListTile(
-                  dense: isSmallScreen,
-                  title: const Text('Sound Enabled'),
-                  subtitle: const Text(
-                    'Play a sound when a photo is processed',
-                  ),
-                  value: _config!.soundEnabled,
-                  onChanged: (value) {
-                    final updatedConfig = _config!.copyWith(
-                      soundEnabled: value,
-                    );
-                    _saveConfig(updatedConfig);
-                  },
+      child: AppCard(
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.notifications_active_rounded,
+                  color: accentColor,
+                  size: 20,
                 ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Notifications',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildCustomSwitchRow(
+              title: 'Sound Alerts',
+              subtitle: 'Play sound when photo is processed',
+              activeColor: accentColor,
+              value: _config!.soundEnabled,
+              onChanged:
+                  (value) =>
+                      _saveConfig(_config!.copyWith(soundEnabled: value)),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 80,
+                    child: Text(
+                      'Volume',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: accentColor,
+                        inactiveTrackColor: accentColor.withOpacity(0.2),
+                        thumbColor: accentColor,
+                      ),
+                      child: Slider(
+                        value: _config!.soundVolume,
+                        onChanged:
+                            _config!.soundEnabled
+                                ? (v) => _saveConfig(
+                                  _config!.copyWith(soundVolume: v),
+                                )
+                                : null,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              RepaintBoundary(
-                child:
-                    isSmallScreen
-                        ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                              child: Text(
-                                'Sound Volume',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                              child: Text(
-                                '${(_config!.soundVolume * 100).round()}%',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                              child: Slider(
-                                value: _config!.soundVolume,
-                                min: 0.0,
-                                max: 1.0,
-                                divisions: 10,
-                                label:
-                                    '${(_config!.soundVolume * 100).round()}%',
-                                onChanged:
-                                    _config!.soundEnabled
-                                        ? (value) {
-                                          final updatedConfig = _config!
-                                              .copyWith(soundVolume: value);
-                                          _saveConfig(updatedConfig);
-                                        }
-                                        : null,
-                              ),
-                            ),
-                          ],
-                        )
-                        : ListTile(
-                          title: const Text('Sound Volume'),
-                          subtitle: Text(
-                            '${(_config!.soundVolume * 100).round()}%',
-                          ),
-                          trailing: SizedBox(
-                            width: sliderWidth,
-                            child: Slider(
-                              value: _config!.soundVolume,
-                              min: 0.0,
-                              max: 1.0,
-                              divisions: 10,
-                              label: '${(_config!.soundVolume * 100).round()}%',
-                              onChanged:
-                                  _config!.soundEnabled
-                                      ? (value) {
-                                        final updatedConfig = _config!.copyWith(
-                                          soundVolume: value,
-                                        );
-                                        _saveConfig(updatedConfig);
-                                      }
-                                      : null,
-                            ),
-                          ),
-                        ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -657,104 +707,85 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildSharingSection([bool isSmallScreen = false]) {
     final padding =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
-    final spacing = isSmallScreen ? 12.0 : 16.0;
+        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
+    final accentColor = const Color(0xFF4ade80);
 
     return RepaintBoundary(
-      child: Card(
-        child: Padding(
-          padding: padding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Sharing', style: Theme.of(context).textTheme.titleLarge),
-              SizedBox(height: spacing),
-              RepaintBoundary(
-                child: SwitchListTile(
-                  dense: isSmallScreen,
-                  title: const Text('Upload Enabled'),
-                  subtitle: const Text('Automatically upload processed photos'),
-                  value: _config!.uploadEnabled,
-                  onChanged: (value) async {
-                    // If trying to enable uploads, check VRChat logging and TOS acceptance first
-                    if (value) {
-                      // Check VRChat logging status on Windows
-                      if (Platform.isWindows) {
-                        try {
-                          final isLoggingEnabled = await _vrchatRegistryService.isFullLoggingEnabled();
-                          if (!isLoggingEnabled) {
-                            // Show warning toast about VRChat logging
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('VRChat full logging must be enabled to upload photos. Your photos cannot be processed without logging enabled.'),
-                                  backgroundColor: Colors.orange,
-                                  duration: Duration(seconds: 5),
-                                ),
-                              );
-                            }
-                            return;
-                          }
-                        } catch (e) {
-                          developer.log('Error checking VRChat logging status: $e', name: 'SettingsScreen');
-                          // Continue with upload enabling if we can't check logging status
-                        }
-                      }
-
-                      final needsToAcceptTOS = await _tosService.needsToAcceptTOS();
-                      if (needsToAcceptTOS) {
-                        // Check if a TOS modal is already visible
-                        if (AppServiceManager().isTOSModalVisible) {
-                          developer.log('TOS modal is already visible, skipping', name: 'SettingsScreen');
-
-                          // Show a message to the user
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Please accept the Terms of Service to enable uploading.'),
-                                backgroundColor: Colors.orange,
-                                duration: Duration(seconds: 3),
+      child: AppCard(
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.share_rounded, color: accentColor, size: 20),
+                const SizedBox(width: 12),
+                const Text(
+                  'Sharing',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildCustomSwitchRow(
+              title: 'Automatic Uploading',
+              subtitle: 'Upload processed photos automatically',
+              activeColor: accentColor,
+              value: _config!.uploadEnabled,
+              onChanged: (value) async {
+                if (value) {
+                  if (Platform.isWindows) {
+                    try {
+                      final isLoggingEnabled =
+                          await _vrchatRegistryService.isFullLoggingEnabled();
+                      if (!isLoggingEnabled) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'VRChat full logging must be enabled to upload photos.',
                               ),
-                            );
-                          }
-                          return;
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
                         }
-
-                        // Set the global flag
-                        AppServiceManager().isTOSModalVisible = true;
-
-                        // Show TOS modal instead of enabling uploads
-                        setState(() {
-                          _showTOSModal = true;
-                        });
                         return;
                       }
+                    } catch (e) {
+                      developer.log(
+                        'Error checking logging: $e',
+                        name: 'SettingsScreen',
+                      );
                     }
+                  }
 
-                    // If disabling uploads or all checks passed, proceed normally
-                    final updatedConfig = _config!.copyWith(
-                      uploadEnabled: value,
-                    );
-                    _saveConfig(updatedConfig);
-                  },
-                ),
-              ),
-              RepaintBoundary(
-                child: SwitchListTile(
-                  dense: isSmallScreen,
-                  title: const Text('Auto-Copy Gallery URL'),
-                  subtitle: const Text('Automatically copy gallery URL to clipboard after upload'),
-                  value: _config!.autoCopyGalleryUrl,
-                  onChanged: _config!.uploadEnabled ? (value) {
-                    final updatedConfig = _config!.copyWith(
-                      autoCopyGalleryUrl: value,
-                    );
-                    _saveConfig(updatedConfig);
-                  } : null,
-                ),
-              ),
-            ],
-          ),
+                  final needsToAcceptTOS = await _tosService.needsToAcceptTOS();
+                  if (needsToAcceptTOS) {
+                    if (AppServiceManager().isTOSModalVisible) return;
+                    AppServiceManager().isTOSModalVisible = true;
+                    setState(() => _showTOSModal = true);
+                    return;
+                  }
+                }
+                _saveConfig(_config!.copyWith(uploadEnabled: value));
+              },
+            ),
+            _buildCustomSwitchRow(
+              title: 'Auto-Copy URL',
+              subtitle: 'Copy gallery link after upload',
+              activeColor: accentColor,
+              value: _config!.autoCopyGalleryUrl,
+              onChanged:
+                  _config!.uploadEnabled
+                      ? (v) =>
+                          _saveConfig(_config!.copyWith(autoCopyGalleryUrl: v))
+                      : null,
+            ),
+          ],
         ),
       ),
     );
@@ -766,133 +797,161 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final spacing = isSmallScreen ? 12.0 : 16.0;
 
     return RepaintBoundary(
-      child: Card(
-        child: Padding(
-          padding: padding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('About', style: Theme.of(context).textTheme.titleLarge),
-              SizedBox(height: spacing),
-
-              // Version and update status in a single component
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: _updateAvailable
-                    ? Theme.of(context).colorScheme.errorContainer.withAlpha(50)
-                    : Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
+      child: AppCard(
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  color: Color(0xFFa78bfa),
+                  size: 20,
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Left side - App info
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Icon(
-                            _updateAvailable ? Icons.system_update : Icons.info_outline,
-                            color: _updateAvailable
-                              ? Theme.of(context).colorScheme.error
-                              : Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'GalleVR',
-                                  style: Theme.of(context).textTheme.titleMedium,
-                                ),
-                                RichText(
-                                  text: TextSpan(
-                                    style: Theme.of(context).textTheme.bodyMedium,
-                                    children: [
-                                      TextSpan(
-                                        text: 'Version $_appVersion',
+                SizedBox(width: 12),
+                Text(
+                  'About',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: spacing),
+
+            // Version and update status in a single component
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color:
+                    _updateAvailable
+                        ? Colors.amber.withOpacity(0.1)
+                        : Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color:
+                      _updateAvailable
+                          ? Colors.amber.withOpacity(0.3)
+                          : Colors.white.withOpacity(0.08),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Left side - App info
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _updateAvailable
+                              ? Icons.system_update
+                              : Icons.info_outline,
+                          color:
+                              _updateAvailable
+                                  ? Theme.of(context).colorScheme.error
+                                  : Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'GalleVR',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              RichText(
+                                text: TextSpan(
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                  children: [
+                                    TextSpan(text: 'Version $_appVersion'),
+                                    if (_updateAvailable &&
+                                        _latestVersion != null) ...[
+                                      const TextSpan(
+                                        text: ' • ',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
-                                      if (_updateAvailable && _latestVersion != null) ...[
-                                        const TextSpan(
-                                          text: ' • ',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                      TextSpan(
+                                        text: 'Update: $_latestVersion',
+                                        style: TextStyle(
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.error,
+                                          fontWeight: FontWeight.bold,
                                         ),
-                                        TextSpan(
-                                          text: 'Update: $_latestVersion',
-                                          style: TextStyle(
-                                            color: Theme.of(context).colorScheme.error,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ],
-                                  ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Right side - Buttons
+                  if (_updateAvailable && _latestVersion != null) ...[
+                    TextButton(
+                      onPressed: () async {
+                        await _checkForUpdatesWithFeedback();
+                      },
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        minimumSize: const Size(0, 36),
+                      ),
+                      child: const Text('Check Again'),
+                    ),
+                    const SizedBox(width: 4),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        _updateService.openReleasesPage();
+                      },
+                      icon: const Icon(Icons.download, size: 16),
+                      label: const Text('Download'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor:
+                            Theme.of(context).colorScheme.onPrimary,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        minimumSize: const Size(0, 36),
                       ),
                     ),
-
-                    // Right side - Buttons
-                    if (_updateAvailable && _latestVersion != null) ...[
-                      TextButton(
-                        onPressed: () async {
-                          await _checkForUpdatesWithFeedback();
-                        },
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          minimumSize: const Size(0, 36),
-                        ),
-                        child: const Text('Check Again'),
+                  ] else
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Check for Updates'),
+                      onPressed: () async {
+                        await _checkForUpdatesWithFeedback();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        minimumSize: const Size(0, 36),
                       ),
-                      const SizedBox(width: 4),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          _updateService.openReleasesPage();
-                        },
-                        icon: const Icon(Icons.download, size: 16),
-                        label: const Text('Download'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Theme.of(context).colorScheme.primary,
-                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          minimumSize: const Size(0, 36),
-                        ),
-                      ),
-                    ] else
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.refresh, size: 16),
-                        label: const Text('Check for Updates'),
-                        onPressed: () async {
-                          await _checkForUpdatesWithFeedback();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          minimumSize: const Size(0, 36),
-                        ),
-                      ),
-                  ],
-                ),
+                    ),
+                ],
               ),
+            ),
 
-              const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-              // Platform information
-              ListTile(
-                dense: isSmallScreen,
-                title: const Text('Platform'),
-                subtitle: Text(_getPlatformName()),
-                leading: const Icon(Icons.devices),
-              ),
-            ],
-          ),
+            // Platform information
+            _buildCustomInfoRow(
+              dense: isSmallScreen,
+              title: 'Platform',
+              subtitle: _getPlatformName(),
+              leading: Icons.devices,
+            ),
+          ],
         ),
       ),
     );
@@ -901,19 +960,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildDirectoryPicker({
     required String label,
     required String value,
+    required bool isSmallScreen,
     required Function(String?) onChanged,
-    bool isSmallScreen = false,
   }) {
-    final verticalLayout = isSmallScreen;
-    final spacing = isSmallScreen ? 6.0 : 8.0;
+    final double spacing = isSmallScreen ? 8 : 16;
 
-    return RepaintBoundary(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label),
-          SizedBox(height: spacing),
-          if (verticalLayout)
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          if (isSmallScreen)
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -923,23 +985,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey),
-                    borderRadius: BorderRadius.circular(4),
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white10),
                   ),
                   child: Text(
                     value.isEmpty ? 'Not set' : value,
                     style: TextStyle(
-                      color: value.isEmpty ? Colors.grey : null,
-                      fontSize: isSmallScreen ? 13 : 14,
+                      color: value.isEmpty ? Colors.white24 : Colors.white70,
+                      fontSize: 13,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                SizedBox(height: spacing),
-                ElevatedButton(
+                const SizedBox(height: 8),
+                _buildModernButton(
                   onPressed: () => _pickDirectory(onChanged),
-                  child: const Text('Browse'),
+                  label: 'Browse',
+                  color: AppTheme.primaryColor,
                 ),
               ],
             )
@@ -950,30 +1014,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
-                      vertical: 12,
+                      vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(4),
+                      color: Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white10),
                     ),
                     child: Text(
                       value.isEmpty ? 'Not set' : value,
                       style: TextStyle(
-                        color: value.isEmpty ? Colors.grey : null,
+                        color: value.isEmpty ? Colors.white24 : Colors.white70,
+                        fontSize: 14,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
+                const SizedBox(width: 12),
+                _buildModernButton(
                   onPressed: () => _pickDirectory(onChanged),
-                  child: const Text('Browse'),
+                  label: 'Browse',
+                  color: AppTheme.primaryColor,
                 ),
               ],
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModernButton({
+    required VoidCallback? onPressed,
+    required String label,
+    required Color color,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: (onPressed == null ? Colors.white10 : color).withOpacity(
+              0.1,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: (onPressed == null ? Colors.white10 : color).withOpacity(
+                0.2,
+              ),
+            ),
+          ),
+          child: Center(
+            child: Text(
+              label.toUpperCase(),
+              style: TextStyle(
+                color: onPressed == null ? Colors.white24 : color,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1184,44 +1290,160 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final spacing = isSmallScreen ? 12.0 : 16.0;
 
     return RepaintBoundary(
-      child: Card(
-        child: Padding(
-          padding: padding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Windows Settings', style: Theme.of(context).textTheme.titleLarge),
-              SizedBox(height: spacing),
-              RepaintBoundary(
-                child: SwitchListTile(
-                  dense: isSmallScreen,
-                  title: const Text('Minimize to System Tray'),
-                  subtitle: const Text(
-                    'Keep the app running in the system tray when closed',
+      child: AppCard(
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(
+                  Icons.settings_applications_rounded,
+                  color: Color(0xFF60a5fa),
+                  size: 20,
+                ),
+                SizedBox(width: 12),
+                Text(
+                  'Windows Settings',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
                   ),
-                  value: _config!.minimizeToTray,
-                  onChanged: (value) {
-                    final updatedConfig = _config!.copyWith(
-                      minimizeToTray: value,
-                    );
-                    _saveConfig(updatedConfig);
-                  },
+                ),
+              ],
+            ),
+            SizedBox(height: spacing),
+            RepaintBoundary(
+              child: _buildCustomSwitchRow(
+                dense: isSmallScreen,
+                title: 'Minimize to System Tray',
+                subtitle: 'Keep the app running in the system tray when closed',
+                activeColor: Theme.of(context).colorScheme.primary,
+                value: _config!.minimizeToTray,
+                onChanged: (value) {
+                  final updatedConfig = _config!.copyWith(
+                    minimizeToTray: value,
+                  );
+                  _saveConfig(updatedConfig);
+                },
+              ),
+            ),
+            RepaintBoundary(
+              child: _buildCustomSwitchRow(
+                dense: isSmallScreen,
+                title: 'Start with Windows',
+                subtitle: 'Automatically start GalleVR when Windows starts',
+                activeColor: Theme.of(context).colorScheme.primary,
+                value: _config!.startWithWindows,
+                onChanged: (value) {
+                  final updatedConfig = _config!.copyWith(
+                    startWithWindows: value,
+                  );
+                  _saveConfig(updatedConfig);
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomSwitchRow({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool>? onChanged,
+    required Color activeColor,
+    bool dense = false,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onChanged != null ? () => onChanged(!value) : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: dense ? 8 : 12,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              RepaintBoundary(
-                child: SwitchListTile(
-                  dense: isSmallScreen,
-                  title: const Text('Start with Windows'),
-                  subtitle: const Text(
-                    'Automatically start GalleVR when Windows starts',
-                  ),
-                  value: _config!.startWithWindows,
-                  onChanged: (value) {
-                    final updatedConfig = _config!.copyWith(
-                      startWithWindows: value,
-                    );
-                    _saveConfig(updatedConfig);
-                  },
+              Switch(
+                value: value,
+                onChanged: onChanged,
+                activeColor: activeColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomInfoRow({
+    required String title,
+    required String subtitle,
+    required IconData leading,
+    bool dense = false,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {},
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: dense ? 8 : 12,
+          ),
+          child: Row(
+            children: [
+              Icon(leading, color: Colors.white54, size: 24),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

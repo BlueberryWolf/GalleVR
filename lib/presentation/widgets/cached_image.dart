@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../core/image/image_cache_service.dart';
 
@@ -11,6 +10,7 @@ class CachedImage extends StatefulWidget {
   final int? thumbnailSize;
   final bool highQuality;
   final bool useOriginal;
+  final double opacity;
 
   const CachedImage({
     super.key,
@@ -21,6 +21,7 @@ class CachedImage extends StatefulWidget {
     this.thumbnailSize,
     this.highQuality = false,
     this.useOriginal = false,
+    this.opacity = 1.0,
   });
 
   @override
@@ -28,7 +29,7 @@ class CachedImage extends StatefulWidget {
 }
 
 class _CachedImageState extends State<CachedImage> {
-  Uint8List? _imageData;
+  File? _thumbnailFile;
   bool _isLoading = true;
   bool _hasError = false;
 
@@ -41,35 +42,36 @@ class _CachedImageState extends State<CachedImage> {
   @override
   void didUpdateWidget(CachedImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.filePath != widget.filePath || oldWidget.thumbnailSize != widget.thumbnailSize) {
+    if (oldWidget.filePath != widget.filePath ||
+        oldWidget.thumbnailSize != widget.thumbnailSize) {
       _loadImage();
     }
   }
 
   Future<void> _loadImage({bool isRetry = false}) async {
     if (!mounted || widget.useOriginal) return;
-    
+
     setState(() {
       _isLoading = true;
       _hasError = false;
     });
 
     try {
-      final data = await ImageCacheService().getThumbnail(
+      final file = await ImageCacheService().getThumbnailFile(
         widget.filePath,
         size: widget.thumbnailSize ?? 300,
       );
-      
+
       if (mounted) {
-        if (data == null && !isRetry) {
+        if (file == null && !isRetry) {
           await Future.delayed(const Duration(milliseconds: 200));
           return _loadImage(isRetry: true);
         }
 
         setState(() {
-          _imageData = data;
+          _thumbnailFile = file;
           _isLoading = false;
-          _hasError = data == null;
+          _hasError = file == null;
         });
       }
     } catch (e) {
@@ -95,7 +97,7 @@ class _CachedImageState extends State<CachedImage> {
       child: _buildContent(),
     );
   }
-  
+
   Widget _buildContent() {
     if (widget.useOriginal) {
       return Image.file(
@@ -103,7 +105,10 @@ class _CachedImageState extends State<CachedImage> {
         fit: widget.fit,
         width: widget.width,
         height: widget.height,
-        filterQuality: widget.highQuality ? FilterQuality.high : FilterQuality.medium,
+        gaplessPlayback: true,
+        filterQuality:
+            widget.highQuality ? FilterQuality.high : FilterQuality.medium,
+        opacity: AlwaysStoppedAnimation(widget.opacity),
         errorBuilder: (context, error, stackTrace) {
           return Container(
             color: Colors.grey[800],
@@ -113,24 +118,22 @@ class _CachedImageState extends State<CachedImage> {
       );
     }
 
-    if (_isLoading && _imageData == null) {
+    if (_isLoading && _thumbnailFile == null) {
       return Container(color: Colors.grey[900]);
     }
-    
-    if (_hasError || _imageData == null) {
-      return Container(
-        color: Colors.grey[800],
-        child: const Icon(Icons.broken_image, color: Colors.grey, size: 20),
-      );
-    }
 
-    return Image.memory(
-      _imageData!,
+    final displayFile = _thumbnailFile ?? File(widget.filePath);
+
+    return Image.file(
+      displayFile,
       fit: widget.fit,
       width: widget.width,
       height: widget.height,
       gaplessPlayback: true,
-      filterQuality: widget.highQuality ? FilterQuality.high : FilterQuality.low,
+      filterQuality:
+          widget.highQuality ? FilterQuality.high : FilterQuality.low,
+      opacity: AlwaysStoppedAnimation(widget.opacity),
+      cacheWidth: widget.thumbnailSize ?? 300,
       errorBuilder: (context, error, stackTrace) {
         return Container(
           color: Colors.grey[800],

@@ -38,6 +38,9 @@ class AppTheme {
         onError: Colors.white,
         brightness: Brightness.light,
       ),
+      hoverColor: Colors.black.withOpacity(0.05),
+      splashColor: Colors.black.withOpacity(0.05),
+      highlightColor: Colors.transparent,
       appBarTheme: AppBarTheme(
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
@@ -165,6 +168,9 @@ class AppTheme {
         onError: Colors.white,
         brightness: Brightness.dark,
       ),
+      hoverColor: Colors.white.withOpacity(0.05),
+      splashColor: Colors.white.withOpacity(0.05),
+      highlightColor: Colors.transparent,
       scaffoldBackgroundColor: backgroundColor,
       appBarTheme: AppBarTheme(
         backgroundColor: surfaceColor,
