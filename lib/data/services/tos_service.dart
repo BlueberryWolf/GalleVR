@@ -14,9 +14,9 @@ class TOSService {
   static const String _lastAcceptedDateKey = 'last_accepted_tos_date';
 
   // API endpoints
-  static const String _tosStatusEndpoint = 'https://api.blueberry.coffee/vrchat/tos/status';
-  static const String _tosAcceptEndpoint = 'https://api.blueberry.coffee/vrchat/tos/accept';
-  static const String _tosContentEndpoint = 'https://api.blueberry.coffee/vrchat/tos';
+  static const String _tosStatusEndpoint = 'https://api.gallevr.app/vrchat/tos/status';
+  static const String _tosAcceptEndpoint = 'https://api.gallevr.app/vrchat/tos/accept';
+  static const String _tosContentEndpoint = 'https://api.gallevr.app/vrchat/tos';
 
   TOSService({VRChatService? vrchatService})
       : _vrchatService = vrchatService ?? VRChatService();

@@ -47,8 +47,8 @@ class WorldInfo {
   // Create a WorldInfo from JSON
   factory WorldInfo.fromJson(Map<String, dynamic> json) {
     return WorldInfo(
-      name: json['name'] as String,
-      id: json['id'] as String,
+      name: json['name'] as String? ?? 'Unknown World',
+      id: json['id'] as String? ?? 'unknown_id',
       instanceId: json['instanceId'] as String?,
       accessType: json['accessType'] as String?,
       region: json['region'] as String?,
@@ -94,8 +94,8 @@ class Player {
   // Create a Player from JSON
   factory Player.fromJson(Map<String, dynamic> json) {
     return Player(
-      id: json['id'] as String,
-      name: json['name'] as String,
+      id: json['id'] as String? ?? 'unknown_id',
+      name: json['name'] as String? ?? 'Unknown Player',
     );
   }
 

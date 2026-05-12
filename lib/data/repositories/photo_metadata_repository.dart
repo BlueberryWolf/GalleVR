@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:developer' as developer;
@@ -10,6 +11,7 @@ import '../models/photo_metadata.dart';
 import '../services/vrcx_metadata_service.dart';
 import '../services/vrchat_service.dart';
 import '../services/app_service_manager.dart';
+import '../services/photo_event_service.dart';
 import '../models/log_metadata.dart';
 
 import 'package:sqflite/sqflite.dart';
@@ -33,28 +35,47 @@ class PhotoMetadataRepository {
   PhotoMetadataRepository._internal();
 
   static SharedPreferences? _prefs;
+  static Completer<void>? _initCompleter;
 
   // Queue to prevent redundant processing of the same file
   static final Map<String, Future<PhotoMetadata?>> _processingQueue = {};
 
   Future<void> _initializeCache() async {
+    if (_prefs != null) return;
+
+    if (_initCompleter != null) {
+      return _initCompleter!.future;
+    }
+
+    _initCompleter = Completer<void>();
+
     try {
       _prefs ??= await SharedPreferences.getInstance();
 
-      // Check if you still have legacy photo data stored in SharedPreferences
-      final hasLegacyData = _prefs?.containsKey(_photoIdsKey) ?? false;
-      if (hasLegacyData) {
-        await _migrateToSqlite();
-        await _prefs?.setBool(_sqliteMigrationDoneKey, true);
+      final isDone = _prefs?.getBool(_sqliteMigrationDoneKey) ?? false;
+
+      if (!isDone) {
+        final hasLegacyData = _prefs?.containsKey(_photoIdsKey) ?? false;
+        if (hasLegacyData) {
+          await _migrateToSqlite();
+          await _prefs?.setBool(_sqliteMigrationDoneKey, true);
+        }
       }
 
+      await _forcePurgeRemainingLegacyBloat();
+
       _checkAndMigrateLegacyMetadata();
+
       syncWithBackend();
+
+      _initCompleter?.complete();
     } catch (e) {
       developer.log(
         'Error initializing metadata repository: $e',
         name: 'PhotoMetadataRepository',
       );
+      _initCompleter?.completeError(e);
+      _initCompleter = null;
     }
   }
 
@@ -62,33 +83,88 @@ class PhotoMetadataRepository {
     final photoIds = _prefs?.getStringList(_photoIdsKey) ?? [];
     if (photoIds.isEmpty) return;
 
-    final List<PhotoMetadata> toMigrate = [];
-    for (final id in photoIds) {
-      final jsonStr = _prefs?.getString('$_photoMetadataKeyPrefix$id');
-      if (jsonStr != null) {
-        try {
-          toMigrate.add(PhotoMetadata.fromJson(jsonDecode(jsonStr)));
-        } catch (e) {
-          developer.log(
-            'Error decoding $id during migration: $e',
-            name: 'PhotoMetadataRepository',
-          );
+    const int chunkSize = 50;
+    for (int i = 0; i < photoIds.length; i += chunkSize) {
+      final chunk = photoIds.skip(i).take(chunkSize).toList();
+      final List<PhotoMetadata> batch = [];
+
+      for (final id in chunk) {
+        final jsonStr = _prefs?.getString('$_photoMetadataKeyPrefix$id');
+        if (jsonStr != null) {
+          try {
+            batch.add(PhotoMetadata.fromJson(jsonDecode(jsonStr)));
+          } catch (e) {
+            developer.log(
+              'Error decoding $id during migration: $e',
+              name: 'PhotoMetadataRepository',
+            );
+          }
         }
       }
-    }
 
-    if (toMigrate.isNotEmpty) {
-      await savePhotoMetadataBatch(toMigrate);
+      if (batch.isNotEmpty) {
+        await savePhotoMetadataBatch(batch);
+      }
+
       developer.log(
-        'Migrated ${toMigrate.length} entries to SQLite',
+        'Migrated batch ${(i / chunkSize).ceil() + 1} of ${(photoIds.length / chunkSize).ceil()}',
         name: 'PhotoMetadataRepository',
       );
+
+      await Future.delayed(const Duration(milliseconds: 10));
     }
 
-    for (final id in photoIds) {
-      await _prefs?.remove('$_photoMetadataKeyPrefix$id');
+    developer.log(
+      'All legacy data cleared successfully!',
+      name: 'PhotoMetadataRepository',
+    );
+  }
+
+  Future<void> _forcePurgeRemainingLegacyBloat() async {
+    try {
+      if (_prefs == null) return;
+
+      final allKeys = _prefs!.getKeys();
+      final legacyKeys =
+          allKeys
+              .where(
+                (k) =>
+                    k.startsWith(_photoMetadataKeyPrefix) || k == _photoIdsKey,
+              )
+              .toList();
+
+      if (legacyKeys.isEmpty) return;
+
+      final backup = <String, Object>{};
+      for (final key in allKeys) {
+        if (!key.startsWith(_photoMetadataKeyPrefix) && key != _photoIdsKey) {
+          final value = _prefs!.get(key);
+          if (value != null) {
+            backup[key] = value;
+          }
+        }
+      }
+
+      await _prefs!.clear();
+
+      for (final entry in backup.entries) {
+        final k = entry.key;
+        final v = entry.value;
+        if (v is bool) {
+          _prefs!.setBool(k, v);
+        } else if (v is String) {
+          _prefs!.setString(k, v);
+        } else if (v is int) {
+          _prefs!.setInt(k, v);
+        } else if (v is double) {
+          _prefs!.setDouble(k, v);
+        } else if (v is List<String>) {
+          _prefs!.setStringList(k, v);
+        }
+      }
+    } catch (e) {
+      developer.log('routine error: $e', name: 'PhotoMetadataRepository');
     }
-    await _prefs?.remove(_photoIdsKey);
   }
 
   PhotoMetadata _fromDbMap(
@@ -151,21 +227,26 @@ class PhotoMetadataRepository {
       results[id] = [];
     }
 
-    final placeholders = List.filled(photoIds.length, '?').join(',');
-    final List<Map<String, dynamic>> maps = await db.rawQuery('''
-      SELECT pp.photo_id, p.id, p.name 
-      FROM photo_players pp
-      JOIN players p ON pp.player_id = p.id
-      WHERE pp.photo_id IN ($placeholders)
-    ''', photoIds);
+    const int chunkSize = 500;
+    for (int i = 0; i < photoIds.length; i += chunkSize) {
+      final chunk = photoIds.skip(i).take(chunkSize).toList();
+      final placeholders = List.filled(chunk.length, '?').join(',');
 
-    for (final row in maps) {
-      final photoId = row['photo_id'] as String;
-      final player = Player(
-        id: row['id'] as String,
-        name: row['name'] as String,
-      );
-      results[photoId]?.add(player);
+      final List<Map<String, dynamic>> maps = await db.rawQuery('''
+        SELECT pp.photo_id, p.id, p.name 
+        FROM photo_players pp
+        JOIN players p ON pp.player_id = p.id
+        WHERE pp.photo_id IN ($placeholders)
+      ''', chunk);
+
+      for (final row in maps) {
+        final photoId = row['photo_id'] as String;
+        final player = Player(
+          id: row['id'] as String,
+          name: row['name'] as String,
+        );
+        results[photoId]?.add(player);
+      }
     }
 
     return results;
@@ -311,9 +392,51 @@ class PhotoMetadataRepository {
   Future<void> syncWithBackend() async {
     try {
       final backendPhotos = await VRChatService().fetchPhotoList();
-      if (backendPhotos.isNotEmpty) {
-        await savePhotoMetadataBatch(backendPhotos, isRemote: true);
+      if (backendPhotos.isEmpty) return;
+
+      final config = AppServiceManager().config;
+      final Map<String, String> localLookup = {};
+
+      if (config != null && config.photosDirectory.isNotEmpty) {
+        final photosDir = Directory(config.photosDirectory);
+        if (await photosDir.exists()) {
+          try {
+            await for (final entity in photosDir.list(
+              recursive: true,
+              followLinks: false,
+            )) {
+              if (entity is File &&
+                  entity.path.toLowerCase().endsWith('.png')) {
+                final baseKey =
+                    path.basenameWithoutExtension(entity.path).toLowerCase();
+                localLookup[baseKey] = entity.path;
+              }
+            }
+          } catch (e) {
+            developer.log(
+              'Partial failure scanning for local sync matches: $e',
+              name: 'PhotoMetadataRepository',
+            );
+          }
+        }
       }
+
+      final List<PhotoMetadata> matchedPhotos = [];
+      for (final photo in backendPhotos) {
+        final remoteKey =
+            path.basenameWithoutExtension(photo.filename).toLowerCase();
+        final localMatch = localLookup[remoteKey];
+
+        if (localMatch != null) {
+          matchedPhotos.add(photo.copyWith(localPath: localMatch));
+        } else {
+          matchedPhotos.add(photo);
+        }
+      }
+
+      await savePhotoMetadataBatch(matchedPhotos, isRemote: true);
+
+      PhotoEventService().notifyPhotoAdded('__CLOUD_SYNC_COMPLETE__');
     } catch (e) {
       developer.log(
         'Error syncing with backend: $e',
@@ -458,96 +581,184 @@ class PhotoMetadataRepository {
 
     final db = await AppDatabase().database;
 
-    await db.transaction((txn) async {
-      final batch = txn.batch();
+    const int batchSize = 50;
+    for (
+      int batchIndex = 0;
+      batchIndex < metadataList.length;
+      batchIndex += batchSize
+    ) {
+      final currentBatch =
+          metadataList.skip(batchIndex).take(batchSize).toList();
 
-      for (var metadata in metadataList) {
-        final nameWithoutExt = path.basenameWithoutExtension(metadata.filename);
+      final Set<String> searchFilenames = {};
+      for (final m in currentBatch) {
+        final root = path.basenameWithoutExtension(m.filename);
+        searchFilenames.add(m.filename);
+        searchFilenames.add('$root.png');
+        searchFilenames.add('$root.webp');
+      }
+      final filenamesExpanded = searchFilenames.toList();
 
-        List<Map<String, dynamic>> existing = await txn.query(
-          'photo_metadata',
-          where: 'filename = ? OR local_path = ?',
-          whereArgs: [metadata.filename, metadata.localPath],
-          limit: 1,
-        );
+      final localPaths =
+          currentBatch.map((m) => m.localPath).whereType<String>().toList();
 
-        if (existing.isEmpty) {
-          existing = await txn.query(
-            'photo_metadata',
-            where: 'filename LIKE ?',
-            whereArgs: ['%$nameWithoutExt%'],
-            limit: 1,
-          );
-        }
+      final placeholdersF = List.filled(
+        filenamesExpanded.length,
+        '?',
+      ).join(',');
+      final List<String> whereArgs = [...filenamesExpanded];
 
-        if (existing.isEmpty) {
-          final match = _vrcFilenameRegex.firstMatch(metadata.filename);
-          if (match != null) {
-            final vrcBaseName = match.group(0)!;
-            existing = await txn.query(
-              'photo_metadata',
-              where: 'filename LIKE ?',
-              whereArgs: ['%$vrcBaseName%'],
-              limit: 1,
-            );
+      String whereClause = 'filename IN ($placeholdersF)';
+      if (localPaths.isNotEmpty) {
+        final placeholdersP = List.filled(localPaths.length, '?').join(',');
+        whereClause += ' OR local_path IN ($placeholdersP)';
+        whereArgs.addAll(localPaths);
+      }
+
+      final List<Map<String, dynamic>> existingRows = await db.query(
+        'photo_metadata',
+        where: whereClause,
+        whereArgs: whereArgs,
+      );
+
+      final Map<String, PhotoMetadata> hydratedExisting = {};
+      final Map<String, String> filenameToIdMap = {};
+
+      if (existingRows.isNotEmpty) {
+        final photoIds = existingRows.map((m) => m['id'] as String).toList();
+        final playersMap = await _fetchPlayersForPhotos(db, photoIds);
+
+        for (final row in existingRows) {
+          final meta = _fromDbMap(row, playersMap[row['id']] ?? []);
+          final id = row['id'] as String;
+
+          filenameToIdMap[meta.filename] = id;
+          final baseMatchKey =
+              path.basenameWithoutExtension(meta.filename).toLowerCase();
+          filenameToIdMap[baseMatchKey] = id;
+
+          hydratedExisting[id] = meta;
+
+          if (meta.localPath != null) {
+            filenameToIdMap[meta.localPath!] = id;
           }
-        }
-
-        String photoId;
-        if (existing.isNotEmpty) {
-          final existingMeta = await _hydrateMetadata(txn, existing.first);
-          photoId = existing.first['id'] as String;
-
-          if (isRemote) {
-            metadata = existingMeta.copyWith(
-              galleryUrl: metadata.galleryUrl ?? existingMeta.galleryUrl,
-              views: metadata.views > 0 ? metadata.views : existingMeta.views,
-              world: existingMeta.world ?? metadata.world,
-              players:
-                  existingMeta.players.isNotEmpty
-                      ? existingMeta.players
-                      : metadata.players,
-            );
-          } else {
-            metadata = metadata.copyWith(
-              galleryUrl: metadata.galleryUrl ?? existingMeta.galleryUrl,
-              views: metadata.views > 0 ? metadata.views : existingMeta.views,
-              world: metadata.world ?? existingMeta.world,
-              players:
-                  metadata.players.isNotEmpty
-                      ? metadata.players
-                      : existingMeta.players,
-            );
-          }
-        } else {
-          photoId = '${metadata.filename}_${metadata.takenDate}';
-        }
-
-        batch.insert(
-          'photo_metadata',
-          _toDbMap(metadata, photoId),
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-
-        batch.delete(
-          'photo_players',
-          where: 'photo_id = ?',
-          whereArgs: [photoId],
-        );
-        for (final player in metadata.players) {
-          batch.insert('players', {
-            'id': player.id,
-            'name': player.name,
-          }, conflictAlgorithm: ConflictAlgorithm.ignore);
-          batch.insert('photo_players', {
-            'photo_id': photoId,
-            'player_id': player.id,
-          }, conflictAlgorithm: ConflictAlgorithm.ignore);
         }
       }
 
-      await batch.commit(noResult: true);
-    });
+      await db.transaction((txn) async {
+        final batch = txn.batch();
+
+        for (var metadata in currentBatch) {
+          PhotoMetadata? existingMeta;
+          String? existingId;
+
+          final lookupBaseKey =
+              path.basenameWithoutExtension(metadata.filename).toLowerCase();
+
+          if (filenameToIdMap.containsKey(metadata.filename)) {
+            existingId = filenameToIdMap[metadata.filename];
+          } else if (filenameToIdMap.containsKey(lookupBaseKey)) {
+            existingId = filenameToIdMap[lookupBaseKey];
+          } else if (metadata.localPath != null &&
+              filenameToIdMap.containsKey(metadata.localPath!)) {
+            existingId = filenameToIdMap[metadata.localPath!];
+          }
+
+          if (existingId != null) {
+            existingMeta = hydratedExisting[existingId];
+          }
+
+          if (existingMeta == null && !isRemote) {
+            final nameWithoutExt = path.basenameWithoutExtension(
+              metadata.filename,
+            );
+
+            List<Map<String, dynamic>> fuzzy = await txn.query(
+              'photo_metadata',
+              where: 'filename LIKE ?',
+              whereArgs: ['%$nameWithoutExt%'],
+              limit: 1,
+            );
+
+            if (fuzzy.isEmpty) {
+              final match = _vrcFilenameRegex.firstMatch(metadata.filename);
+              if (match != null) {
+                final vrcBaseName = match.group(0)!;
+                fuzzy = await txn.query(
+                  'photo_metadata',
+                  where: 'filename LIKE ?',
+                  whereArgs: ['%$vrcBaseName%'],
+                  limit: 1,
+                );
+              }
+            }
+
+            if (fuzzy.isNotEmpty) {
+              existingId = fuzzy.first['id'] as String;
+              existingMeta = await _hydrateMetadata(txn, fuzzy.first);
+            }
+          }
+
+          final finalPhotoId =
+              existingId ?? '${metadata.filename}_${metadata.takenDate}';
+
+          if (existingMeta != null) {
+            if (isRemote) {
+              metadata = metadata.copyWith(
+                localPath: metadata.localPath ?? existingMeta.localPath,
+                isNonVrcx: false,
+              );
+            } else {
+              metadata = metadata.copyWith(
+                galleryUrl: existingMeta.galleryUrl ?? metadata.galleryUrl,
+                views:
+                    existingMeta.views > metadata.views
+                        ? existingMeta.views
+                        : metadata.views,
+                world: existingMeta.world ?? metadata.world,
+                players:
+                    existingMeta.players.isNotEmpty
+                        ? existingMeta.players
+                        : metadata.players,
+                isEdited: existingMeta.isEdited || metadata.isEdited,
+                isNonVrcx:
+                    existingMeta.galleryUrl != null
+                        ? false
+                        : metadata.isNonVrcx,
+              );
+            }
+          }
+
+          batch.insert(
+            'photo_metadata',
+            _toDbMap(metadata, finalPhotoId),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+
+          batch.delete(
+            'photo_players',
+            where: 'photo_id = ?',
+            whereArgs: [finalPhotoId],
+          );
+
+          for (final player in metadata.players) {
+            batch.insert('players', {
+              'id': player.id,
+              'name': player.name,
+            }, conflictAlgorithm: ConflictAlgorithm.ignore);
+
+            batch.insert('photo_players', {
+              'photo_id': finalPhotoId,
+              'player_id': player.id,
+            }, conflictAlgorithm: ConflictAlgorithm.ignore);
+          }
+        }
+
+        await batch.commit(noResult: true);
+      });
+
+      await Future.delayed(const Duration(milliseconds: 5));
+    }
 
     return true;
   }
@@ -643,6 +854,23 @@ class PhotoMetadataRepository {
       result[filePath] = await getPhotoMetadataForFile(filePath);
     }
 
+    final List<PhotoMetadata> toHeal = [];
+    for (final entry in result.entries) {
+      final filePath = entry.key;
+      final meta = entry.value;
+      if (meta != null && meta.localPath != filePath) {
+        final updated = meta.copyWith(localPath: filePath);
+        result[filePath] = updated;
+        toHeal.add(updated);
+      }
+    }
+
+    if (toHeal.isNotEmpty) {
+      savePhotoMetadataBatch(toHeal).catchError((e) {
+        return false;
+      });
+    }
+
     return result;
   }
 
@@ -652,7 +880,7 @@ class PhotoMetadataRepository {
       final List<Map<String, dynamic>> results = await db.query(
         'photo_metadata',
         columns: ['filename'],
-        where: 'is_non_vrcx = 1',
+        where: 'is_non_vrcx = 1 AND gallery_url IS NULL',
       );
       return results.map((r) => r['filename'] as String).toSet();
     } catch (e) {

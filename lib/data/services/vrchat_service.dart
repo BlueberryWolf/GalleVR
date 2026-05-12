@@ -13,6 +13,7 @@ import '../../core/platform/platform_service_factory.dart';
 import '../models/verification_models.dart';
 import '../models/photo_metadata.dart';
 import '../models/log_metadata.dart';
+import '../../core/isolate/isolate_worker_pool.dart';
 
 // Service for interacting with the VRChat API
 class VRChatService {
@@ -647,7 +648,7 @@ class VRChatService {
   Future<Map<String, dynamic>?> lookupAccount(String identifier) async {
     try {
       final url = Uri.parse(
-        'https://api.blueberry.coffee/vrchat/account-lookup/${Uri.encodeComponent(identifier)}',
+        'https://api.gallevr.app/vrchat/account-lookup/${Uri.encodeComponent(identifier)}',
       );
 
       developer.log(
@@ -669,7 +670,7 @@ class VRChatService {
   Future<bool> checkVerificationStatus(AuthData authData) async {
     try {
       final url = Uri.parse(
-        'https://api.blueberry.coffee/vrchat/verify/status/${authData.userId}',
+        'https://api.gallevr.app/vrchat/verify/status/${authData.userId}',
       );
       developer.log(
         'Checking verification status for ${authData.userId} at URL: $url',
@@ -727,7 +728,7 @@ class VRChatService {
   }) async {
     try {
       final url = Uri.parse(
-        'https://api.blueberry.coffee/vrchat/auth/me${forceRefresh ? '&cache=false' : ''}',
+        'https://api.gallevr.app/vrchat/auth/me${forceRefresh ? '&cache=false' : ''}',
       );
       developer.log('Fetching user profile from $url', name: 'VRChatService');
 
@@ -788,7 +789,7 @@ class VRChatService {
       final authData = await loadAuthData();
       if (authData == null) return [];
 
-      final url = Uri.parse('https://api.blueberry.coffee/vrchat/photo/list');
+      final url = Uri.parse('https://api.gallevr.app/vrchat/photo/list?user=${authData.userId}');
       developer.log('Fetching photo list from $url', name: 'VRChatService');
 
       final response = await http.get(
@@ -800,39 +801,10 @@ class VRChatService {
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> responseData = json.decode(response.body);
-        return responseData.map((json) {
-          final metadataJson = json['metadata'] as Map<String, dynamic>;
-          final rawTakenDate = metadataJson['takenDate'];
-          int takenDateMs = DateTime.now().millisecondsSinceEpoch;
-
-          if (rawTakenDate is int) {
-            takenDateMs = rawTakenDate;
-          } else if (rawTakenDate is String) {
-            final parsed = DateTime.tryParse(rawTakenDate);
-            if (parsed != null) {
-              takenDateMs = parsed.millisecondsSinceEpoch;
-            }
-          }
-
-          return PhotoMetadata(
-            takenDate: takenDateMs,
-            filename: (metadataJson['filename'] as String? ?? 'unknown.png')
-                .replaceAll('.webp', '.png'),
-            galleryUrl: json['url'] as String?,
-            world:
-                metadataJson['world'] != null
-                    ? WorldInfo.fromJson(
-                      metadataJson['world'] as Map<String, dynamic>,
-                    )
-                    : null,
-            players:
-                (metadataJson['players'] as List<dynamic>?)
-                    ?.map((p) => Player.fromJson(p as Map<String, dynamic>))
-                    .toList() ??
-                [],
-          );
-        }).toList();
+        return await IsolateWorkerPool().execute<String, List<PhotoMetadata>>(
+          _parsePhotosTask,
+          response.body,
+        );
       } else {
         developer.log(
           'Failed to fetch photo list: ${response.statusCode} ${response.body}',
@@ -848,7 +820,7 @@ class VRChatService {
   Future<bool> checkFriendStatus(String username) async {
     try {
       final url = Uri.parse(
-        'https://api.blueberry.coffee/vrchat/friend-status/${Uri.encodeComponent(username)}',
+        'https://api.gallevr.app/vrchat/friend-status/${Uri.encodeComponent(username)}',
       );
       developer.log(
         'Checking friend status for $username at URL: $url',
@@ -947,8 +919,8 @@ class VRChatService {
     try {
       final endpoint =
           isManual
-              ? 'https://api.blueberry.coffee/vrchat/verify/manual'
-              : 'https://api.blueberry.coffee/vrchat/verify';
+              ? 'https://api.gallevr.app/vrchat/verify/manual'
+              : 'https://api.gallevr.app/vrchat/verify';
 
       final body =
           isManual
@@ -1055,7 +1027,7 @@ class VRChatService {
   Future<AuthData?> pairWithCode(String code) async {
     try {
       final response = await http.post(
-        Uri.parse('https://api.blueberry.coffee/vrchat/pair/verify'),
+        Uri.parse('https://api.gallevr.app/vrchat/pair/verify'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'code': code}),
       );
@@ -1098,4 +1070,56 @@ class LoginResult {
     this.errorMessage,
     this.user,
   });
+}
+
+List<PhotoMetadata> _parsePhotosTask(String jsonBody) {
+  final List<dynamic> responseData = json.decode(jsonBody);
+  return responseData.map((json) {
+    try {
+      final metadataJson = json['metadata'] as Map<String, dynamic>;
+      final rawTakenDate = metadataJson['takenDate'];
+      int takenDateMs = DateTime.now().millisecondsSinceEpoch;
+
+      if (rawTakenDate is int) {
+        takenDateMs = rawTakenDate;
+      } else if (rawTakenDate is String) {
+        final parsed = DateTime.tryParse(rawTakenDate);
+        if (parsed != null) {
+          takenDateMs = parsed.millisecondsSinceEpoch;
+        }
+      }
+
+      final photoId = json['id'] as String?;
+      final userId = json['userId'] as String?;
+      String? resolvedUrl = json['url'] as String?;
+
+      if (photoId != null && userId != null) {
+        resolvedUrl = 'https://api.gallevr.app/p?i=$photoId&u=$userId';
+      }
+
+      return PhotoMetadata(
+        takenDate: takenDateMs,
+        filename: (metadataJson['filename'] as String? ?? 'unknown.png')
+            .replaceAll('.webp', '.png'),
+        galleryUrl: resolvedUrl,
+        remoteId: photoId,
+        views: metadataJson['views'] as int? ?? 0,
+        isEdited: metadataJson['isEdited'] == true,
+        world:
+            metadataJson['world'] != null
+                ? WorldInfo.fromJson(
+                  metadataJson['world'] as Map<String, dynamic>,
+                )
+                : null,
+        players:
+            (metadataJson['players'] as List<dynamic>?)
+                ?.map((p) => Player.fromJson(p as Map<String, dynamic>))
+                .toList() ??
+            [],
+      );
+    } catch (e) {
+      developer.log('Skipping corrupt backend photo object: $e', name: 'VRChatService');
+      return null;
+    }
+  }).whereType<PhotoMetadata>().toList();
 }

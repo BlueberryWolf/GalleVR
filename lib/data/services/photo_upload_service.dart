@@ -120,7 +120,7 @@ class PhotoUploadService {
       final metadataBase64 = base64.encode(utf8.encode(metadataJson));
 
       final uploadUrl = Uri.parse(
-        'https://api.blueberry.coffee/vrchat/photo/upload?user=${Uri.encodeComponent(authData.userId)}&type=webp',
+        'https://api.gallevr.app/vrchat/photo/upload?user=${Uri.encodeComponent(authData.userId)}&type=webp',
       );
 
       final request = http.Request('POST', uploadUrl);

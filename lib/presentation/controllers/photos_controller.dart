@@ -62,7 +62,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
 
   void init() {
     _subscribeToEvents();
-    loadConfig();
+    Future.microtask(() => loadConfig());
   }
 
   @override
@@ -219,7 +219,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
 
     final List<String> badPaths = [];
     metadata.forEach((filePath, meta) {
-      if (meta != null && meta.isNonVrcx) {
+      if (meta != null && meta.isNonVrcx && meta.galleryUrl == null) {
         badPaths.add(filePath);
       }
     });
