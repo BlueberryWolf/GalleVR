@@ -7,6 +7,9 @@ enum VerificationMethod {
 
   // Manual verification by adding GalleVR as a friend
   manual,
+
+  // Link via instantaneous numerical pair code from existing web session
+  pairCode,
 }
 
 // Verification status enum

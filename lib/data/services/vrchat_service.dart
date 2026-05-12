@@ -1051,6 +1051,36 @@ class VRChatService {
       return null;
     }
   }
+
+  Future<AuthData?> pairWithCode(String code) async {
+    try {
+      final response = await http.post(
+        Uri.parse('https://api.blueberry.coffee/vrchat/pair/verify'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'code': code}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['accessKey'] != null && data['userId'] != null) {
+          final authData = AuthData(
+            accessKey: data['accessKey'],
+            userId: data['userId'],
+            ageVerified: true,
+            displayName: data['displayName'],
+            avatarUrl: data['avatarUrl'],
+          );
+          
+          await saveAuthData(authData);
+          return authData;
+        }
+      }
+      return null;
+    } catch (e) {
+      developer.log('Error pairing with code: $e', name: 'VRChatService');
+      return null;
+    }
+  }
 }
 
 class LoginResult {

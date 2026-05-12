@@ -397,7 +397,7 @@ class _AccountScreenState extends State<AccountScreen> {
                 revealedData: _galleryUrl,
                 blurredData:
                     'https://i.redd.it/zch4bwo7q4zb1.gif', // secret message for sillies who try to unblur someone's QR code >:3
-                initiallyRevealed: true,
+                initiallyRevealed: false,
                 onVisibilityChanged: (_) {},
                 size: 200,
               ),

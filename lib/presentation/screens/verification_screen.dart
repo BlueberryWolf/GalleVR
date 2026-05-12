@@ -28,11 +28,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _totpController = TextEditingController();
+  final TextEditingController _pairCodeController = TextEditingController();
 
   bool _isLoading = false;
   bool _isVerified = false;
   bool _showTotpField = false;
-  bool _showQrCode = false;
   bool _isAgeVerified = false;
   bool _showTOSModal = false;
   String _errorMessage = '';
@@ -57,6 +57,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
     _usernameController.dispose();
     _passwordController.dispose();
     _totpController.dispose();
+    _pairCodeController.dispose();
     super.dispose();
   }
 
@@ -209,6 +210,43 @@ class _VerificationScreenState extends State<VerificationScreen> {
     } catch (e) {
       setState(() {
         _errorMessage = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+        _statusMessage = '';
+      });
+    }
+  }
+
+  Future<void> _submitPairCode() async {
+    final code = _pairCodeController.text.replaceAll(RegExp(r'\s+'), '');
+    if (code.length < 6) {
+      setState(() {
+        _errorMessage = 'Please enter the full 6-digit code.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+      _statusMessage = 'Pairing with device...';
+    });
+
+    try {
+      final authData = await _vrchatService.pairWithCode(code);
+
+      if (authData != null) {
+        await _markAsVerified(authData);
+      } else {
+        setState(() {
+          _errorMessage = 'Invalid or expired pairing code. Please check and try again.';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Connection error. Check internet and try again.';
       });
     } finally {
       setState(() {
@@ -402,19 +440,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
     }
   }
 
-  Future<void> _launchGallery() async {
-    if (_galleryUrl.isNotEmpty) {
-      final uri = Uri.parse(_galleryUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
-        setState(() {
-          _errorMessage = 'Could not launch gallery URL';
-        });
-      }
-    }
-  }
-
   bool _isOver13() {
     if (_selectedDate == null) return false;
 
@@ -546,6 +571,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
                         if (_selectedMethod == null)
                           _buildMethodSelectionLanding()
                         else if (_selectedMethod ==
+                            VerificationMethod.pairCode)
+                          _buildPairCodeVerificationView()
+                        else if (_selectedMethod ==
                             VerificationMethod.automatic)
                           _buildAutomaticVerificationView()
                         else
@@ -637,6 +665,21 @@ class _VerificationScreenState extends State<VerificationScreen> {
           const SizedBox(height: 48),
 
           _buildGradientActionCard(
+            title: 'Instant Link Code',
+            description:
+                'Best option. If you followed onboarding on the website, just type the 6-digit code here.',
+            icon: Icons.flash_on_rounded,
+            gradientColors: [const Color(0xFF3B82F6), const Color(0xFF06B6D4)],
+            onTap: () {
+              setState(() {
+                _selectedMethod = VerificationMethod.pairCode;
+                _errorMessage = '';
+              });
+            },
+          ),
+          const SizedBox(height: 20),
+
+          _buildGradientActionCard(
             title: 'Automatic Verification',
             description:
                 'Log in once and GalleVR will automatically handle adding and removing the verification code from your status for you.',
@@ -662,6 +705,150 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 _errorMessage = '';
               });
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPairCodeVerificationView() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withAlpha(30),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.flash_on_rounded,
+                  color: Colors.blue,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Text(
+                'Instant Pair Code',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Look at the website setup screen. You\'ll find a 6-digit numerical code there.',
+            style: TextStyle(
+              fontSize: 15,
+              color: Colors.grey[400],
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 32),
+          
+          if (_errorMessage.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.red.withAlpha(20),
+                border: Border.all(color: Colors.red.withAlpha(80)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _errorMessage,
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          TextField(
+            controller: _pairCodeController,
+            decoration: const InputDecoration(
+              labelText: '6-Digit Code',
+              prefixIcon: Icon(Icons.key_rounded),
+              hintText: '123456',
+            ),
+            style: const TextStyle(
+              fontSize: 20,
+              letterSpacing: 4,
+              fontWeight: FontWeight.bold,
+            ),
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(6),
+            ],
+            onChanged: (val) {
+              if (val.length == 6) {
+                FocusScope.of(context).unfocus();
+                _submitPairCode();
+              }
+            },
+          ),
+          const SizedBox(height: 24),
+          
+          SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _submitPairCode,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Pair Now',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          Center(
+            child: TextButton(
+              onPressed: () {
+                setState(() {
+                  _selectedMethod = null;
+                  _errorMessage = '';
+                });
+              },
+              child: Text(
+                'Go Back',
+                style: TextStyle(color: Colors.grey[500]),
+              ),
+            ),
           ),
         ],
       ),
@@ -1367,7 +1554,12 @@ class _VerificationScreenState extends State<VerificationScreen> {
     final displayName =
         _lookedUpAccount?['displayName'] ??
         _vrchatService.currentUser?.displayName ??
+        _authData?.displayName ??
         'User';
+
+    final avatarUrl =
+        _lookedUpAccount?['avatarUrl'] ??
+        _authData?.avatarUrl;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1386,9 +1578,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
             ),
           ),
           child:
-              _lookedUpAccount?['avatarUrl'] != null
+              avatarUrl != null
                   ? Image.network(
-                    _lookedUpAccount!['avatarUrl'],
+                    avatarUrl,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) {
                       return Icon(
@@ -1513,7 +1705,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 revealedData: _galleryUrl,
                 blurredData:
                     'https://i.redd.it/zch4bwo7q4zb1.gif', // secret message for sillies who try to unblur someone's QR code >:3
-                initiallyRevealed: true,
+                initiallyRevealed: false,
                 onVisibilityChanged: (_) {},
                 size: 200,
               ),

@@ -41,9 +41,9 @@ class PhotoMetadataRepository {
     try {
       _prefs ??= await SharedPreferences.getInstance();
 
-      final isSqliteMigrated =
-          _prefs?.getBool(_sqliteMigrationDoneKey) ?? false;
-      if (!isSqliteMigrated) {
+      // Check if you still have legacy photo data stored in SharedPreferences
+      final hasLegacyData = _prefs?.containsKey(_photoIdsKey) ?? false;
+      if (hasLegacyData) {
         await _migrateToSqlite();
         await _prefs?.setBool(_sqliteMigrationDoneKey, true);
       }
@@ -83,12 +83,12 @@ class PhotoMetadataRepository {
         'Migrated ${toMigrate.length} entries to SQLite',
         name: 'PhotoMetadataRepository',
       );
-
-      for (final id in photoIds) {
-        await _prefs?.remove('$_photoMetadataKeyPrefix$id');
-      }
-      await _prefs?.remove(_photoIdsKey);
     }
+
+    for (final id in photoIds) {
+      await _prefs?.remove('$_photoMetadataKeyPrefix$id');
+    }
+    await _prefs?.remove(_photoIdsKey);
   }
 
   PhotoMetadata _fromDbMap(
