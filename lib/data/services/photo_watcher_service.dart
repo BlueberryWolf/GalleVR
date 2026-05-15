@@ -136,11 +136,21 @@ class PhotoWatcherService {
   }
 
   void _onReceiveTaskData(Object data) {
-    if (data is Map<String, dynamic> && data.containsKey('newPhoto')) {
-      final photoPath = data['newPhoto'] as String;
-      _handledPhotos.add(photoPath);
-      _photoStreamController.add(photoPath);
-      PhotoEventService().notifyPhotoAdded(photoPath);
+    if (data is Map<String, dynamic>) {
+      if (data.containsKey('newPhoto')) {
+        final photoPath = data['newPhoto'] as String;
+        _handledPhotos.add(photoPath);
+        _photoStreamController.add(photoPath);
+        PhotoEventService().notifyPhotoAdded(photoPath);
+      } else if (data.containsKey('error')) {
+        final errorMessage = data['error'] as String;
+        developer.log('Error from background task: $errorMessage', name: 'PhotoWatcherService');
+        PhotoEventService().notifyError('watcher', errorMessage);
+      } else if (data.containsKey('status')) {
+        final statusMessage = data['status'] as String;
+        developer.log('Status from background task: $statusMessage', name: 'PhotoWatcherService');
+        PhotoEventService().notifyError('info', statusMessage);
+      }
     }
   }
 

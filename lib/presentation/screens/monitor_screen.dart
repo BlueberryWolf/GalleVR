@@ -266,7 +266,11 @@ class _MonitorScreenState extends State<MonitorScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_config == null || _config!.photosDirectory.isEmpty) {
+    final isConfigMissing = _config == null ||
+        _config!.photosDirectory.isEmpty ||
+        _config!.logsDirectory.isEmpty;
+
+    if (isConfigMissing) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -278,26 +282,29 @@ class _MonitorScreenState extends State<MonitorScreen>
                 shape: BoxShape.circle,
               ),
               child: const Icon(
-                Icons.folder_off_rounded,
+                Icons.settings_suggest_rounded,
                 size: 64,
                 color: Colors.white24,
               ),
             ),
             const SizedBox(height: 24),
             Text(
-              'No photos directory set',
+              'Configuration Incomplete',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 color: Colors.white70,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              'Please set a photos directory in settings',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: Colors.white38),
-              textAlign: TextAlign.center,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 48),
+              child: Text(
+                'Please ensure both Photos and Logs directories are set in the application settings.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: Colors.white38),
+                textAlign: TextAlign.center,
+              ),
             ),
           ],
         ),
@@ -312,6 +319,8 @@ class _MonitorScreenState extends State<MonitorScreen>
   Widget _buildStatusHeader() {
     final statusColor =
         _isWatching ? const Color(0xFF4ade80) : const Color(0xFFf87171);
+    final hasPhotosDir = _config != null && _config!.photosDirectory.isNotEmpty;
+    final hasLogsDir = _config != null && _config!.logsDirectory.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -334,12 +343,12 @@ class _MonitorScreenState extends State<MonitorScreen>
                 Row(
                   children: [
                     const Text(
-                      'Watcher',
+                      'Live Monitor',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0.5,
-                        fontSize: 16,
+                        fontSize: 18,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -353,51 +362,64 @@ class _MonitorScreenState extends State<MonitorScreen>
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: statusColor.withOpacity(0.3)),
                       ),
-                      child: Icon(
-                        _isWatching
-                            ? Icons.visibility_rounded
-                            : Icons.visibility_off_rounded,
-                        color: statusColor,
-                        size: 16,
+                      child: Row(
+                        children: [
+                          Icon(
+                            _isWatching
+                                ? Icons.sync_rounded
+                                : Icons.sync_disabled_rounded,
+                            color: statusColor,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _isWatching ? 'ACTIVE' : 'STOPPED',
+                            style: TextStyle(
+                              color: statusColor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
                 _buildModernButton(
                   onPressed: _isWatching ? _stopWatching : _startWatching,
-                  label: _isWatching ? 'Stop Monitor' : 'Start Monitor',
+                  label: _isWatching ? 'Stop' : 'Start',
                   color: _isWatching ? Colors.redAccent : statusColor,
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-            _buildDirectoryRow(
+            const SizedBox(height: 24),
+            _buildDirectoryStatusRow(
               Icons.photo_library_rounded,
-              'Photos',
-              _config!.photosDirectory,
+              'VRChat Photos Path',
+              _config?.photosDirectory ?? 'Not set',
+              hasPhotosDir,
             ),
-            if (_config!.logsDirectory.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildDirectoryRow(
-                Icons.article_rounded,
-                'Logs',
-                _config!.logsDirectory,
-              ),
-            ],
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+            _buildDirectoryStatusRow(
+              Icons.article_rounded,
+              'VRChat Logs Path',
+              _config?.logsDirectory ?? 'Not set',
+              hasLogsDir,
+            ),
+            const SizedBox(height: 24),
             Row(
               children: [
                 _buildInteractiveBadge(
                   icon:
-                      _config!.uploadEnabled
+                      _config?.uploadEnabled ?? false
                           ? Icons.cloud_done_rounded
                           : Icons.cloud_off_rounded,
                   label:
-                      _config!.uploadEnabled
-                          ? 'Uploading Enabled'
-                          : 'Uploading Disabled',
+                      _config?.uploadEnabled ?? false
+                          ? 'Auto-Upload'
+                          : 'Local-Only',
                   color:
-                      _config!.uploadEnabled
+                      _config?.uploadEnabled ?? false
                           ? const Color(0xFF60a5fa)
                           : Colors.white30,
                   onTap: () {
@@ -411,6 +433,17 @@ class _MonitorScreenState extends State<MonitorScreen>
                 ),
                 const SizedBox(width: 12),
                 _buildSupporterStatus(),
+                const Spacer(),
+                if (Platform.isAndroid)
+                  const Text(
+                    'POLLING MODE',
+                    style: TextStyle(
+                      color: Colors.white12,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
               ],
             ),
           ],
@@ -419,35 +452,76 @@ class _MonitorScreenState extends State<MonitorScreen>
     );
   }
 
-  Widget _buildDirectoryRow(IconData icon, String label, String pathStr) {
+  Widget _buildDirectoryStatusRow(
+    IconData icon,
+    String label,
+    String pathStr,
+    bool isSet,
+  ) {
+    bool exists = false;
+    if (isSet && pathStr != 'Not set') {
+      try {
+        exists = Directory(pathStr).existsSync();
+      } catch (_) {}
+    }
+
+    final color = isSet ? (exists ? Colors.greenAccent : Colors.orangeAccent) : Colors.redAccent;
+
     return Row(
       children: [
-        Icon(icon, size: 16, color: Colors.white38),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white24,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: color.withOpacity(0.7)),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    label.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white24,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (isSet)
+                    Text(
+                      exists ? '● FOUND' : '● NOT FOUND',
+                      style: TextStyle(
+                        color: color.withOpacity(0.5),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                ],
               ),
-            ),
-            Text(
-              pathStr,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+              const SizedBox(height: 2),
+              Text(
+                pathStr,
+                style: TextStyle(
+                  color: isSet ? Colors.white70 : Colors.white24,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
   }
+
 
   Widget _buildInteractiveBadge({
     required IconData icon,

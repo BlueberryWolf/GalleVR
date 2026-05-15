@@ -57,14 +57,48 @@ class PhotoWatcherTaskHandler extends TaskHandler {
     // Load configuration
     _config = await _configRepository.loadConfig();
 
-    if (_config == null || _config!.logsDirectory.isEmpty) {
+    if (_config == null) {
+      return;
+    }
+
+    final logsDir = _config!.logsDirectory;
+    final photosDir = _config!.photosDirectory;
+
+    if (logsDir.isEmpty) {
+      developer.log('Logs directory is not set', name: 'PhotoWatcherTaskHandler');
+      FlutterForegroundTask.sendDataToMain({
+        'error': 'Watcher stopped: Logs directory is not set in configuration.'
+      });
+      return;
+    }
+
+    if (photosDir.isEmpty) {
+      developer.log('Photos directory is not set', name: 'PhotoWatcherTaskHandler');
+      FlutterForegroundTask.sendDataToMain({
+        'error': 'Watcher stopped: Photos directory is not set in configuration.'
+      });
       return;
     }
 
     // Ensure the logs directory exists
-    final directory = Directory(_config!.logsDirectory);
+    final directory = Directory(logsDir);
     if (!await directory.exists()) {
-      developer.log('Logs directory does not exist: ${_config!.logsDirectory}', name: 'PhotoWatcherTaskHandler');
+      final errorMsg = 'Logs directory does not exist: $logsDir';
+      developer.log(errorMsg, name: 'PhotoWatcherTaskHandler');
+      FlutterForegroundTask.sendDataToMain({
+        'error': 'Cannot find logs directory. Please check your settings.\nPath: $logsDir'
+      });
+      return;
+    }
+
+    // Ensure the photos directory exists
+    final photosDirectory = Directory(photosDir);
+    if (!await photosDirectory.exists()) {
+      final errorMsg = 'Photos directory does not exist: $photosDir';
+      developer.log(errorMsg, name: 'PhotoWatcherTaskHandler');
+      FlutterForegroundTask.sendDataToMain({
+        'error': 'Cannot find VRChat photos directory. Please check your settings.\nPath: $photosDir'
+      });
       return;
     }
 
@@ -74,7 +108,7 @@ class PhotoWatcherTaskHandler extends TaskHandler {
     // Update notification with current status
     FlutterForegroundTask.updateService(
       notificationTitle: 'GalleVR Photo Watcher',
-      notificationText: 'Watching VRChat logs for new screenshots',
+      notificationText: 'Monitoring VRChat logs for new photos...',
     );
   }
 
@@ -158,9 +192,23 @@ class PhotoWatcherTaskHandler extends TaskHandler {
 
       _logWatcherSubscription = _logFileWatcher!.screenshotStream.listen(
         (screenshotPath) => _handleScreenshotFromLog(screenshotPath, config),
+        onError: (e) {
+          developer.log('Error in log file watcher stream: $e', name: 'PhotoWatcherTaskHandler');
+          FlutterForegroundTask.sendDataToMain({
+            'error': 'Monitoring Error: Failed to read log updates.'
+          });
+        }
       );
+
+      developer.log('Log file watcher started successfully', name: 'PhotoWatcherTaskHandler');
+      FlutterForegroundTask.sendDataToMain({
+        'status': 'Monitoring started successfully'
+      });
     } catch (e) {
       developer.log('Error starting log file watcher: $e', name: 'PhotoWatcherTaskHandler');
+      FlutterForegroundTask.sendDataToMain({
+        'error': 'Failed to start log monitor: $e'
+      });
     }
   }
 
@@ -194,10 +242,13 @@ class PhotoWatcherTaskHandler extends TaskHandler {
     // Verify the file exists and is a VRChat screenshot
     final file = File(finalPath);
     if (!file.existsSync()) {
-      developer.log(
-        'Screenshot file does not exist: $finalPath',
-        name: 'PhotoWatcherTaskHandler',
-      );
+      final errorMsg = 'Screenshot detected in log but file not found at: $finalPath';
+      developer.log(errorMsg, name: 'PhotoWatcherTaskHandler');
+      
+      // Notify user about the missing file
+      FlutterForegroundTask.sendDataToMain({
+        'error': 'New photo detected but file is inaccessible. Check storage permissions.\nFile: ${path.basename(finalPath)}'
+      });
       return;
     }
 
