@@ -24,7 +24,7 @@ class PhotoMetadataRepository {
   static const String _sqliteMigrationDoneKey = 'gallevr_sqlite_migration_done';
 
   // Regex to find VRChat filename pattern: VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT
-  static final RegExp _vrcFilenameRegex = RegExp(
+  static final RegExp vrcFilenameRegex = RegExp(
     r'VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}(?:_\d+x\d+)?',
     caseSensitive: false,
   );
@@ -65,6 +65,18 @@ class PhotoMetadataRepository {
       await _forcePurgeRemainingLegacyBloat();
 
       _checkAndMigrateLegacyMetadata();
+
+      // Heal incorrectly marked non-VRCX photos in the background
+      AppDatabase().database.then((db) {
+        db.execute(
+          'UPDATE photo_metadata SET is_non_vrcx = 0 WHERE is_non_vrcx = 1 AND filename LIKE "VRChat_%"',
+        ).then((_) {
+          // Notify UI to refresh and show newly visible photos
+          PhotoEventService().notifyPhotoAdded('__HEAL_SYNC__');
+        }).catchError((e) {
+          developer.log('Error during background healing: $e', name: 'PhotoMetadataRepository');
+        });
+      });
 
       syncWithBackend();
 
@@ -494,7 +506,7 @@ class PhotoMetadataRepository {
     if (fuzzyMatches.isNotEmpty)
       return await _hydrateMetadata(db, fuzzyMatches.first);
 
-    final match = _vrcFilenameRegex.firstMatch(filename);
+    final match = vrcFilenameRegex.firstMatch(filename);
     if (match != null) {
       final vrcBaseName = match.group(0)!;
       final List<Map<String, dynamic>> patternMatches = await db.query(
@@ -681,7 +693,7 @@ class PhotoMetadataRepository {
             );
 
             if (fuzzy.isEmpty) {
-              final match = _vrcFilenameRegex.firstMatch(metadata.filename);
+              final match = vrcFilenameRegex.firstMatch(metadata.filename);
               if (match != null) {
                 final vrcBaseName = match.group(0)!;
                 fuzzy = await txn.query(
@@ -704,9 +716,17 @@ class PhotoMetadataRepository {
 
           if (existingMeta != null) {
             if (isRemote) {
+              // Trust local data but update with remote info
               metadata = metadata.copyWith(
-                localPath: metadata.localPath ?? existingMeta.localPath,
+                localPath: existingMeta.localPath ?? metadata.localPath,
                 isNonVrcx: false,
+                isEdited: existingMeta.isEdited || metadata.isEdited,
+                takenDate: existingMeta.takenDate, // Prefer local file stats/metadata
+                world: existingMeta.world ?? metadata.world,
+                players:
+                    existingMeta.players.isNotEmpty
+                        ? existingMeta.players
+                        : metadata.players,
               );
             } else {
               metadata = metadata.copyWith(
@@ -905,7 +925,9 @@ Map<String, PhotoMetadata?> _batchExtractMetadataTask(List<String> filePaths) {
           takenDate: File(filePath).statSync().modified.millisecondsSinceEpoch,
           filename: path.basename(filePath),
           localPath: filePath,
-          isNonVrcx: true,
+          isNonVrcx: !PhotoMetadataRepository.vrcFilenameRegex.hasMatch(
+            path.basename(filePath),
+          ),
         );
       }
     } catch (e) {
