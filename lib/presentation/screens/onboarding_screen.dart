@@ -43,6 +43,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   bool _isLogsDirectoryAvailable = false;
   bool _isCheckingLogsDirectory = false;
 
+  // Flow control
+  bool _wantsToLinkAccount = true;
+
   // Windows settings
   bool _minimizeToTray = true;
   bool _startWithWindows = true;
@@ -376,7 +379,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   void _nextStep() {
-    final maxStep = Platform.isAndroid ? 3 : (Platform.isWindows ? 4 : 3);
+    final steps = _getSteps();
+    final maxStep = steps.length - 1;
     if (_currentStep < maxStep) {
       setState(() {
         _currentStep++;
@@ -403,6 +407,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _proceedToWebConnection() async {
+    setState(() {
+      _wantsToLinkAccount = true;
+    });
+    _nextStep();
+  }
+
+  Future<void> _finishOnboarding() async {
     if (Platform.isWindows) {
       await _saveWindowsSettings();
     }
@@ -410,26 +421,25 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     await _appServiceManager.markOnboardingComplete();
 
     if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const VerificationScreen()),
-      );
+      if (_wantsToLinkAccount) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const VerificationScreen()),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => const HomeScreen(initialTabIndex: 0),
+          ),
+        );
+      }
     }
   }
 
   Future<void> _proceedToLocalOnly() async {
-    if (Platform.isWindows) {
-      await _saveWindowsSettings();
-    }
-
-    await _appServiceManager.markOnboardingComplete();
-
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => const HomeScreen(initialTabIndex: 0),
-        ),
-      );
-    }
+    setState(() {
+      _wantsToLinkAccount = false;
+    });
+    _nextStep();
   }
 
   Future<void> _saveWindowsSettings() async {
@@ -486,29 +496,40 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               _currentStep = index;
             });
           },
-          children:
-              isAndroid
-                  ? [
-                    _buildWelcomeStep(size, isSmallScreen),
-                    _buildPermissionsStep(size, isSmallScreen),
-                    _buildNonWindowsLoggingStep(size, isSmallScreen),
-                    _buildConnectionStep(size, isSmallScreen),
-                  ]
-                  : Platform.isWindows
-                  ? [
-                    _buildWelcomeStep(size, isSmallScreen),
-                    _buildVRChatLoggingStep(size, isSmallScreen),
-                    _buildWindowsSettingsStep(size, isSmallScreen),
-                    _buildConnectionStep(size, isSmallScreen),
-                  ]
-                  : [
-                    _buildWelcomeStep(size, isSmallScreen),
-                    _buildNonWindowsLoggingStep(size, isSmallScreen),
-                    _buildConnectionStep(size, isSmallScreen),
-                  ],
+          children: _getSteps(),
         ),
       ),
     );
+  }
+
+  List<Widget> _getSteps() {
+    final size = MediaQuery.of(context).size;
+    final isSmallScreen = size.width < 600;
+
+    if (Platform.isAndroid) {
+      return [
+        _buildWelcomeStep(size, isSmallScreen),
+        _buildConnectionStep(size, isSmallScreen),
+        _buildPermissionsStep(size, isSmallScreen),
+        _buildNonWindowsLoggingStep(size, isSmallScreen),
+        _buildFinishStep(size, isSmallScreen),
+      ];
+    } else if (Platform.isWindows) {
+      return [
+        _buildWelcomeStep(size, isSmallScreen),
+        _buildConnectionStep(size, isSmallScreen),
+        _buildVRChatLoggingStep(size, isSmallScreen),
+        _buildWindowsSettingsStep(size, isSmallScreen),
+        _buildFinishStep(size, isSmallScreen),
+      ];
+    } else {
+      return [
+        _buildWelcomeStep(size, isSmallScreen),
+        _buildConnectionStep(size, isSmallScreen),
+        _buildNonWindowsLoggingStep(size, isSmallScreen),
+        _buildFinishStep(size, isSmallScreen),
+      ];
+    }
   }
 
   Widget _buildWelcomeStep(Size size, bool isSmallScreen) {
@@ -1143,28 +1164,40 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     child: SizedBox(
                       height: 56,
                       child: ElevatedButton(
-                        onPressed: _isVRChatLoggingEnabled ? _nextStep : null,
+                        onPressed:
+                            _isVRChatLoggingEnabled
+                                ? _nextStep
+                                : _showSkipLoggingDialog,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _brandPurple,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: _brandPurple.withAlpha(77),
-                          disabledForegroundColor: Colors.white.withOpacity(
-                            0.5,
-                          ),
+                          backgroundColor:
+                              _isVRChatLoggingEnabled
+                                  ? _brandPurple
+                                  : Colors.white10,
+                          foregroundColor:
+                              _isVRChatLoggingEnabled
+                                  ? Colors.white
+                                  : Colors.white54,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                           elevation: 0,
                         ),
-                        child: const Text(
-                          'Next',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        child: Text(
+                          _isVRChatLoggingEnabled ? 'Next' : 'Skip Logging',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),
                   ),
                 ],
               ),
+              if (!_isVRChatLoggingEnabled) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Full logging is recommended for photo tagging',
+                  style: TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ],
               const SizedBox(height: 32),
             ],
           ),
@@ -1788,22 +1821,27 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     child: SizedBox(
                       height: 56,
                       child: ElevatedButton(
-                        onPressed: _isLogsDirectoryAvailable ? _nextStep : null,
+                        onPressed:
+                            _isLogsDirectoryAvailable
+                                ? _nextStep
+                                : _showSkipLoggingDialog,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _brandPurple,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: _brandPurple.withAlpha(77),
-                          disabledForegroundColor: Colors.white.withOpacity(
-                            0.5,
-                          ),
+                          backgroundColor:
+                              _isLogsDirectoryAvailable
+                                  ? _brandPurple
+                                  : Colors.white10,
+                          foregroundColor:
+                              _isLogsDirectoryAvailable
+                                  ? Colors.white
+                                  : Colors.white54,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                           elevation: 0,
                         ),
-                        child: const Text(
-                          'Next',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        child: Text(
+                          _isLogsDirectoryAvailable ? 'Next' : 'Skip Logging',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),
@@ -1813,16 +1851,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
               if (!_isLogsDirectoryAvailable && !_isCheckingLogsDirectory) ...[
                 const SizedBox(height: 16),
-                SizedBox(
-                  height: 32,
-                  child: TextButton(
-                    onPressed: _showSkipLoggingDialog,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white54,
-                      textStyle: const TextStyle(fontSize: 12),
-                    ),
-                    child: const Text('Skip (Not Recommended)'),
-                  ),
+                const Text(
+                  'Full logging is recommended for photo tagging',
+                  style: TextStyle(color: Colors.white38, fontSize: 12),
                 ),
               ],
               const SizedBox(height: 32),
@@ -2025,26 +2056,57 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       builder:
           (context) => AlertDialog(
             backgroundColor: const Color.fromRGBO(20, 20, 30, 1),
-            title: const Text(
-              'Skip Logging Setup?',
-              style: TextStyle(color: Colors.white),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                SizedBox(width: 12),
+                Text('Skip Logging?', style: TextStyle(color: Colors.white)),
+              ],
             ),
-            content: const Text(
-              'Without full logging enabled, GalleVR cannot auto-detect worlds or tag players.\n\nSkip setup anyway?',
-              style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.8)),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Full logging is required for photo tagging and world detection.',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'Without it, GalleVR cannot:',
+                  style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.7)),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  '• Automatically detect world names',
+                  style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.7)),
+                ),
+                Text(
+                  '• Tag friends in your photos',
+                  style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.7)),
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Skip setup anyway?',
+                  style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.9)),
+                ),
+              ],
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
+                child: const Text('Go Back'),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.of(context).pop(true),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  foregroundColor: Colors.white,
+                  backgroundColor: Colors.white12,
+                  foregroundColor: Colors.white70,
                 ),
-                child: const Text('Skip Anyway'),
+                child: const Text('Continue (Limited)'),
               ),
             ],
           ),
@@ -2083,6 +2145,140 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
     );
     if (shouldSkip == true) await _proceedToLocalOnly();
+  }
+
+  Widget _buildFinishStep(Size size, bool isSmallScreen) {
+    return _buildStepContainer(
+      SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: isSmallScreen ? 24 : 40,
+            vertical: 24,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(height: size.height * 0.1),
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle_outline_rounded,
+                  color: Colors.green,
+                  size: 80,
+                ),
+              ),
+              const SizedBox(height: 32),
+              Text(
+                'Setup Complete!',
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: -1.0,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Container(
+                height: 4,
+                width: 48,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Colors.green, Colors.teal],
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'You\'re all set to start using GalleVR. Your VR memories are ready to be organized.',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white.withOpacity(0.7),
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (!_isVRChatLoggingEnabled && !Platform.isWindows) ...[
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Note: World detection and tagging are disabled because logging is off.',
+                          style: TextStyle(color: Colors.orange, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              SizedBox(height: size.height * 0.1),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _finishOnboarding,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _brandPurple,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        (_wantsToLinkAccount
+                                ? 'Link Account & Start'
+                                : 'Start Using GalleVR')
+                            .toUpperCase(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.5,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Image.asset(
+                        'assets/images/logo.png',
+                        height: 20,
+                        fit: BoxFit.contain,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: _previousStep,
+                child: Text(
+                  'Back to Review Settings',
+                  style: TextStyle(color: Colors.white.withOpacity(0.4)),
+                ),
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildCustomSwitchRow({
