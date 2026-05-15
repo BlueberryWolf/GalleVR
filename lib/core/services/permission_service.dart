@@ -13,7 +13,8 @@ class PermissionService {
 
         if (sdkInt >= 33) {
           await Permission.photos.status;
-          await Permission.mediaLibrary.status; // For documents access
+          await Permission.videos.status;
+          await Permission.audio.status;
           final manageStorage = await Permission.manageExternalStorage.status;
 
           return manageStorage.isGranted;
@@ -61,10 +62,11 @@ class PermissionService {
           );
 
           final photos = await Permission.photos.request();
-          final documents = await Permission.mediaLibrary.request(); // For documents access
+          final videos = await Permission.videos.request();
+          final audio = await Permission.audio.request();
 
           developer.log(
-            'Media permissions results - Photos: $photos, Documents: $documents',
+            'Media permissions results - Photos: $photos, Videos: $videos, Audio: $audio',
             name: 'PermissionService',
           );
 
@@ -163,10 +165,11 @@ class PermissionService {
           );
 
           final photos = await Permission.photos.request();
-          final documents = await Permission.mediaLibrary.request(); // For documents access
+          final videos = await Permission.videos.request();
+          final audio = await Permission.audio.request();
 
           developer.log(
-            'Media permissions results - Photos: $photos, Documents: $documents',
+            'Media permissions results - Photos: $photos, Videos: $videos, Audio: $audio',
             name: 'PermissionService',
           );
 
