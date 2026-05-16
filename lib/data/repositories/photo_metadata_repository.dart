@@ -403,8 +403,25 @@ class PhotoMetadataRepository {
 
   Future<void> syncWithBackend() async {
     try {
+      await _initializeCache();
+
+      final lastSync = _prefs?.getInt('last_backend_sync_time') ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      const syncCooldown = 30 * 60 * 1000;
+
+      if (now - lastSync < syncCooldown) {
+        developer.log(
+          'Skipping backend sync - last sync was less than 30 minutes ago',
+          name: 'PhotoMetadataRepository',
+        );
+        return;
+      }
+
       final backendPhotos = await VRChatService().fetchPhotoList();
-      if (backendPhotos.isEmpty) return;
+      if (backendPhotos.isEmpty) {
+        await _prefs?.setInt('last_backend_sync_time', now);
+        return;
+      }
 
       final config = AppServiceManager().config;
       final Map<String, String> localLookup = {};
@@ -447,6 +464,9 @@ class PhotoMetadataRepository {
       }
 
       await savePhotoMetadataBatch(matchedPhotos, isRemote: true);
+      
+      // Update sync timestamp
+      await _prefs?.setInt('last_backend_sync_time', now);
 
       PhotoEventService().notifyPhotoAdded('__CLOUD_SYNC_COMPLETE__');
     } catch (e) {
