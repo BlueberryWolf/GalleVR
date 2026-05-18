@@ -6,6 +6,30 @@ import 'package:path/path.dart' as path;
 import 'dart:developer' as developer;
 import '../../theme/app_theme.dart';
 
+String shortenGalleryUrl(String url) {
+  try {
+    final uri = Uri.parse(url);
+    // case 1: https://gallevr.app/p?i=PHOTO_ID&u=...
+    if (uri.path == '/p' && uri.queryParameters.containsKey('i')) {
+      final photoId = uri.queryParameters['i']!;
+      return 'https://gallevr.app/p/$photoId';
+    }
+    // case 2: https://gallevr.app/gallery/USER_ID?focus=PHOTO_ID
+    if (uri.path.startsWith('/gallery/') && uri.queryParameters.containsKey('focus')) {
+      final photoId = uri.queryParameters['focus']!;
+      return 'https://gallevr.app/p/$photoId';
+    }
+    // case 3: https://gallevr.app/u/USER_ID?focus=PHOTO_ID
+    if (uri.path.startsWith('/u/') && uri.queryParameters.containsKey('focus')) {
+      final photoId = uri.queryParameters['focus']!;
+      return 'https://gallevr.app/p/$photoId';
+    }
+  } catch (e) {
+    // original url
+  }
+  return url;
+}
+
 /// Utility function to copy text to clipboard and show a snackbar
 Future<void> copyToClipboard({
   required String text,
@@ -17,9 +41,11 @@ Future<void> copyToClipboard({
   VoidCallback? onSuccess,
 }) async {
   final bool isContextMounted = context.mounted;
+  final processedText = shortenGalleryUrl(text);
+  final processedFallback = fallbackText != null ? shortenGalleryUrl(fallbackText) : null;
 
   try {
-    await Clipboard.setData(ClipboardData(text: text));
+    await Clipboard.setData(ClipboardData(text: processedText));
 
     if (isContextMounted && context.mounted) {
       final snackBar = SnackBar(
@@ -32,11 +58,10 @@ Future<void> copyToClipboard({
       ScaffoldMessenger.of(context).showSnackBar(snackBar);
     }
 
-    developer.log('Copied to clipboard: $text', name: loggerName);
   } catch (e) {
-    if (fallbackText != null) {
+    if (processedFallback != null) {
       try {
-        await Clipboard.setData(ClipboardData(text: fallbackText));
+        await Clipboard.setData(ClipboardData(text: processedFallback));
 
         if (isContextMounted && context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -47,11 +72,6 @@ Future<void> copyToClipboard({
             ),
           );
         }
-
-        developer.log(
-          'Copied fallback text to clipboard: $fallbackText',
-          name: loggerName,
-        );
       } catch (e) {
         _handleClipboardError(e, isContextMounted ? context : null, loggerName);
       }
@@ -102,15 +122,14 @@ Future<void> openUrl(
   String loggerName = 'UrlOpener',
 }) async {
   try {
-    final uri = Uri.parse(url);
+    final processedUrl = shortenGalleryUrl(url);
+    final uri = Uri.parse(processedUrl);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-      developer.log('Opened URL: $url', name: loggerName);
     } else {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open URL')));
       }
-      developer.log('Could not launch URL: $url', name: loggerName);
     }
   } catch (e) {
     if (context.mounted) {
