@@ -1093,8 +1093,8 @@ List<PhotoMetadata> _parsePhotosTask(String jsonBody) {
       final userId = json['userId'] as String?;
       String? resolvedUrl = json['url'] as String?;
 
-      if (photoId != null && userId != null) {
-        resolvedUrl = 'https://api.gallevr.app/p?i=$photoId&u=$userId';
+      if (photoId != null) {
+        resolvedUrl = 'https://gallevr.app/p/$photoId';
       }
 
       return PhotoMetadata(
