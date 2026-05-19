@@ -44,3 +44,13 @@ add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
     "$<TARGET_FILE:gallevr_core>"
     "$<TARGET_FILE_DIR:${BINARY_NAME}>/$<TARGET_FILE_NAME:gallevr_core>"
 )
+
+# Custom elevated migrator helper sharing the same resources/icons
+add_executable(GalleVR-Migrator WIN32
+  "migrator.cpp"
+  "Runner.rc"
+  "runner.exe.manifest"
+)
+apply_standard_settings(GalleVR-Migrator)
+target_link_libraries(GalleVR-Migrator PRIVATE "dwmapi.lib")
+target_include_directories(GalleVR-Migrator PRIVATE "${CMAKE_SOURCE_DIR}")

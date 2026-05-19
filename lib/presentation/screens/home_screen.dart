@@ -163,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen>
                 builder: (context, state, child) {
                   return RefreshButton(
                     isLoading: state.isLoading,
-                    onTap: () => _photosController.refresh(),
+                    onTap: () => _photosController.refresh(forceSync: true),
                     tooltip: 'Refresh Photos',
                   );
                 },

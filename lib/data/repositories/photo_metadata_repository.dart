@@ -66,17 +66,24 @@ class PhotoMetadataRepository {
 
       _checkAndMigrateLegacyMetadata();
 
-      // Heal incorrectly marked non-VRCX photos in the background
-      AppDatabase().database.then((db) {
-        db.execute(
-          'UPDATE photo_metadata SET is_non_vrcx = 0 WHERE is_non_vrcx = 1 AND filename LIKE "VRChat_%"',
-        ).then((_) {
-          // Notify UI to refresh and show newly visible photos
-          PhotoEventService().notifyPhotoAdded('__HEAL_SYNC__');
-        }).catchError((e) {
-          developer.log('Error during background healing: $e', name: 'PhotoMetadataRepository');
-        });
-      });
+      // Heal metadata status in the background:
+      AppDatabase().database
+          .then((db) async {
+            await db.execute(
+              'UPDATE photo_metadata SET is_non_vrcx = 1 WHERE gallery_url IS NULL AND world_name IS NULL AND world_id IS NULL',
+            );
+            await db.execute(
+              'UPDATE photo_metadata SET is_non_vrcx = 0 WHERE is_non_vrcx = 1 AND (gallery_url IS NOT NULL OR world_name IS NOT NULL OR world_id IS NOT NULL)',
+            );
+            // Notify UI to refresh and show newly visible photos
+            PhotoEventService().notifyPhotoAdded('__HEAL_SYNC__');
+          })
+          .catchError((e) {
+            developer.log(
+              'Error during background healing: $e',
+              name: 'PhotoMetadataRepository',
+            );
+          });
 
       syncWithBackend();
 
@@ -401,7 +408,7 @@ class PhotoMetadataRepository {
 
   void _addToLookupCaches(PhotoMetadata metadata, String id) {}
 
-  Future<void> syncWithBackend() async {
+  Future<void> syncWithBackend({bool force = false}) async {
     try {
       await _initializeCache();
 
@@ -409,7 +416,7 @@ class PhotoMetadataRepository {
       final now = DateTime.now().millisecondsSinceEpoch;
       const syncCooldown = 30 * 60 * 1000;
 
-      if (now - lastSync < syncCooldown) {
+      if (!force && (now - lastSync < syncCooldown)) {
         developer.log(
           'Skipping backend sync - last sync was less than 30 minutes ago',
           name: 'PhotoMetadataRepository',
@@ -464,7 +471,6 @@ class PhotoMetadataRepository {
       }
 
       await savePhotoMetadataBatch(matchedPhotos, isRemote: true);
-      
       // Update sync timestamp
       await _prefs?.setInt('last_backend_sync_time', now);
 
@@ -741,7 +747,8 @@ class PhotoMetadataRepository {
                 localPath: existingMeta.localPath ?? metadata.localPath,
                 isNonVrcx: false,
                 isEdited: existingMeta.isEdited || metadata.isEdited,
-                takenDate: existingMeta.takenDate, // Prefer local file stats/metadata
+                takenDate:
+                    existingMeta.takenDate, // Prefer local file stats/metadata
                 world: existingMeta.world ?? metadata.world,
                 players:
                     existingMeta.players.isNotEmpty
@@ -762,7 +769,12 @@ class PhotoMetadataRepository {
                         : metadata.players,
                 isEdited: existingMeta.isEdited || metadata.isEdited,
                 isNonVrcx:
-                    existingMeta.galleryUrl != null
+                    (existingMeta.galleryUrl != null ||
+                            existingMeta.world != null ||
+                            existingMeta.players.isNotEmpty ||
+                            metadata.galleryUrl != null ||
+                            metadata.world != null ||
+                            metadata.players.isNotEmpty)
                         ? false
                         : metadata.isNonVrcx,
               );
@@ -945,9 +957,7 @@ Map<String, PhotoMetadata?> _batchExtractMetadataTask(List<String> filePaths) {
           takenDate: File(filePath).statSync().modified.millisecondsSinceEpoch,
           filename: path.basename(filePath),
           localPath: filePath,
-          isNonVrcx: !PhotoMetadataRepository.vrcFilenameRegex.hasMatch(
-            path.basename(filePath),
-          ),
+          isNonVrcx: true,
         );
       }
     } catch (e) {

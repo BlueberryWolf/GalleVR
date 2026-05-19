@@ -9,6 +9,10 @@ import 'vrchat_service.dart';
 class TOSService {
   final VRChatService _vrchatService;
 
+  // Cache for TOS checks (5-minute TTL)
+  static bool? _cachedNeedsToAcceptTOS;
+  static DateTime? _lastTOSCheck;
+
   // Keys for storing TOS data in SharedPreferences
   static const String _lastAcceptedVersionKey = 'last_accepted_tos_version';
   static const String _lastAcceptedDateKey = 'last_accepted_tos_date';
@@ -23,7 +27,7 @@ class TOSService {
 
   /// Check if the user needs to accept the latest TOS
   /// Returns true if the user needs to accept the TOS, false otherwise
-  Future<bool> needsToAcceptTOS() async {
+  Future<bool> needsToAcceptTOS({bool forceRefresh = false}) async {
     try {
       final authData = await _vrchatService.loadAuthData();
       if (authData == null) {
@@ -31,11 +35,35 @@ class TOSService {
         return false;
       }
 
+      final now = DateTime.now();
+      if (!forceRefresh &&
+          _cachedNeedsToAcceptTOS == false &&
+          _lastTOSCheck != null &&
+          now.difference(_lastTOSCheck!) < const Duration(minutes: 5)) {
+        developer.log(
+          'Using cached TOS acceptance status: $_cachedNeedsToAcceptTOS',
+          name: 'TOSService',
+        );
+        return _cachedNeedsToAcceptTOS!;
+      }
+
       final statusResponse = await _getTOSStatus(authData);
-      return statusResponse['needsToAccept'] ?? false;
+      final needsToAccept = statusResponse['needsToAccept'] ?? false;
+
+      if (needsToAccept == false) {
+        _cachedNeedsToAcceptTOS = false;
+        _lastTOSCheck = now;
+      } else {
+        _cachedNeedsToAcceptTOS = null;
+        _lastTOSCheck = null;
+      }
+
+      return needsToAccept;
     } catch (e) {
       developer.log('Error checking TOS status: $e', name: 'TOSService');
       // In case of error, assume no need to accept to avoid blocking the user
+      _cachedNeedsToAcceptTOS = null;
+      _lastTOSCheck = null;
       return false;
     }
   }
@@ -64,6 +92,9 @@ class TOSService {
 
   /// Accept the current TOS version
   Future<bool> acceptTOS() async {
+    _cachedNeedsToAcceptTOS = null;
+    _lastTOSCheck = null;
+
     try {
       final authData = await _vrchatService.loadAuthData();
       if (authData == null) {

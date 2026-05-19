@@ -39,6 +39,7 @@ class PhotoUploadService {
     LogMetadata? logMetadata, {
     PhotoMetadata? metadata,
     String? originalPath,
+    bool deleteFileOnComplete = false,
   }) async {
     final filename = path.basename(photoPath);
     developer.log(
@@ -229,6 +230,24 @@ class PhotoUploadService {
       developer.log(error, name: 'PhotoUploadService');
       PhotoEventService().notifyError('upload', error, photoPath: photoPath);
       return false;
+    } finally {
+      if (deleteFileOnComplete) {
+        try {
+          final file = File(photoPath);
+          if (await file.exists()) {
+            await file.delete();
+            developer.log(
+              'Deleted temporary file: $photoPath',
+              name: 'PhotoUploadService',
+            );
+          }
+        } catch (e) {
+          developer.log(
+            'Error deleting temporary file: $e',
+            name: 'PhotoUploadService',
+          );
+        }
+      }
     }
   }
 

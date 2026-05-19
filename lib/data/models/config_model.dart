@@ -27,6 +27,9 @@ class ConfigModel {
   // Whether to automatically copy gallery URL to clipboard after upload
   final bool autoCopyGalleryUrl;
 
+  // Whether to automatically download and install updates in the background (Windows only)
+  final bool autoUpdateEnabled;
+
   // Default constructor
   ConfigModel({
     this.soundEnabled = true,
@@ -38,6 +41,7 @@ class ConfigModel {
     this.minimizeToTray = true,
     this.startWithWindows = false,
     this.autoCopyGalleryUrl = false,
+    this.autoUpdateEnabled = false,
   });
 
   // Create a ConfigModel from JSON
@@ -52,6 +56,7 @@ class ConfigModel {
       minimizeToTray: json['minimizeToTray'] ?? true,
       startWithWindows: json['startWithWindows'] ?? false,
       autoCopyGalleryUrl: json['autoCopyGalleryUrl'] ?? false,
+      autoUpdateEnabled: json['autoUpdateEnabled'] ?? false,
     );
   }
 
@@ -67,6 +72,7 @@ class ConfigModel {
       'minimizeToTray': minimizeToTray,
       'startWithWindows': startWithWindows,
       'autoCopyGalleryUrl': autoCopyGalleryUrl,
+      'autoUpdateEnabled': autoUpdateEnabled,
     };
   }
 
@@ -81,6 +87,7 @@ class ConfigModel {
     bool? minimizeToTray,
     bool? startWithWindows,
     bool? autoCopyGalleryUrl,
+    bool? autoUpdateEnabled,
   }) {
     return ConfigModel(
       soundEnabled: soundEnabled ?? this.soundEnabled,
@@ -92,6 +99,7 @@ class ConfigModel {
       minimizeToTray: minimizeToTray ?? this.minimizeToTray,
       startWithWindows: startWithWindows ?? this.startWithWindows,
       autoCopyGalleryUrl: autoCopyGalleryUrl ?? this.autoCopyGalleryUrl,
+      autoUpdateEnabled: autoUpdateEnabled ?? this.autoUpdateEnabled,
     );
   }
 }

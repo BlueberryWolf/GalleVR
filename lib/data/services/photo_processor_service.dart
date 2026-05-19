@@ -194,7 +194,7 @@ class PhotoProcessorService {
 
           if (config.uploadEnabled) {
             developer.log(
-              'Uploading photo: ${path.basename(outputPath)}',
+              'Starting asynchronous upload for photo: ${path.basename(outputPath)}',
               name: 'PhotoProcessorService',
             );
             PhotoEventService().notifyError(
@@ -203,45 +203,51 @@ class PhotoProcessorService {
               photoPath: sourcePath,
             );
 
-            final uploadSuccess = await _photoUploadService.uploadPhoto(
+            _photoUploadService.uploadPhoto(
               outputPath,
               config,
               metadata,
               metadata: photoMetadata,
               originalPath: sourcePath,
-            );
-
-            if (uploadSuccess) {
-              developer.log(
-                'Photo uploaded successfully',
-                name: 'PhotoProcessorService',
-              );
-
-              final updatedMetadata = await _photoMetadataRepository
-                  .getPhotoMetadataForFile(sourcePath);
-              if (updatedMetadata != null &&
-                  updatedMetadata.galleryUrl != null) {
+              deleteFileOnComplete: true,
+            ).then((uploadSuccess) async {
+              if (uploadSuccess) {
                 developer.log(
-                  'Photo has gallery URL: ${updatedMetadata.galleryUrl}',
+                  'Background photo upload completed successfully',
                   name: 'PhotoProcessorService',
                 );
+
+                final updatedMetadata = await _photoMetadataRepository
+                    .getPhotoMetadataForFile(sourcePath);
+                if (updatedMetadata != null &&
+                    updatedMetadata.galleryUrl != null) {
+                  developer.log(
+                    'Photo has gallery URL: ${updatedMetadata.galleryUrl}',
+                    name: 'PhotoProcessorService',
+                  );
+                } else {
+                  developer.log(
+                    'No gallery URL found after background upload',
+                    name: 'PhotoProcessorService',
+                  );
+                  PhotoEventService().notifyError(
+                    'warning',
+                    'Upload succeeded but no gallery URL was found',
+                    photoPath: sourcePath,
+                  );
+                }
               } else {
                 developer.log(
-                  'No gallery URL found after upload',
+                  'Background photo upload failed',
                   name: 'PhotoProcessorService',
                 );
-                PhotoEventService().notifyError(
-                  'warning',
-                  'Upload succeeded but no gallery URL was found',
-                  photoPath: sourcePath,
-                );
               }
-            } else {
+            }).catchError((e) {
               developer.log(
-                'Photo upload failed',
+                'Unhandled error in background photo upload: $e',
                 name: 'PhotoProcessorService',
               );
-            }
+            });
           }
 
           if (!config.uploadEnabled) {
@@ -250,16 +256,16 @@ class PhotoProcessorService {
               'Photo processing completed successfully',
               photoPath: sourcePath,
             );
-          }
-          // clean up the WebP file after processing/uploading
-          try {
-            final webpFile = File(outputPath);
-            if (await webpFile.exists()) {
-              await webpFile.delete();
-              developer.log('Deleted temporary WebP file: $outputPath', name: 'PhotoProcessorService');
+
+            try {
+              final webpFile = File(outputPath);
+              if (await webpFile.exists()) {
+                await webpFile.delete();
+                developer.log('Deleted temporary WebP file: $outputPath', name: 'PhotoProcessorService');
+              }
+            } catch (e) {
+              developer.log('Error deleting temporary WebP file: $e', name: 'PhotoProcessorService');
             }
-          } catch (e) {
-            developer.log('Error deleting temporary WebP file: $e', name: 'PhotoProcessorService');
           }
 
           return sourcePath;

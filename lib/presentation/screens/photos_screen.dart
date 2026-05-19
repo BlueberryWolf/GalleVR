@@ -107,7 +107,7 @@ class PhotosScreenState extends State<PhotosScreen> {
           ),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: widget.controller.refresh,
+            onPressed: () => widget.controller.refresh(forceSync: true),
             child: const Text('Refresh'),
           ),
         ],

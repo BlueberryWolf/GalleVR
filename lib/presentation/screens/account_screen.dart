@@ -469,12 +469,24 @@ class _AccountScreenState extends State<AccountScreen> {
 
   Future<void> _launchGallery() async {
     final url = Uri.parse(_galleryUrl);
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url);
-    } else {
-      if (mounted) {
+    try {
+      bool launched = false;
+      if (await canLaunchUrl(url)) {
+        launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+      if (!launched) {
+        launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+      if (!launched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not open gallery link')),
+        );
+      }
+    } catch (e) {
+      developer.log('Error launching gallery url: $e', name: 'AccountScreen', error: e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open gallery link: $e')),
         );
       }
     }

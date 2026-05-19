@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, Directory, File, Process, ProcessStartMode, exit;
 
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -439,6 +439,97 @@ class UpdateService {
       developer.log('Update service disposed', name: 'UpdateService');
     } catch (e) {
       developer.log('Error disposing update service: $e', name: 'UpdateService');
+    }
+  }
+
+  /// Get the latest installer URL (.exe) from GitHub
+  Future<String?> getLatestInstallerUrl() async {
+    try {
+      final response = await http.get(
+        Uri.parse(_githubApiUrl),
+        headers: {'Accept': 'application/vnd.github.v3+json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final assets = data['assets'] as List<dynamic>?;
+
+        if (assets != null) {
+          // Look for an asset that ends with .exe
+          for (final asset in assets) {
+            final name = asset['name'] as String?;
+            final downloadUrl = asset['browser_download_url'] as String?;
+            if (name != null && name.toLowerCase().endsWith('.exe') && downloadUrl != null) {
+              developer.log('Found installer asset: $name -> $downloadUrl', name: 'UpdateService');
+              return downloadUrl;
+            }
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      developer.log('Error getting latest installer URL: $e', name: 'UpdateService');
+      return null;
+    }
+  }
+
+  /// Download the latest Windows installer and launch it, then close the app.
+  Future<void> downloadAndInstall({Function(double)? onProgress}) async {
+    if (!Platform.isWindows) return;
+
+    try {
+      developer.log('Starting installer download process', name: 'UpdateService');
+      
+      final downloadUrl = await getLatestInstallerUrl();
+      if (downloadUrl == null) {
+        throw Exception('Could not find installer download URL in GitHub assets.');
+      }
+
+      developer.log('Downloading installer from: $downloadUrl', name: 'UpdateService');
+
+      // Create a temporary file path
+      final tempDir = Directory.systemTemp;
+      final tempFilePath = '${tempDir.path}\\GalleVR-Setup.exe';
+      final tempFile = File(tempFilePath);
+
+      // Clean up previous setup if exists
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+
+      // Download using http package with chunked stream to support progress
+      final client = http.Client();
+      final request = http.Request('GET', Uri.parse(downloadUrl));
+      final response = await client.send(request);
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to download installer. HTTP ${response.statusCode}');
+      }
+
+      final contentLength = response.contentLength ?? 0;
+      int downloadedBytes = 0;
+
+      final sink = tempFile.openWrite();
+      
+      await for (final chunk in response.stream) {
+        sink.add(chunk);
+        downloadedBytes += chunk.length;
+        if (contentLength > 0 && onProgress != null) {
+          final progress = downloadedBytes / contentLength;
+          onProgress(progress);
+        }
+      }
+
+      await sink.close();
+      client.close();
+
+      developer.log('Installer downloaded successfully to: $tempFilePath', name: 'UpdateService');
+      developer.log('Launching installer and exiting app...', name: 'UpdateService');
+      await Process.start(tempFilePath, [], mode: ProcessStartMode.detached);
+      exit(0);
+    } catch (e) {
+      developer.log('Error during download and install: $e', name: 'UpdateService', error: e);
+      rethrow;
     }
   }
 }

@@ -1344,6 +1344,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ),
+            RepaintBoundary(
+              child: _buildCustomSwitchRow(
+                dense: isSmallScreen,
+                title: 'Auto Updates',
+                subtitle: 'Automatically download and install updates in the background',
+                activeColor: Theme.of(context).colorScheme.primary,
+                value: _config!.autoUpdateEnabled,
+                onChanged: (value) {
+                  final updatedConfig = _config!.copyWith(
+                    autoUpdateEnabled: value,
+                  );
+                  _saveConfig(updatedConfig);
+                },
+              ),
+            ),
           ],
         ),
       ),

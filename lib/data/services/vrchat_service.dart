@@ -21,6 +21,10 @@ class VRChatService {
 
   bool _isInitialized = false;
 
+  // Cache for verification checks (5-minute TTL)
+  static bool? _cachedIsVerified;
+  static DateTime? _lastVerificationCheck;
+
   CurrentUser? get currentUser => _api.auth.currentUser;
 
   bool get isLoggedIn => currentUser != null;
@@ -91,6 +95,9 @@ class VRChatService {
     required String password,
     String? totpCode,
   }) async {
+    _cachedIsVerified = null;
+    _lastVerificationCheck = null;
+
     if (!_isInitialized) {
       await initialize();
     }
@@ -229,6 +236,9 @@ class VRChatService {
   }
 
   Future<bool> logout() async {
+    _cachedIsVerified = null;
+    _lastVerificationCheck = null;
+
     if (!_isInitialized) {
       await initialize();
     }
@@ -572,7 +582,7 @@ class VRChatService {
           name: 'VRChatService',
         );
 
-        final statusResult = await checkVerificationStatus(authData);
+        final statusResult = await checkVerificationStatus(authData, forceRefresh: true);
         if (statusResult) {
           verificationSuccessful = true;
           break;
@@ -667,7 +677,19 @@ class VRChatService {
     }
   }
 
-  Future<bool> checkVerificationStatus(AuthData authData) async {
+  Future<bool> checkVerificationStatus(AuthData authData, {bool forceRefresh = false}) async {
+    final now = DateTime.now();
+    if (!forceRefresh &&
+        _cachedIsVerified == true &&
+        _lastVerificationCheck != null &&
+        now.difference(_lastVerificationCheck!) < const Duration(minutes: 5)) {
+      developer.log(
+        'Using cached verification status: $_cachedIsVerified',
+        name: 'VRChatService',
+      );
+      return _cachedIsVerified!;
+    }
+
     try {
       final url = Uri.parse(
         'https://api.gallevr.app/vrchat/verify/status/${authData.userId}',
@@ -699,6 +721,8 @@ class VRChatService {
         );
 
         if (isVerified) {
+          _cachedIsVerified = true;
+          _lastVerificationCheck = now;
           try {
             await fetchMe(authData, forceRefresh: true);
           } catch (e) {
@@ -707,17 +731,24 @@ class VRChatService {
               name: 'VRChatService',
             );
           }
+        } else {
+          _cachedIsVerified = null;
+          _lastVerificationCheck = null;
         }
 
         return isVerified;
       }
 
+      _cachedIsVerified = null;
+      _lastVerificationCheck = null;
       return false;
     } catch (e) {
       developer.log(
         'Error checking verification status: $e',
         name: 'VRChatService',
       );
+      _cachedIsVerified = null;
+      _lastVerificationCheck = null;
       return false;
     }
   }

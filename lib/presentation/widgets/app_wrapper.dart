@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -11,6 +12,7 @@ import '../../data/services/vrchat_service.dart';
 import '../../core/services/update_service.dart';
 import '../../core/services/connectivity_service.dart';
 import '../widgets/tos_modal.dart';
+import 'update_dialog.dart';
 
 /// A widget that wraps the entire app and handles global functionality
 /// such as showing the TOS modal when needed.
@@ -120,7 +122,44 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     // Remember this version
     _lastNotifiedVersion = _latestVersion;
 
-    // Show a snackbar with the update notification
+    // If Windows, check auto update setting
+    if (Platform.isWindows) {
+      final config = _appServiceManager.config;
+      if (config != null && config.autoUpdateEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Downloading GalleVR v$_latestVersion update automatically...'),
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+        _updateService.downloadAndInstall().catchError((e) {
+          developer.log('Silent auto-update failed: $e', name: 'AppWrapper');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Auto-update failed. Click to download manually.'),
+                backgroundColor: Colors.redAccent,
+                action: SnackBarAction(
+                  label: 'DOWNLOAD',
+                  textColor: Colors.white,
+                  onPressed: () => _updateService.openReleasesPage(),
+                ),
+              ),
+            );
+          }
+        });
+        return;
+      } else {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => UpdateDialog(latestVersion: _latestVersion!),
+        );
+        return;
+      }
+    }
+
     final snackBar = SnackBar(
       content: Text('A new version ($_latestVersion) is available!'),
       backgroundColor: Theme.of(context).colorScheme.primary,

@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:gallevr/data/models/log_metadata.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -246,15 +247,31 @@ class PhotoMetadataPanel extends StatelessWidget {
 
   void _launchVRChatWorldUrl(String worldId) async {
     final url = Uri.parse('https://gallevr.app/world/$worldId');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+    try {
+      bool launched = false;
+      if (await canLaunchUrl(url)) {
+        launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+      if (!launched) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      developer.log('Error launching world url: $e', name: 'PhotoMetadataPanel', error: e);
     }
   }
 
   void _launchVRChatUserUrl(String userId) async {
     final url = Uri.parse('https://gallevr.app/user/$userId');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+    try {
+      bool launched = false;
+      if (await canLaunchUrl(url)) {
+        launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+      if (!launched) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      developer.log('Error launching user url: $e', name: 'PhotoMetadataPanel', error: e);
     }
   }
 }

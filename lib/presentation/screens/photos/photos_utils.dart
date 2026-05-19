@@ -124,12 +124,15 @@ Future<void> openUrl(
   try {
     final processedUrl = shortenGalleryUrl(url);
     final uri = Uri.parse(processedUrl);
+    bool launched = false;
     if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open URL')));
-      }
+      launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+    if (!launched) {
+      launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open URL')));
     }
   } catch (e) {
     if (context.mounted) {

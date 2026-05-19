@@ -89,7 +89,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
     }
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool forceSync = false}) async {
     final loadId = ++_currentLoadId;
     if (_config == null || _config!.photosDirectory.isEmpty) {
       value = value.copyWith(
@@ -103,6 +103,12 @@ class PhotosController extends ValueNotifier<PhotosState> {
     value = value.copyWith(isLoading: true, error: null);
 
     try {
+      if (forceSync) {
+        await _metadataRepository.syncWithBackend(force: true);
+      } else {
+        await _metadataRepository.syncWithBackend();
+      }
+
       final directory = Directory(_config!.photosDirectory);
       if (!await directory.exists()) {
         value = value.copyWith(
@@ -117,16 +123,16 @@ class PhotosController extends ValueNotifier<PhotosState> {
 
       if (loadId != _currentLoadId) return;
 
-      if (photos.length != value.allPhotos.length) {
-        _currentPage = 0;
-        final initialBatch = photos.take(_pageSize).toList();
+      _currentPage = 0;
+      final initialBatch = photos.take(_pageSize).toList();
 
-        value = value.copyWith(
-          allPhotos: photos,
-          displayedPhotos: initialBatch,
-        );
-        _loadMetadataForBatch(initialBatch);
-      }
+      value = value.copyWith(
+        allPhotos: photos,
+        displayedPhotos: initialBatch,
+      );
+      
+      // Always reload metadata for the first batch to update sync status/metadata on refresh
+      await _loadMetadataForBatch(initialBatch);
 
       value = value.copyWith(isLoading: false, isLoadingMore: false);
     } catch (e) {
@@ -219,7 +225,9 @@ class PhotosController extends ValueNotifier<PhotosState> {
 
     final List<String> badPaths = [];
     metadata.forEach((filePath, meta) {
-      if (meta != null && meta.isNonVrcx && meta.galleryUrl == null) {
+      if (meta == null ||
+          (meta.isNonVrcx && meta.galleryUrl == null) ||
+          (meta.galleryUrl == null && meta.world == null && meta.players.isEmpty)) {
         badPaths.add(filePath);
       }
     });

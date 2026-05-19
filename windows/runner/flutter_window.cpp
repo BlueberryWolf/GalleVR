@@ -7,7 +7,7 @@
 #include "flutter/standard_method_codec.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
-    : project_(project) {}
+    : project_(project), system_command_close_(false) {}
 
 FlutterWindow::~FlutterWindow() {}
 
@@ -79,25 +79,37 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
+    case WM_SYSCOMMAND:
+      if ((wparam & 0xFFF0) == SC_CLOSE) {
+        system_command_close_ = true;
+      }
+      break;
     case WM_CLOSE:
-      // Check if Alt key is pressed (same logic as in win32_window.cpp)
+      // Check if Alt key is pressed
       if (GetAsyncKeyState(VK_MENU) & 0x8000) {
-        // Let the default handler handle it (quit the app)
-        break;
+        system_command_close_ = true;
       }
 
-      // Send onWindowHidden to Flutter so Dart can unmount the UI and trim memory.
-      if (flutter_controller_ && flutter_controller_->engine()) {
-        flutter::MethodChannel<> channel(
-            flutter_controller_->engine()->messenger(),
-            "gallevr/window",
-            &flutter::StandardMethodCodec::GetInstance());
+      if (system_command_close_) {
+        system_command_close_ = false;
 
-        channel.InvokeMethod("onWindowHidden", nullptr);
+        // Send onWindowHidden to Flutter so Dart can unmount the UI and trim memory.
+        if (flutter_controller_ && flutter_controller_->engine()) {
+          flutter::MethodChannel<> channel(
+              flutter_controller_->engine()->messenger(),
+              "gallevr/window",
+              &flutter::StandardMethodCodec::GetInstance());
+
+          channel.InvokeMethod("onWindowHidden", nullptr);
+        }
+
+        ::ShowWindow(hwnd, SW_HIDE);
+        return 0;
       }
 
-      ::ShowWindow(hwnd, SW_HIDE);
-      return 0;
+      // If not system_command_close, quit the app.
+      SetQuitOnClose(true);
+      break;
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
