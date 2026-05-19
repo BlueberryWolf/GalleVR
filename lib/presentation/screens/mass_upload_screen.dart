@@ -103,6 +103,7 @@ class _MassUploadScreenState extends State<MassUploadScreen>
       _failedCount = 0;
     });
 
+    final tasksToProcess = <int>[];
     for (var i = 0; i < _tasks.length; i++) {
       if (_tasks[i].status == TaskStatus.completed) {
         _completedCount++;
@@ -118,36 +119,52 @@ class _MassUploadScreenState extends State<MassUploadScreen>
         continue;
       }
 
-      setState(() {
-        _tasks[i].status = TaskStatus.processing;
-      });
+      tasksToProcess.add(i);
+    }
 
-      try {
-        final result = await _massUploadService.processFile(
-          _tasks[i].path,
-          config,
-        );
+    if (tasksToProcess.isNotEmpty) {
+      int taskPointer = 0;
 
-        if (!mounted) return;
-        setState(() {
-          if (result.success) {
-            _tasks[i].status = TaskStatus.completed;
-            _tasks[i].message = 'Success';
-            _completedCount++;
-          } else {
-            _tasks[i].status = TaskStatus.failed;
-            _tasks[i].message = result.errorMessage ?? 'Unknown error';
-            _failedCount++;
+      Future<void> runWorker() async {
+        while (taskPointer < tasksToProcess.length) {
+          final taskIndex = tasksToProcess[taskPointer++];
+          
+          setState(() {
+            _tasks[taskIndex].status = TaskStatus.processing;
+          });
+
+          try {
+            final result = await _massUploadService.processFile(
+              _tasks[taskIndex].path,
+              config,
+            );
+
+            if (!mounted) return;
+            setState(() {
+              if (result.success) {
+                _tasks[taskIndex].status = TaskStatus.completed;
+                _tasks[taskIndex].message = 'Success';
+                _completedCount++;
+              } else {
+                _tasks[taskIndex].status = TaskStatus.failed;
+                _tasks[taskIndex].message = result.errorMessage ?? 'Unknown error';
+                _failedCount++;
+              }
+            });
+          } catch (e) {
+            if (!mounted) return;
+            setState(() {
+              _tasks[taskIndex].status = TaskStatus.failed;
+              _tasks[taskIndex].message = e.toString();
+              _failedCount++;
+            });
           }
-        });
-      } catch (e) {
-        if (!mounted) return;
-        setState(() {
-          _tasks[i].status = TaskStatus.failed;
-          _tasks[i].message = e.toString();
-          _failedCount++;
-        });
+        }
       }
+
+      final int concurrency = tasksToProcess.length < 4 ? tasksToProcess.length : 4;
+      final workers = List.generate(concurrency, (_) => runWorker());
+      await Future.wait(workers);
     }
 
     setState(() {

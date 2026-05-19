@@ -144,11 +144,17 @@ class PhotoWatcherService {
         PhotoEventService().notifyPhotoAdded(photoPath);
       } else if (data.containsKey('error')) {
         final errorMessage = data['error'] as String;
-        developer.log('Error from background task: $errorMessage', name: 'PhotoWatcherService');
+        developer.log(
+          'Error from background task: $errorMessage',
+          name: 'PhotoWatcherService',
+        );
         PhotoEventService().notifyError('watcher', errorMessage);
       } else if (data.containsKey('status')) {
         final statusMessage = data['status'] as String;
-        developer.log('Status from background task: $statusMessage', name: 'PhotoWatcherService');
+        developer.log(
+          'Status from background task: $statusMessage',
+          name: 'PhotoWatcherService',
+        );
         PhotoEventService().notifyError('info', statusMessage);
       }
     }
@@ -231,16 +237,16 @@ class PhotoWatcherService {
           final photosDir = Directory(config.photosDirectory);
           if (await photosDir.exists()) {
             _watcherSubscription = photosDir
-                .watch(events: FileSystemEvent.create)
+                .watch(events: FileSystemEvent.create, recursive: true)
                 .listen((event) {
                   developer.log(
-                    'Native Photos trigger detected, signaling immediate log check',
+                    'Native Photos trigger detected: ${event.path}, signaling immediate log check',
                     name: 'PhotoWatcherService',
                   );
                   _logFileWatcher?.checkForUpdates();
                 });
             developer.log(
-              'Native OS Photo Trigger active',
+              'Native OS Photo Trigger active (recursive)',
               name: 'PhotoWatcherService',
             );
           }
@@ -284,7 +290,10 @@ class PhotoWatcherService {
     _logFileWatcher = null;
   }
 
-  void _handleScreenshotFromLog(String screenshotPath, ConfigModel config) {
+  Future<void> _handleScreenshotFromLog(
+    String screenshotPath,
+    ConfigModel config,
+  ) async {
     String finalPath = screenshotPath;
 
     // On Linux, VRChat (via Proton/Wine) might log Windows-style paths.
@@ -321,9 +330,36 @@ class PhotoWatcherService {
 
     // Verify the file exists and is a VRChat screenshot
     final file = File(finalPath);
-    if (!file.existsSync()) {
+    bool ready = false;
+    int lastSize = -1;
+
+    for (int i = 0; i < 25; i++) {
+      if (await file.exists()) {
+        try {
+          final length = await file.length();
+          if (length > 0 && length == lastSize) {
+            ready = true;
+            break;
+          }
+          lastSize = length;
+        } catch (e) {
+          // File might be locked or not fully created
+        }
+      }
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
+    if (!ready) {
+      try {
+        if (await file.exists() && (await file.length()) > 0) {
+          ready = true;
+        }
+      } catch (_) {}
+    }
+
+    if (!ready) {
       developer.log(
-        'Screenshot file does not exist: $finalPath',
+        'Screenshot file is not ready or does not exist: $finalPath',
         name: 'PhotoWatcherService',
       );
       return;

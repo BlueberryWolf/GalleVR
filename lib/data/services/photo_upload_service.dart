@@ -93,7 +93,8 @@ class PhotoUploadService {
         return false;
       }
 
-      final photoMetadata = metadata ?? _createPhotoMetadata(photoPath, logMetadata);
+      final photoMetadata =
+          metadata ?? _createPhotoMetadata(photoPath, logMetadata);
 
       final saveResult = await _photoMetadataRepository.savePhotoMetadata(
         photoMetadata,
@@ -111,14 +112,71 @@ class PhotoUploadService {
         return false;
       }
 
-      final fileBytes = await file.readAsBytes();
-      developer.log(
-        'Read ${fileBytes.length} bytes from file',
-        name: 'PhotoUploadService',
-      );
-
       final metadataJson = json.encode(photoMetadata.toJson());
       final metadataBase64 = base64.encode(utf8.encode(metadataJson));
+
+      // Attempt native curl upload on Windows/Linux for maximum speed and zero Dart heap overhead
+      if (Platform.isWindows || Platform.isLinux) {
+        try {
+          developer.log(
+            'Attempting native curl upload for speed and zero Dart heap overhead: $photoPath',
+            name: 'PhotoUploadService',
+          );
+          final uploadUrlStr =
+              'https://api.gallevr.app/vrchat/photo/upload?user=${Uri.encodeComponent(authData.userId)}&type=webp';
+
+          final curlArgs = [
+            '-s', // Silent mode
+            '-X', 'POST',
+            uploadUrlStr,
+            '-H', 'Content-Type: application/octet-stream',
+            '-H', 'Authorization: Bearer ${authData.accessKey}',
+            '-H', 'metadata: $metadataBase64',
+            '--data-binary', '@$photoPath',
+          ];
+
+          final result = await Process.run('curl', curlArgs);
+          if (result.exitCode == 0) {
+            final galleryUrl = result.stdout.toString().trim();
+            if (galleryUrl.startsWith('http://') ||
+                galleryUrl.startsWith('https://')) {
+              developer.log(
+                'Native curl upload succeeded. URL: $galleryUrl',
+                name: 'PhotoUploadService',
+              );
+              return await _handleUploadSuccess(
+                galleryUrl,
+                photoMetadata,
+                photoPath,
+                originalPath,
+                config,
+              );
+            } else {
+              developer.log(
+                'Curl succeeded but response was not a valid URL: $galleryUrl. Falling back to Dart HTTP...',
+                name: 'PhotoUploadService',
+              );
+            }
+          } else {
+            developer.log(
+              'Curl failed with exit code ${result.exitCode}: ${result.stderr}. Falling back to Dart HTTP...',
+              name: 'PhotoUploadService',
+            );
+          }
+        } catch (e) {
+          developer.log(
+            'Failed to execute native curl: $e. Falling back to Dart HTTP...',
+            name: 'PhotoUploadService',
+          );
+        }
+      }
+
+      // Fallback path: standard Dart HTTP package upload
+      final fileBytes = await file.readAsBytes();
+      developer.log(
+        'Read ${fileBytes.length} bytes from file for Dart HTTP fallback upload',
+        name: 'PhotoUploadService',
+      );
 
       final uploadUrl = Uri.parse(
         'https://api.gallevr.app/vrchat/photo/upload?user=${Uri.encodeComponent(authData.userId)}&type=webp',
@@ -135,79 +193,14 @@ class PhotoUploadService {
         final response = await http.Response.fromStream(streamedResponse);
 
         if (response.statusCode == 200) {
-          developer.log(
-            'Photo uploaded successfully',
-            name: 'PhotoUploadService',
-          );
-          PhotoEventService().notifyError(
-            'success',
-            'Photo uploaded successfully',
-            photoPath: photoPath,
-          );
-          
-          // Notify that the photo was uploaded (use original path if provided for UI matching)
-          PhotoEventService().notifyPhotoUploaded(originalPath ?? photoPath);
-
           final galleryUrl = response.body.trim();
-          developer.log('Gallery URL: $galleryUrl', name: 'PhotoUploadService');
-
-          final updatedMetadata = photoMetadata.copyWith(
-            galleryUrl: galleryUrl,
+          return await _handleUploadSuccess(
+            galleryUrl,
+            photoMetadata,
+            photoPath,
+            originalPath,
+            config,
           );
-
-          final saveResult = await _photoMetadataRepository.savePhotoMetadata(
-            updatedMetadata,
-          );
-          developer.log(
-            'Updated metadata with gallery URL, save result: $saveResult',
-            name: 'PhotoUploadService',
-          );
-
-          final verifiedMetadata = await _photoMetadataRepository
-              .getPhotoMetadataForFile(photoPath);
-          if (verifiedMetadata?.galleryUrl != null) {
-            developer.log(
-              'Verified gallery URL was saved: ${verifiedMetadata!.galleryUrl}',
-              name: 'PhotoUploadService',
-            );
-          } else {
-            final warning = 'WARNING: Gallery URL was not saved correctly';
-            developer.log(warning, name: 'PhotoUploadService');
-            PhotoEventService().notifyError(
-              'warning',
-              warning,
-              photoPath: photoPath,
-            );
-          }
-
-          await _soundService.playUploadSound(config);
-          developer.log(
-            'Played upload complete sound',
-            name: 'PhotoUploadService',
-          );
-
-          if (config.autoCopyGalleryUrl && galleryUrl.isNotEmpty) {
-            try {
-              await Clipboard.setData(ClipboardData(text: galleryUrl));
-              developer.log(
-                'Copied gallery URL to clipboard: $galleryUrl',
-                name: 'PhotoUploadService',
-              );
-              PhotoEventService().notifyError(
-                'info',
-                'Gallery URL copied to clipboard',
-                photoPath: photoPath,
-              );
-            } catch (e) {
-              developer.log(
-                'Error copying gallery URL to clipboard: $e',
-                name: 'PhotoUploadService',
-                error: e,
-              );
-            }
-          }
-
-          return true;
         } else {
           final error =
               'Upload failed with status ${response.statusCode}: ${response.body}';
@@ -249,6 +242,72 @@ class PhotoUploadService {
         }
       }
     }
+  }
+
+  Future<bool> _handleUploadSuccess(
+    String galleryUrl,
+    PhotoMetadata photoMetadata,
+    String photoPath,
+    String? originalPath,
+    ConfigModel config,
+  ) async {
+    developer.log('Photo uploaded successfully', name: 'PhotoUploadService');
+    PhotoEventService().notifyError(
+      'success',
+      'Photo uploaded successfully',
+      photoPath: photoPath,
+    );
+
+    PhotoEventService().notifyPhotoUploaded(originalPath ?? photoPath);
+
+    final updatedMetadata = photoMetadata.copyWith(galleryUrl: galleryUrl);
+
+    final saveResult = await _photoMetadataRepository.savePhotoMetadata(
+      updatedMetadata,
+    );
+    developer.log(
+      'Updated metadata with gallery URL, save result: $saveResult',
+      name: 'PhotoUploadService',
+    );
+
+    final verifiedMetadata = await _photoMetadataRepository
+        .getPhotoMetadataForFile(photoPath);
+    if (verifiedMetadata?.galleryUrl != null) {
+      developer.log(
+        'Verified gallery URL was saved: ${verifiedMetadata!.galleryUrl}',
+        name: 'PhotoUploadService',
+      );
+    } else {
+      final warning = 'WARNING: Gallery URL was not saved correctly';
+      developer.log(warning, name: 'PhotoUploadService');
+      PhotoEventService().notifyError('warning', warning, photoPath: photoPath);
+    }
+
+    await _soundService.playUploadSound(config);
+    developer.log('Played upload complete sound', name: 'PhotoUploadService');
+
+    if (config.autoCopyGalleryUrl && galleryUrl.isNotEmpty) {
+      try {
+        await Clipboard.setData(ClipboardData(text: galleryUrl));
+        developer.log(
+          'Copied gallery URL to clipboard: $galleryUrl',
+          name: 'PhotoUploadService',
+        );
+        PhotoEventService().notifyError(
+          'info',
+          'Gallery URL copied to clipboard',
+          photoPath: photoPath,
+        );
+      } catch (e) {
+        developer.log(
+          'Error copying gallery URL to clipboard: $e',
+          name: 'PhotoUploadService',
+          error: e,
+        );
+      }
+    }
+
+    return true;
   }
 
   PhotoMetadata _createPhotoMetadata(

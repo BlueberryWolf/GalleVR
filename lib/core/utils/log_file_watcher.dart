@@ -20,6 +20,7 @@ class LogFileWatcher {
   DateTime? _currentLogFileModified;
   int _lastPosition = 0;
   final Set<String> _processedScreenshots = <String>{};
+  StreamSubscription<FileSystemEvent>? _logsWatcherSubscription;
 
   LogFileWatcher(this._logsDirectory);
 
@@ -59,6 +60,35 @@ class LogFileWatcher {
       const Duration(seconds: 60),
       (_) => _checkForNewerLogFile(),
     );
+
+    try {
+      final logsDir = Directory(_logsDirectory);
+      if (await logsDir.exists()) {
+        _logsWatcherSubscription = logsDir
+            .watch()
+            .listen((event) {
+              if (event.type == FileSystemEvent.modify) {
+                if (event.path == _currentLogFile) {
+                  checkForUpdates();
+                }
+              } else if (event.type == FileSystemEvent.create) {
+                final fileName = path.basename(event.path);
+                if (fileName.startsWith(_logPattern)) {
+                  _checkForNewerLogFile();
+                }
+              }
+            });
+        developer.log(
+          'Logs directory watcher active',
+          name: 'LogFileWatcher',
+        );
+      }
+    } catch (e) {
+      developer.log(
+        'Logs directory watcher bypassed ($e)',
+        name: 'LogFileWatcher',
+      );
+    }
   }
 
   /// Stop watching for screenshot events
@@ -67,6 +97,8 @@ class LogFileWatcher {
     _pollingTimer = null;
     _logFileCheckTimer?.cancel();
     _logFileCheckTimer = null;
+    _logsWatcherSubscription?.cancel();
+    _logsWatcherSubscription = null;
     _currentLogFile = null;
     _currentLogFileModified = null;
     _lastPosition = 0;

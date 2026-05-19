@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'dart:developer' as developer;
@@ -13,74 +14,94 @@ class LogParserService {
   final PlatformService platformService;
 
   // Regular expressions for parsing logs
-  static final _roomNameRegex = RegExp(r'\[Behaviour\] Entering Room: (.*?)(?:\r?\n|$)');
+  static final _roomNameRegex = RegExp(
+    r'\[Behaviour\] Entering Room: (.*?)(?:\r?\n|$)',
+  );
 
   static final _worldPatterns = [
     _WorldPattern(
-      regex: RegExp(r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~([^(]+)\(([^)]+)\)~canRequestInvite~region\(([^)]+)\)'),
-      handler: (matches, roomName) => WorldInfo(
-        name: roomName,
-        id: matches[1]!,
-        instanceId: matches[2],
-        accessType: matches[3],
-        ownerId: matches[4],
-        region: matches[5],
-        canRequestInvite: true,
+      regex: RegExp(
+        r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~([^(]+)\(([^)]+)\)~canRequestInvite~region\(([^)]+)\)',
       ),
+      handler:
+          (matches, roomName) => WorldInfo(
+            name: roomName,
+            id: matches[1]!,
+            instanceId: matches[2],
+            accessType: matches[3],
+            ownerId: matches[4],
+            region: matches[5],
+            canRequestInvite: true,
+          ),
     ),
     _WorldPattern(
-      regex: RegExp(r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~([^(]+)\(([^)]+)\)~region\(([^)]+)\)'),
-      handler: (matches, roomName) => WorldInfo(
-        name: roomName,
-        id: matches[1]!,
-        instanceId: matches[2],
-        accessType: matches[3],
-        ownerId: matches[4],
-        region: matches[5],
+      regex: RegExp(
+        r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~([^(]+)\(([^)]+)\)~region\(([^)]+)\)',
       ),
+      handler:
+          (matches, roomName) => WorldInfo(
+            name: roomName,
+            id: matches[1]!,
+            instanceId: matches[2],
+            accessType: matches[3],
+            ownerId: matches[4],
+            region: matches[5],
+          ),
     ),
     _WorldPattern(
-      regex: RegExp(r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~group\(([^)]+)\)~groupAccessType\(([^)]+)\)~region\(([^)]+)\)'),
-      handler: (matches, roomName) => WorldInfo(
-        name: roomName,
-        id: matches[1]!,
-        instanceId: matches[2],
-        accessType: 'group',
-        groupId: matches[3],
-        groupAccessType: matches[4],
-        region: matches[5],
+      regex: RegExp(
+        r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~group\(([^)]+)\)~groupAccessType\(([^)]+)\)~region\(([^)]+)\)',
       ),
+      handler:
+          (matches, roomName) => WorldInfo(
+            name: roomName,
+            id: matches[1]!,
+            instanceId: matches[2],
+            accessType: 'group',
+            groupId: matches[3],
+            groupAccessType: matches[4],
+            region: matches[5],
+          ),
     ),
     _WorldPattern(
-      regex: RegExp(r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~group\(([^)]+)\)~groupAccessType\(([^)]+)\)~inviteOnly~region\(([^)]+)\)'),
-      handler: (matches, roomName) => WorldInfo(
-        name: roomName,
-        id: matches[1]!,
-        instanceId: matches[2],
-        accessType: 'group',
-        groupId: matches[3],
-        groupAccessType: matches[4],
-        region: matches[5],
-        inviteOnly: true,
+      regex: RegExp(
+        r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~group\(([^)]+)\)~groupAccessType\(([^)]+)\)~inviteOnly~region\(([^)]+)\)',
       ),
+      handler:
+          (matches, roomName) => WorldInfo(
+            name: roomName,
+            id: matches[1]!,
+            instanceId: matches[2],
+            accessType: 'group',
+            groupId: matches[3],
+            groupAccessType: matches[4],
+            region: matches[5],
+            inviteOnly: true,
+          ),
     ),
     _WorldPattern(
-      regex: RegExp(r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~region\(([^)]+)\)'),
-      handler: (matches, roomName) => WorldInfo(
-        name: roomName,
-        id: matches[1]!,
-        instanceId: matches[2],
-        accessType: 'public',
-        region: matches[3],
+      regex: RegExp(
+        r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~region\(([^)]+)\)',
       ),
+      handler:
+          (matches, roomName) => WorldInfo(
+            name: roomName,
+            id: matches[1]!,
+            instanceId: matches[2],
+            accessType: 'public',
+            region: matches[3],
+          ),
     ),
   ];
 
-  static final _playerRegex = RegExp(r'\[Behaviour\] OnPlayer(Joined|Left) (.+?) \((.+?)\)');
+  static final _playerRegex = RegExp(
+    r'\[Behaviour\] OnPlayer(Joined|Left) (.+?) \((.+?)\)',
+  );
 
   // Default constructor
   LogParserService({PlatformService? platformService})
-      : platformService = platformService ?? PlatformServiceFactory.getPlatformService();
+    : platformService =
+          platformService ?? PlatformServiceFactory.getPlatformService();
 
   // Get metadata from the latest log file
   Future<LogMetadata?> getLatestLogMetadata(ConfigModel config) async {
@@ -95,13 +116,38 @@ class LogParserService {
         return LogMetadata(players: []);
       }
 
-      final logContent = await logFile.readAsString();
+      final stat = await logFile.stat();
+      final fileSize = stat.size;
+      const bytesToRead = 204800; // 200KB
+      final readSize = fileSize > bytesToRead ? bytesToRead : fileSize;
+
+      final raf = await logFile.open(mode: FileMode.read);
+      if (fileSize > readSize) {
+        await raf.setPosition(fileSize - readSize);
+      }
+      final bytes = await raf.read(readSize);
+      await raf.close();
+
+      String logContent = utf8.decode(bytes, allowMalformed: true);
 
       // Find the last world entry
-      final lastEnteringIndex = [
+      int lastEnteringIndex = [
         logContent.lastIndexOf('[Behaviour] Entering world'),
         logContent.lastIndexOf('[Behaviour] Entering Room'),
       ].reduce((a, b) => a > b ? a : b);
+
+      // Fallback to reading the full file if entering room is not in the last 200KB
+      if (lastEnteringIndex == -1 && fileSize > readSize) {
+        developer.log(
+          'Entering Room/World not found in last 200KB, falling back to full read of ${(fileSize / 1024 / 1024).toStringAsFixed(2)}MB log file',
+          name: 'LogParserService',
+        );
+        logContent = await logFile.readAsString();
+        lastEnteringIndex = [
+          logContent.lastIndexOf('[Behaviour] Entering world'),
+          logContent.lastIndexOf('[Behaviour] Entering Room'),
+        ].reduce((a, b) => a > b ? a : b);
+      }
 
       if (lastEnteringIndex == -1) {
         return LogMetadata(players: []);
@@ -133,13 +179,12 @@ class LogParserService {
       // Furality hotfix
       // If no world info was found but we have a room name, create a basic WorldInfo
       if (worldInfo == null && roomName.isNotEmpty) {
-        final worldIdMatch = RegExp(r'Joining (wrld_[^:]+):').firstMatch(relevantLog);
+        final worldIdMatch = RegExp(
+          r'Joining (wrld_[^:]+):',
+        ).firstMatch(relevantLog);
         final worldId = worldIdMatch?.group(1) ?? '';
-        
-        worldInfo = WorldInfo(
-          name: roomName,
-          id: worldId,
-        );
+
+        worldInfo = WorldInfo(name: roomName, id: worldId);
       }
 
       // Extract players
@@ -160,14 +205,12 @@ class LogParserService {
         }
       }
 
-      final players = playerMap.entries
-          .map((e) => Player(id: e.key, name: e.value))
-          .toList();
+      final players =
+          playerMap.entries
+              .map((e) => Player(id: e.key, name: e.value))
+              .toList();
 
-      return LogMetadata(
-        world: worldInfo,
-        players: players,
-      );
+      return LogMetadata(world: worldInfo, players: players);
     } catch (e) {
       developer.log('Error parsing log: $e', name: 'LogParserService');
       return LogMetadata(players: []);
@@ -184,11 +227,17 @@ class LogParserService {
     try {
       final logsDir = Directory(logsDirectory);
       if (!await logsDir.exists()) {
-        developer.log('Logs directory does not exist: $logsDirectory', name: 'LogParserService');
+        developer.log(
+          'Logs directory does not exist: $logsDirectory',
+          name: 'LogParserService',
+        );
         return null;
       }
 
-      developer.log('Searching for log files in: $logsDirectory', name: 'LogParserService');
+      developer.log(
+        'Searching for log files in: $logsDirectory',
+        name: 'LogParserService',
+      );
 
       // Use the same pattern for both platforms since logs are named the same
       const logPattern = 'output_log_';
@@ -224,10 +273,16 @@ class LogParserService {
       });
 
       final selectedFile = logFiles.first.path;
-      developer.log('Selected latest log file: ${path.basename(selectedFile)}', name: 'LogParserService');
+      developer.log(
+        'Selected latest log file: ${path.basename(selectedFile)}',
+        name: 'LogParserService',
+      );
       return selectedFile;
     } catch (e) {
-      developer.log('Error finding latest log file: $e', name: 'LogParserService');
+      developer.log(
+        'Error finding latest log file: $e',
+        name: 'LogParserService',
+      );
       return null;
     }
   }
@@ -238,8 +293,5 @@ class _WorldPattern {
   final RegExp regex;
   final WorldInfo Function(List<String?>, String) handler;
 
-  _WorldPattern({
-    required this.regex,
-    required this.handler,
-  });
+  _WorldPattern({required this.regex, required this.handler});
 }

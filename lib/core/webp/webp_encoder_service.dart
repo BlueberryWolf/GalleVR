@@ -36,13 +36,14 @@ class WebpEncoderService {
           originalWidth: originalWidth,
           originalHeight: originalHeight,
           useResizing: useResizing,
-          encoder: (img, q, m, w, h, resize) => _encodeWithCwebp(
-            img,
-            quality: q,
-            method: m,
-            targetWidth: resize ? w : null,
-            targetHeight: resize ? h : null,
-          ),
+          encoder:
+              (img, q, m, w, h, resize) => _encodeWithCwebp(
+                img,
+                quality: q,
+                method: m,
+                targetWidth: resize ? w : null,
+                targetHeight: resize ? h : null,
+              ),
         );
       } catch (e) {
         developer.log(
@@ -58,7 +59,9 @@ class WebpEncoderService {
           originalWidth: originalWidth,
           originalHeight: originalHeight,
           useResizing: false, // Already resized
-          encoder: (img, q, m, _, __, ___) => _encodeWithImagePackage(img, quality: q),
+          encoder:
+              (img, q, m, _, __, ___) =>
+                  _encodeWithImagePackage(img, quality: q),
         );
       }
     } else if (Platform.isAndroid) {
@@ -71,7 +74,9 @@ class WebpEncoderService {
         originalWidth: originalWidth,
         originalHeight: originalHeight,
         useResizing: false, // Already resized
-        encoder: (img, q, m, _, __, ___) => _encodeWithFlutterImageCompress(img, quality: q),
+        encoder:
+            (img, q, m, _, __, ___) =>
+                _encodeWithFlutterImageCompress(img, quality: q),
       );
     } else {
       // For other platforms, resize the image first
@@ -83,7 +88,8 @@ class WebpEncoderService {
         originalWidth: originalWidth,
         originalHeight: originalHeight,
         useResizing: false, // Already resized
-        encoder: (img, q, m, _, __, ___) => _encodeWithImagePackage(img, quality: q),
+        encoder:
+            (img, q, m, _, __, ___) => _encodeWithImagePackage(img, quality: q),
       );
     }
   }
@@ -102,8 +108,9 @@ class WebpEncoderService {
       int method,
       int? targetWidth,
       int? targetHeight,
-      bool useResizing
-    ) encoder,
+      bool useResizing,
+    )
+    encoder,
     int? originalWidth,
     int? originalHeight,
     bool useResizing = true,
@@ -122,7 +129,8 @@ class WebpEncoderService {
       if (originalWidth > originalHeight) {
         if (originalHeight > maxDimension) {
           targetHeight = maxDimension;
-          targetWidth = (originalWidth * (maxDimension / originalHeight)).round();
+          targetWidth =
+              (originalWidth * (maxDimension / originalHeight)).round();
         } else {
           targetWidth = originalWidth;
           targetHeight = originalHeight;
@@ -130,7 +138,8 @@ class WebpEncoderService {
       } else {
         if (originalWidth > maxDimension) {
           targetWidth = maxDimension;
-          targetHeight = (originalHeight * (maxDimension / originalWidth)).round();
+          targetHeight =
+              (originalHeight * (maxDimension / originalWidth)).round();
         } else {
           targetWidth = originalWidth;
           targetHeight = originalHeight;
@@ -184,7 +193,6 @@ class WebpEncoderService {
 
       currentQuality = (currentQuality - qualityReduction).clamp(5, 100);
       attempts++;
-
     } while (attempts < maxAttempts);
 
     developer.log(
@@ -320,10 +328,11 @@ class WebpEncoderService {
           await cwebpDir.create(recursive: true);
         }
 
-        final assetPath = Platform.isLinux
-            ? 'assets/bin/linux/cwebp'
-            : 'assets/bin/windows/cwebp.exe';
-            
+        final assetPath =
+            Platform.isLinux
+                ? 'assets/bin/linux/cwebp'
+                : 'assets/bin/windows/cwebp.exe';
+
         final byteData = await rootBundle.load(assetPath);
         final buffer = byteData.buffer;
         final bytes = buffer.asUint8List(
@@ -332,7 +341,7 @@ class WebpEncoderService {
         );
 
         await File(cwebpPath).writeAsBytes(bytes);
-        
+
         // ensure the binary is executable on linux
         if (Platform.isLinux) {
           try {
@@ -409,6 +418,69 @@ class WebpEncoderService {
         name: 'WebpEncoderService',
       );
       return await _encodeWithImagePackage(image, quality: quality);
+    }
+  }
+
+  /// Encodes a PNG file directly to WebP format using cwebp on Windows/Linux.
+  Future<void> encodeFileToWebP(
+    String inputPath,
+    String outputPath, {
+    required int quality,
+    int? targetWidth,
+    int? targetHeight,
+    int? maxSizeBytes,
+  }) async {
+    final cwebpPath = await _getCwebpPath();
+
+    int currentQuality = quality;
+    int attempts = 0;
+    const maxAttempts = 5;
+
+    while (attempts < maxAttempts) {
+      final args = [
+        '-m', '4', // Use method 4 for fast encoding
+        '-q', currentQuality.toString(),
+      ];
+
+      if (targetWidth != null && targetHeight != null) {
+        args.addAll([
+          '-resize',
+          targetWidth.toString(),
+          targetHeight.toString(),
+        ]);
+      }
+
+      args.addAll(['-o', outputPath, inputPath]);
+
+      final result = await Process.run(cwebpPath, args);
+      if (result.exitCode != 0) {
+        throw Exception('cwebp failed: ${result.stderr}');
+      }
+
+      final size = await File(outputPath).length();
+      if (maxSizeBytes == null || size <= maxSizeBytes) {
+        developer.log(
+          'Direct cwebp encode succeeded: $size bytes (limit was ${maxSizeBytes ?? 'none'}) with quality $currentQuality on attempt ${attempts + 1}',
+          name: 'WebpEncoderService',
+        );
+        return;
+      }
+
+      developer.log(
+        'Encoded file size $size bytes exceeds limit of $maxSizeBytes bytes. Retrying with lower quality...',
+        name: 'WebpEncoderService',
+      );
+
+      // Reduce quality factor for next attempt
+      currentQuality -= 10;
+      if (currentQuality < 50) {
+        currentQuality = 50;
+      }
+      attempts++;
+
+      if (currentQuality == 50 && attempts >= maxAttempts) {
+        break;
+      }
     }
   }
 }

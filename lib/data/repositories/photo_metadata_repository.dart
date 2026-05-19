@@ -901,6 +901,125 @@ class PhotoMetadataRepository {
       }
     }
 
+    final missingPaths = <String>[];
+    for (final filePath in filePaths) {
+      if (!result.containsKey(filePath)) {
+        missingPaths.add(filePath);
+      }
+    }
+
+    if (missingPaths.isNotEmpty) {
+      final Map<String, String> originalFileLookup = {};
+      final config = AppServiceManager().config;
+      if (config != null && config.photosDirectory.isNotEmpty) {
+        final photosDir = Directory(config.photosDirectory);
+        if (await photosDir.exists()) {
+          try {
+            await for (final entity in photosDir.list(
+              recursive: true,
+              followLinks: false,
+            )) {
+              if (entity is File &&
+                  entity.path.toLowerCase().endsWith('.png')) {
+                final name = path.basename(entity.path);
+                originalFileLookup[name] = entity.path;
+              }
+            }
+          } catch (e) {
+            developer.log(
+              'Error scanning photosDirectory in getMetadataForFiles: $e',
+              name: 'PhotoMetadataRepository',
+            );
+          }
+        }
+      }
+
+      final Map<String, List<String>> patternToFiles = {};
+      for (final filePath in missingPaths) {
+        final filename = path.basename(filePath);
+        final match = vrcFilenameRegex.firstMatch(filename);
+        if (match != null) {
+          final vrcBaseName = match.group(0)!;
+          patternToFiles.putIfAbsent(vrcBaseName, () => []).add(filePath);
+        }
+      }
+
+      if (patternToFiles.isNotEmpty) {
+        final patterns = patternToFiles.keys.toList();
+        final List<String> whereClauses = List.filled(
+          patterns.length,
+          'filename LIKE ?',
+        );
+        final List<String> whereArgs = patterns.map((p) => '%$p%').toList();
+
+        final List<Map<String, dynamic>> patternDbMatches = await db.query(
+          'photo_metadata',
+          where: whereClauses.join(' OR '),
+          whereArgs: whereArgs,
+        );
+
+        if (patternDbMatches.isNotEmpty) {
+          final matchPhotoIds =
+              patternDbMatches.map((m) => m['id'] as String).toList();
+          final matchPlayersMap = await _fetchPlayersForPhotos(
+            db,
+            matchPhotoIds,
+          );
+
+          for (final row in patternDbMatches) {
+            final meta = _fromDbMap(row, matchPlayersMap[row['id']] ?? []);
+            for (final pattern in patterns) {
+              if (meta.filename.contains(pattern)) {
+                final filePathsForPattern = patternToFiles[pattern]!;
+                for (final filePath in filePathsForPattern) {
+                  if (!result.containsKey(filePath)) {
+                    final filename = path.basename(filePath);
+                    result[filePath] = meta.copyWith(
+                      localPath: filePath,
+                      filename: filename,
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      for (final filePath in missingPaths) {
+        if (result.containsKey(filePath)) continue;
+
+        final filename = path.basename(filePath);
+        final match = vrcFilenameRegex.firstMatch(filename);
+        if (match != null) {
+          final vrcBaseName = match.group(0)!;
+          final originalName = '$vrcBaseName.png';
+          final originalPath = originalFileLookup[originalName];
+
+          if (originalPath != null) {
+            try {
+              final extracted = await _processVrcxMetadataBackground(
+                originalPath,
+              );
+              if (extracted != null && extracted.world != null) {
+                final merged = extracted.copyWith(
+                  localPath: filePath,
+                  filename: filename,
+                );
+                await savePhotoMetadata(merged);
+                result[filePath] = merged;
+              }
+            } catch (e) {
+              developer.log(
+                'Failed to extract metadata during batch heal: $e',
+                name: 'PhotoMetadataRepository',
+              );
+            }
+          }
+        }
+      }
+    }
+
     for (final filePath in filePaths) {
       if (result.containsKey(filePath)) continue;
       result[filePath] = await getPhotoMetadataForFile(filePath);

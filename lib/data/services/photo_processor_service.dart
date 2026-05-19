@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
@@ -7,7 +6,6 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/webp/webp_encoder_service.dart';
-import '../../core/native/gallevr_native.dart';
 import '../models/config_model.dart';
 import '../models/log_metadata.dart';
 import '../models/photo_metadata.dart';
@@ -74,91 +72,197 @@ class PhotoProcessorService {
             return null;
           }
 
-          final bytes = await file.readAsBytes();
-          final image = await _decodeImage(bytes);
-
-          if (image == null) {
-            final error = 'Failed to decode image: $filename';
-            developer.log(error, name: 'PhotoProcessorService');
-            PhotoEventService().notifyError(
-              'processing',
-              error,
-              photoPath: sourcePath,
-            );
-            return null;
-          }
-
-          if (!_isValidAspectRatio(image.width, image.height)) {
-            final ratio = (image.width / image.height).toStringAsFixed(2);
-            final error =
-                'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
-            developer.log(error, name: 'PhotoProcessorService');
-            PhotoEventService().notifyError(
-              'processing',
-              error,
-              photoPath: sourcePath,
-            );
-            return null;
-          }
-
-          // Determine quality settings based on user tier
           final authData = await _vrchatService.loadAuthData();
-          final badges = authData?.badges.map((b) => b.toLowerCase()).toList() ?? [];
-          
-          int maxDimension = 1920;
-          int webpQuality = 85;
+          final badges =
+              authData?.badges.map((b) => b.toLowerCase()).toList() ?? [];
 
-          if (badges.contains('mega_supporter')) {
-            maxDimension = 7680; // 8K
-            webpQuality = 95;
-            developer.log('User is Mega Supporter: 8K limit, 95 quality', name: 'PhotoProcessorService');
-          } else if (badges.contains('super_supporter')) {
-            maxDimension = 3840; // 4K
-            webpQuality = 92;
-            developer.log('User is Super Supporter: 4K limit, 92 quality', name: 'PhotoProcessorService');
-          } else if (badges.contains('supporter') || badges.contains('donator')) {
-            maxDimension = 2560; // 2K (1440p)
-            webpQuality = 90;
-            developer.log('User is Supporter: 1440p limit, 90 quality', name: 'PhotoProcessorService');
-          } else {
-            developer.log('User is standard: 1080p limit, 85 quality', name: 'PhotoProcessorService');
-          }
+          final tier = _getTierSettings(badges);
+          final int maxDimension = tier['maxDimension']!;
+          final int webpQuality = tier['webpQuality']!;
+          final int maxSizeBytes = tier['maxSizeBytes']!;
 
-          final processedImage = await _resizeImageIfNeeded(image, maxDimension);
-          developer.log(
-            'Image processed to ${processedImage.width}x${processedImage.height}',
-            name: 'PhotoProcessorService',
-          );
+          if (Platform.isWindows || Platform.isLinux) {
+            developer.log(
+              'Using Windows/Linux fast-path direct cwebp encoding on $sourcePath',
+              name: 'PhotoProcessorService',
+            );
+            int width = 0;
+            int height = 0;
 
-          Uint8List webpBytes = await _encodeToWebP(processedImage, webpQuality);
-          
-          final bool isSupporter = badges.any((b) => [
-            'mega_supporter', 'super_supporter', 'supporter', 'donator'
-          ].contains(b));
+            try {
+              final raf = await file.open(mode: FileMode.read);
+              final headerBytes = await raf.read(24);
+              await raf.close();
 
-          if (!isSupporter && webpBytes.length > 153600) {
-            int currentQuality = webpQuality;
-            developer.log('Initial encode too large for standard user (${webpBytes.length} bytes), starting iterative compression...', name: 'PhotoProcessorService');
-            
-            while (webpBytes.length > 153600 && currentQuality > 50) {
-              currentQuality -= 10;
-              if (currentQuality < 50) currentQuality = 50;
-              webpBytes = await _encodeToWebP(processedImage, currentQuality);
-              developer.log('Retry quality $currentQuality produced ${webpBytes.length} bytes', name: 'PhotoProcessorService');
-              if (currentQuality <= 50) break;
+              if (headerBytes.length >= 24 &&
+                  headerBytes[0] == 0x89 &&
+                  headerBytes[1] == 0x50 &&
+                  headerBytes[2] == 0x4E &&
+                  headerBytes[3] == 0x47) {
+                final bd = ByteData.sublistView(headerBytes);
+                width = bd.getInt32(16, Endian.big);
+                height = bd.getInt32(20, Endian.big);
+              }
+            } catch (e) {
+              developer.log(
+                'Failed to parse PNG header: $e',
+                name: 'PhotoProcessorService',
+              );
             }
+
+            if (width <= 0 || height <= 0) {
+              final error =
+                  'Failed to determine image dimensions from header: $filename';
+              developer.log(error, name: 'PhotoProcessorService');
+              PhotoEventService().notifyError(
+                'processing',
+                error,
+                photoPath: sourcePath,
+              );
+              return null;
+            }
+
+            if (!_isValidAspectRatio(width, height)) {
+              final ratio = (width / height).toStringAsFixed(2);
+              final error =
+                  'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
+              developer.log(error, name: 'PhotoProcessorService');
+              PhotoEventService().notifyError(
+                'processing',
+                error,
+                photoPath: sourcePath,
+              );
+              return null;
+            }
+
+            int? targetWidth;
+            int? targetHeight;
+
+            if (width > maxDimension || height > maxDimension) {
+              if (width > height) {
+                targetWidth = maxDimension;
+                targetHeight = (height * (maxDimension / width)).round();
+              } else {
+                targetHeight = maxDimension;
+                targetWidth = (width * (maxDimension / height)).round();
+              }
+            }
+
+            final int processedWidth = targetWidth ?? width;
+            final int processedHeight = targetHeight ?? height;
+            final int processedPixels = processedWidth * processedHeight;
+            final int maxTierPixels = tier['maxTierPixels']!;
+
+            int scaledMaxSizeBytes =
+                (maxSizeBytes * (processedPixels / maxTierPixels)).round();
+            scaledMaxSizeBytes = scaledMaxSizeBytes.clamp(153600, maxSizeBytes);
+            if (scaledMaxSizeBytes > maxSizeBytes) {
+              scaledMaxSizeBytes = maxSizeBytes;
+            }
+
+            developer.log(
+              'Dynamic size ceiling: $scaledMaxSizeBytes bytes for resolution ${processedWidth}x$processedHeight (max tier limit: $maxSizeBytes bytes)',
+              name: 'PhotoProcessorService',
+            );
+
+            await _webpEncoderService.encodeFileToWebP(
+              sourcePath,
+              outputPath,
+              quality: webpQuality,
+              targetWidth: targetWidth,
+              targetHeight: targetHeight,
+              maxSizeBytes: scaledMaxSizeBytes,
+            );
+
+            developer.log(
+              'Direct cwebp encoding completed successfully: $outputPath',
+              name: 'PhotoProcessorService',
+            );
+          } else {
+            final bytes = await file.readAsBytes();
+            final image = await _decodeImage(bytes);
+
+            if (image == null) {
+              final error = 'Failed to decode image: $filename';
+              developer.log(error, name: 'PhotoProcessorService');
+              PhotoEventService().notifyError(
+                'processing',
+                error,
+                photoPath: sourcePath,
+              );
+              return null;
+            }
+
+            if (!_isValidAspectRatio(image.width, image.height)) {
+              final ratio = (image.width / image.height).toStringAsFixed(2);
+              final error =
+                  'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
+              developer.log(error, name: 'PhotoProcessorService');
+              PhotoEventService().notifyError(
+                'processing',
+                error,
+                photoPath: sourcePath,
+              );
+              return null;
+            }
+
+            final processedImage = await _resizeImageIfNeeded(
+              image,
+              maxDimension,
+            );
+
+            final int processedPixels =
+                processedImage.width * processedImage.height;
+            final int maxTierPixels = tier['maxTierPixels']!;
+
+            int scaledMaxSizeBytes =
+                (maxSizeBytes * (processedPixels / maxTierPixels)).round();
+            scaledMaxSizeBytes = scaledMaxSizeBytes.clamp(153600, maxSizeBytes);
+            if (scaledMaxSizeBytes > maxSizeBytes) {
+              scaledMaxSizeBytes = maxSizeBytes;
+            }
+
+            developer.log(
+              'Fallback path dynamic size ceiling: $scaledMaxSizeBytes bytes for resolution ${processedImage.width}x${processedImage.height} (max tier limit: $maxSizeBytes bytes)',
+              name: 'PhotoProcessorService',
+            );
+
+            Uint8List webpBytes = await _encodeToWebP(
+              processedImage,
+              webpQuality,
+            );
+
+            if (webpBytes.length > scaledMaxSizeBytes) {
+              int currentQuality = webpQuality;
+              developer.log(
+                'Initial encode too large for user tier (${webpBytes.length} bytes, limit is $scaledMaxSizeBytes), starting iterative compression...',
+                name: 'PhotoProcessorService',
+              );
+
+              while (webpBytes.length > scaledMaxSizeBytes &&
+                  currentQuality > 50) {
+                currentQuality -= 10;
+                if (currentQuality < 50) currentQuality = 50;
+                webpBytes = await _encodeToWebP(processedImage, currentQuality);
+                developer.log(
+                  'Retry quality $currentQuality produced ${webpBytes.length} bytes',
+                  name: 'PhotoProcessorService',
+                );
+                if (currentQuality <= 50) break;
+              }
+            }
+
+            developer.log(
+              'Final WebP: ${webpBytes.length} bytes (Quality: $webpQuality / Limit: $scaledMaxSizeBytes)',
+              name: 'PhotoProcessorService',
+            );
+
+            await File(outputPath).writeAsBytes(webpBytes);
+            developer.log(
+              'Saved WebP file to: $outputPath',
+              name: 'PhotoProcessorService',
+            );
           }
-
-          developer.log(
-            'Final WebP: ${webpBytes.length} bytes (Quality: $webpQuality / Supporter: $isSupporter)',
-            name: 'PhotoProcessorService',
-          );
-
-          await File(outputPath).writeAsBytes(webpBytes);
-          developer.log(
-            'Saved WebP file to: $outputPath',
-            name: 'PhotoProcessorService',
-          );
 
           final sourceFile = File(sourcePath);
           final sourceStats = sourceFile.statSync();
@@ -203,51 +307,54 @@ class PhotoProcessorService {
               photoPath: sourcePath,
             );
 
-            _photoUploadService.uploadPhoto(
-              outputPath,
-              config,
-              metadata,
-              metadata: photoMetadata,
-              originalPath: sourcePath,
-              deleteFileOnComplete: true,
-            ).then((uploadSuccess) async {
-              if (uploadSuccess) {
-                developer.log(
-                  'Background photo upload completed successfully',
-                  name: 'PhotoProcessorService',
-                );
+            _photoUploadService
+                .uploadPhoto(
+                  outputPath,
+                  config,
+                  metadata,
+                  metadata: photoMetadata,
+                  originalPath: sourcePath,
+                  deleteFileOnComplete: true,
+                )
+                .then((uploadSuccess) async {
+                  if (uploadSuccess) {
+                    developer.log(
+                      'Background photo upload completed successfully',
+                      name: 'PhotoProcessorService',
+                    );
 
-                final updatedMetadata = await _photoMetadataRepository
-                    .getPhotoMetadataForFile(sourcePath);
-                if (updatedMetadata != null &&
-                    updatedMetadata.galleryUrl != null) {
+                    final updatedMetadata = await _photoMetadataRepository
+                        .getPhotoMetadataForFile(sourcePath);
+                    if (updatedMetadata != null &&
+                        updatedMetadata.galleryUrl != null) {
+                      developer.log(
+                        'Photo has gallery URL: ${updatedMetadata.galleryUrl}',
+                        name: 'PhotoProcessorService',
+                      );
+                    } else {
+                      developer.log(
+                        'No gallery URL found after background upload',
+                        name: 'PhotoProcessorService',
+                      );
+                      PhotoEventService().notifyError(
+                        'warning',
+                        'Upload succeeded but no gallery URL was found',
+                        photoPath: sourcePath,
+                      );
+                    }
+                  } else {
+                    developer.log(
+                      'Background photo upload failed',
+                      name: 'PhotoProcessorService',
+                    );
+                  }
+                })
+                .catchError((e) {
                   developer.log(
-                    'Photo has gallery URL: ${updatedMetadata.galleryUrl}',
+                    'Unhandled error in background photo upload: $e',
                     name: 'PhotoProcessorService',
                   );
-                } else {
-                  developer.log(
-                    'No gallery URL found after background upload',
-                    name: 'PhotoProcessorService',
-                  );
-                  PhotoEventService().notifyError(
-                    'warning',
-                    'Upload succeeded but no gallery URL was found',
-                    photoPath: sourcePath,
-                  );
-                }
-              } else {
-                developer.log(
-                  'Background photo upload failed',
-                  name: 'PhotoProcessorService',
-                );
-              }
-            }).catchError((e) {
-              developer.log(
-                'Unhandled error in background photo upload: $e',
-                name: 'PhotoProcessorService',
-              );
-            });
+                });
           }
 
           if (!config.uploadEnabled) {
@@ -261,10 +368,16 @@ class PhotoProcessorService {
               final webpFile = File(outputPath);
               if (await webpFile.exists()) {
                 await webpFile.delete();
-                developer.log('Deleted temporary WebP file: $outputPath', name: 'PhotoProcessorService');
+                developer.log(
+                  'Deleted temporary WebP file: $outputPath',
+                  name: 'PhotoProcessorService',
+                );
               }
             } catch (e) {
-              developer.log('Error deleting temporary WebP file: $e', name: 'PhotoProcessorService');
+              developer.log(
+                'Error deleting temporary WebP file: $e',
+                name: 'PhotoProcessorService',
+              );
             }
           }
 
@@ -317,7 +430,10 @@ class PhotoProcessorService {
     }, bytes);
   }
 
-  Future<img.Image> _resizeImageIfNeeded(img.Image image, int maxDimension) async {
+  Future<img.Image> _resizeImageIfNeeded(
+    img.Image image,
+    int maxDimension,
+  ) async {
     if (image.width <= maxDimension && image.height <= maxDimension) {
       return image;
     }
@@ -325,7 +441,7 @@ class PhotoProcessorService {
     return await compute((Map<String, dynamic> params) {
       final img.Image image = params['image'];
       final int maxDim = params['maxDim'];
-      
+
       int newWidth, newHeight;
 
       if (image.width > image.height) {
@@ -351,5 +467,39 @@ class PhotoProcessorService {
       quality: quality,
       method: 6,
     );
+  }
+
+  Map<String, dynamic> _getTierSettings(List<String> badges) {
+    if (badges.contains('mega_supporter') ||
+        badges.contains('mega_supporter')) {
+      return {
+        'maxDimension': 7680, // 8K
+        'webpQuality': 95,
+        'maxSizeBytes': 7864320, // 7.5MB limit
+        'maxTierPixels': 33177600, // 7680x4320
+      };
+    } else if (badges.contains('super_supporter') ||
+        badges.contains('super supporter')) {
+      return {
+        'maxDimension': 3840, // 4K
+        'webpQuality': 92,
+        'maxSizeBytes': 2621440, // 2.5MB limit
+        'maxTierPixels': 8294400, // 3840x2160
+      };
+    } else if (badges.contains('supporter')) {
+      return {
+        'maxDimension': 2560, // 2K
+        'webpQuality': 90,
+        'maxSizeBytes': 1048576, // 1MB limit
+        'maxTierPixels': 3686400, // 2560x1440
+      };
+    } else {
+      return {
+        'maxDimension': 1920, // 1080p
+        'webpQuality': 85,
+        'maxSizeBytes': 153600, // 150KB limit
+        'maxTierPixels': 2073600, // 1920x1080
+      };
+    }
   }
 }
