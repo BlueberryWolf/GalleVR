@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_theme.dart';
 import '../../core/services/permission_service.dart';
@@ -97,6 +98,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       // Check logs directory availability on non-Windows platforms
       _checkLogsDirectoryAvailability();
     }
+
+    _loadCurrentStep();
   }
 
   Future<void> _checkVRChatLoggingStatus() async {
@@ -353,6 +356,40 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
   }
 
+  Future<void> _loadCurrentStep() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedStep = prefs.getInt('onboarding_step') ?? 0;
+      if (savedStep > 0 && mounted) {
+        setState(() {
+          _currentStep = savedStep;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(savedStep);
+          }
+        });
+      }
+    } catch (e) {
+      developer.log(
+        'Error loading saved onboarding step: $e',
+        name: 'OnboardingScreen',
+      );
+    }
+  }
+
+  Future<void> _saveCurrentStep(int step) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('onboarding_step', step);
+    } catch (e) {
+      developer.log(
+        'Error saving onboarding step: $e',
+        name: 'OnboardingScreen',
+      );
+    }
+  }
+
   Future<void> _requestPermissions() async {
     if (Platform.isAndroid) {
       setState(() {
@@ -417,6 +454,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     if (Platform.isWindows) {
       await _saveWindowsSettings();
     }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('onboarding_step');
+    } catch (_) {}
 
     await _appServiceManager.markOnboardingComplete();
 
@@ -495,6 +537,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             setState(() {
               _currentStep = index;
             });
+            _saveCurrentStep(index);
           },
           children: _getSteps(),
         ),
@@ -1773,18 +1816,20 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       color: const Color.fromRGBO(255, 152, 0, 0.3),
                     ),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.info_outline_rounded,
                         color: Colors.orange,
                         size: 20,
                       ),
-                      SizedBox(width: 12),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Please enable VRChat full logging to continue setup.',
-                          style: TextStyle(
+                          Platform.isAndroid
+                              ? 'VRChat logging is off. You must enable logging in VRChat settings first, and then restart VRChat for logging to take effect before you can continue.'
+                              : 'Please enable VRChat full logging to continue setup.',
+                          style: const TextStyle(
                             color: Colors.orange,
                             fontWeight: FontWeight.w500,
                             fontSize: 14,
