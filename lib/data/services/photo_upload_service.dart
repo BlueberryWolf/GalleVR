@@ -327,4 +327,22 @@ class PhotoUploadService {
       localPath: photoPath,
     );
   }
+
+  static bool? _isCurlInstalledCache;
+
+  static Future<bool> checkCurlInstalled() async {
+    if (_isCurlInstalledCache != null) return _isCurlInstalledCache!;
+    if (!Platform.isWindows && !Platform.isLinux) {
+      _isCurlInstalledCache = false;
+      return false;
+    }
+    try {
+      final result = await Process.run('curl', ['--version']);
+      _isCurlInstalledCache = result.exitCode == 0;
+      return _isCurlInstalledCache!;
+    } catch (_) {
+      _isCurlInstalledCache = false;
+      return false;
+    }
+  }
 }

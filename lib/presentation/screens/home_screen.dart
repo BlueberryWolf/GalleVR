@@ -7,6 +7,8 @@ import 'settings_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/refresh_button.dart';
 import '../controllers/photos_controller.dart';
+import '../../data/services/photo_upload_service.dart';
+import 'dart:io';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.initialTabIndex = 0});
@@ -27,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
   final PhotosController _photosController = PhotosController();
+  bool _showCurlWarning = false;
 
   late final List<_NavItem> _navItems;
 
@@ -35,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
 
     _currentIndex = widget.initialTabIndex;
+    _checkCurl();
 
     _navItems = [
       _NavItem(
@@ -113,9 +117,75 @@ class _HomeScreenState extends State<HomeScreen>
           Expanded(
             child: RepaintBoundary(
               child: Column(
-                children: [_buildHeader(isSmallScreen), contentStack],
+                children: [
+                  _buildHeader(isSmallScreen),
+                  if (_showCurlWarning) _buildCurlWarningBanner(),
+                  contentStack,
+                ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _checkCurl() async {
+    if (Platform.isWindows || Platform.isLinux) {
+      final hasCurl = await PhotoUploadService.checkCurlInstalled();
+      if (!hasCurl && mounted) {
+        setState(() {
+          _showCurlWarning = true;
+        });
+      }
+    }
+  }
+
+  Widget _buildCurlWarningBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF7c2d12).withOpacity(0.15),
+        border: Border(
+          bottom: BorderSide(
+            color: const Color(0xFFea580c).withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: Color(0xFFf97316),
+            size: 18,
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'curl is not installed on your system. GalleVR will use a slower fallback uploader.',
+              style: TextStyle(
+                color: Color(0xFFffedd5),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          IconButton(
+            icon: const Icon(
+              Icons.close_rounded,
+              size: 16,
+              color: Colors.white70,
+            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: () {
+              setState(() {
+                _showCurlWarning = false;
+              });
+            },
           ),
         ],
       ),
@@ -274,10 +344,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: Icon(subIcon, size: 12),
           ),
           const SizedBox(width: 6),
-          Text(
-            subtext,
-            style: textStyle,
-          ),
+          Text(subtext, style: textStyle),
         ],
       ),
     );
@@ -617,6 +684,7 @@ class _HeaderActionButton extends StatelessWidget {
     );
   }
 }
+
 class _GradientText extends StatelessWidget {
   const _GradientText(
     this.text, {
