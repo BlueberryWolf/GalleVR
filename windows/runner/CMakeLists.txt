@@ -49,8 +49,14 @@ add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
 add_executable(GalleVR-Migrator WIN32
   "migrator.cpp"
   "Runner.rc"
-  "migrator.exe.manifest"
+  "runner.exe.manifest"
 )
 apply_standard_settings(GalleVR-Migrator)
 target_link_libraries(GalleVR-Migrator PRIVATE "dwmapi.lib")
 target_include_directories(GalleVR-Migrator PRIVATE "${CMAKE_SOURCE_DIR}")
+
+if(MSVC)
+  set_target_properties(GalleVR-Migrator PROPERTIES
+    LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator'\""
+  )
+endif()
