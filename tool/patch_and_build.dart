@@ -79,10 +79,10 @@ begin
   Result := True;
   
   // Extract and run our elevated migrator helper if the old directory exists
-  if DirExists('C:\Program Files\GalleVR') then
+  if DirExists(ExpandConstant('{commonpf}\GalleVR')) then
   begin
     ExtractTemporaryFile('GalleVR-Migrator.exe');
-    ShellExec('runas', ExpandConstant('{tmp}\GalleVR-Migrator.exe'), '', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    ShellExec('runas', ExpandConstant('{tmp}\GalleVR-Migrator.exe'), ExpandConstant('"{commonpf}\GalleVR"'), '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
 ''';

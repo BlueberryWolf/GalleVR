@@ -49,7 +49,7 @@ add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
 add_executable(GalleVR-Migrator WIN32
   "migrator.cpp"
   "Runner.rc"
-  "runner.exe.manifest"
+  "migrator.exe.manifest"
 )
 apply_standard_settings(GalleVR-Migrator)
 target_link_libraries(GalleVR-Migrator PRIVATE "dwmapi.lib")
