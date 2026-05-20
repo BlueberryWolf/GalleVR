@@ -81,9 +81,9 @@ class PhotoProcessorService {
           final int webpQuality = tier['webpQuality']!;
           final int maxSizeBytes = tier['maxSizeBytes']!;
 
-          if (Platform.isWindows || Platform.isLinux) {
+          if (Platform.isWindows || Platform.isLinux || Platform.isAndroid) {
             developer.log(
-              'Using Windows/Linux fast-path direct cwebp encoding on $sourcePath',
+              'Using fast-path direct cwebp/native encoding on $sourcePath',
               name: 'PhotoProcessorService',
             );
             int width = 0;
@@ -172,10 +172,12 @@ class PhotoProcessorService {
               targetWidth: targetWidth,
               targetHeight: targetHeight,
               maxSizeBytes: scaledMaxSizeBytes,
+              originalWidth: width,
+              originalHeight: height,
             );
 
             developer.log(
-              'Direct cwebp encoding completed successfully: $outputPath',
+              'Direct cwebp/native encoding completed successfully: $outputPath',
               name: 'PhotoProcessorService',
             );
           } else {

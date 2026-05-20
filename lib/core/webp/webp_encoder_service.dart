@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:developer' as developer;
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
@@ -67,17 +68,45 @@ class WebpEncoderService {
     } else if (Platform.isAndroid) {
       // For Android, resize the image first
       final resizedImage = await _resizeImageIfNeeded(image);
-      return await _encodeWithSizeConstraint(
-        resizedImage,
-        initialQuality: quality,
-        method: method,
-        originalWidth: originalWidth,
-        originalHeight: originalHeight,
-        useResizing: false, // Already resized
-        encoder:
-            (img, q, m, _, __, ___) =>
-                _encodeWithFlutterImageCompress(img, quality: q),
+      final tempDir = await getTemporaryDirectory();
+      final tempPngPath = path.join(
+        tempDir.path,
+        'temp_encode_${DateTime.now().millisecondsSinceEpoch}.png',
       );
+
+      try {
+        final pngBytes = await compute((img.Image imgObj) {
+          return Uint8List.fromList(img.encodePng(imgObj));
+        }, resizedImage);
+        await File(tempPngPath).writeAsBytes(pngBytes);
+
+        return await _encodeWithSizeConstraint(
+          resizedImage,
+          initialQuality: quality,
+          method: method,
+          originalWidth: originalWidth,
+          originalHeight: originalHeight,
+          useResizing: false, // Already resized
+          encoder: (img, q, m, _, __, ___) async {
+            final compressed = await FlutterImageCompress.compressWithFile(
+              tempPngPath,
+              quality: q,
+              format: CompressFormat.webp,
+            );
+            if (compressed == null) {
+              throw Exception('flutter_image_compress returned null');
+            }
+            return compressed;
+          },
+        );
+      } finally {
+        try {
+          final tempFile = File(tempPngPath);
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        } catch (_) {}
+      }
     } else {
       // For other platforms, resize the image first
       final resizedImage = await _resizeImageIfNeeded(image);
@@ -421,7 +450,8 @@ class WebpEncoderService {
     }
   }
 
-  /// Encodes a PNG file directly to WebP format using cwebp on Windows/Linux.
+  /// Encodes a PNG file directly to WebP format using cwebp on Windows/Linux,
+  /// or native FlutterImageCompress on Android.
   Future<void> encodeFileToWebP(
     String inputPath,
     String outputPath, {
@@ -429,7 +459,80 @@ class WebpEncoderService {
     int? targetWidth,
     int? targetHeight,
     int? maxSizeBytes,
+    int? originalWidth,
+    int? originalHeight,
   }) async {
+    if (Platform.isAndroid) {
+      int currentQuality = quality;
+      int attempts = 0;
+      const maxAttempts = 5;
+
+      int width = originalWidth ?? 0;
+      int height = originalHeight ?? 0;
+
+      if (width <= 0 || height <= 0) {
+        try {
+          final file = File(inputPath);
+          final raf = await file.open(mode: FileMode.read);
+          final headerBytes = await raf.read(24);
+          await raf.close();
+
+          if (headerBytes.length >= 24 &&
+              headerBytes[0] == 0x89 &&
+              headerBytes[1] == 0x50 &&
+              headerBytes[2] == 0x4E &&
+              headerBytes[3] == 0x47) {
+            final bd = ByteData.sublistView(headerBytes);
+            width = bd.getInt32(16, Endian.big);
+            height = bd.getInt32(20, Endian.big);
+          }
+        } catch (_) {}
+      }
+
+      final int finalMinWidth = targetWidth ?? (width > 0 ? width : 1920);
+      final int finalMinHeight = targetHeight ?? (height > 0 ? height : 1080);
+
+      while (attempts < maxAttempts) {
+        final result = await FlutterImageCompress.compressAndGetFile(
+          inputPath,
+          outputPath,
+          quality: currentQuality,
+          minWidth: finalMinWidth,
+          minHeight: finalMinHeight,
+          format: CompressFormat.webp,
+        );
+
+        if (result == null) {
+          throw Exception('flutter_image_compress returned null');
+        }
+
+        final size = await File(outputPath).length();
+        if (maxSizeBytes == null || size <= maxSizeBytes) {
+          developer.log(
+            'Direct Android FlutterImageCompress encode succeeded: $size bytes (limit was ${maxSizeBytes ?? 'none'}) with quality $currentQuality on attempt ${attempts + 1}',
+            name: 'WebpEncoderService',
+          );
+          return;
+        }
+
+        developer.log(
+          'Encoded file size $size bytes exceeds limit of $maxSizeBytes bytes on Android. Retrying with lower quality...',
+          name: 'WebpEncoderService',
+        );
+
+        currentQuality -= 10;
+        if (currentQuality < 50) {
+          currentQuality = 50;
+        }
+        attempts++;
+
+        if (currentQuality == 50 && attempts >= maxAttempts) {
+          break;
+        }
+      }
+      return;
+    }
+
     final cwebpPath = await _getCwebpPath();
 
     int currentQuality = quality;

@@ -258,8 +258,6 @@ class PhotoUploadService {
       photoPath: photoPath,
     );
 
-    PhotoEventService().notifyPhotoUploaded(originalPath ?? photoPath);
-
     final updatedMetadata = photoMetadata.copyWith(galleryUrl: galleryUrl);
 
     final saveResult = await _photoMetadataRepository.savePhotoMetadata(
@@ -269,6 +267,8 @@ class PhotoUploadService {
       'Updated metadata with gallery URL, save result: $saveResult',
       name: 'PhotoUploadService',
     );
+
+    PhotoEventService().notifyPhotoUploaded(originalPath ?? photoPath);
 
     final verifiedMetadata = await _photoMetadataRepository
         .getPhotoMetadataForFile(photoPath);

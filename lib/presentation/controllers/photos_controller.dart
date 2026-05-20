@@ -145,53 +145,15 @@ class PhotosController extends ValueNotifier<PhotosState> {
   Future<List<FileSystemEntity>> _scanDirectoryAsync(
     Directory directory,
   ) async {
-    final List<File> photos = [];
     final Set<String> knownNonVrcx =
         await _metadataRepository.getNonVrcxFilenames();
 
-    try {
-      await for (final entity in directory.list(
-        recursive: true,
-        followLinks: false,
-      )) {
-        if (entity is File &&
-            path.extension(entity.path).toLowerCase() == '.png') {
-          final filename = path.basename(entity.path);
-          if (!knownNonVrcx.contains(filename)) {
-            photos.add(entity);
-          }
-        }
-      }
-    } catch (e) {
-      developer.log('Error listing directory: $e', name: 'PhotosController');
-    }
+    final sortedPaths = await compute(
+      _scanDirectoryIsolate,
+      ScanParams(directory.path, knownNonVrcx),
+    );
 
-    if (photos.isEmpty) return [];
-
-    final List<MapEntry<File, DateTime>> photoStats = [];
-
-    const batchSize = 100;
-    for (var i = 0; i < photos.length; i += batchSize) {
-      final end =
-          (i + batchSize < photos.length) ? i + batchSize : photos.length;
-      final batch = photos.sublist(i, end);
-
-      final results = await Future.wait(
-        batch.map((file) async {
-          try {
-            final stat = await file.stat();
-            return MapEntry(file, stat.modified);
-          } catch (e) {
-            return MapEntry(file, DateTime(1970));
-          }
-        }),
-      );
-      photoStats.addAll(results);
-    }
-
-    photoStats.sort((a, b) => b.value.compareTo(a.value));
-
-    return photoStats.map((e) => e.key).toList();
+    return sortedPaths.map((p) => File(p)).toList();
   }
 
   Future<void> loadMore() async {
@@ -260,4 +222,46 @@ class PhotosController extends ValueNotifier<PhotosState> {
     newMetadataMap[filePath] = metadata;
     value = value.copyWith(metadataMap: newMetadataMap);
   }
+}
+
+class ScanParams {
+  final String directoryPath;
+  final Set<String> knownNonVrcx;
+
+  ScanParams(this.directoryPath, this.knownNonVrcx);
+}
+
+Future<List<String>> _scanDirectoryIsolate(ScanParams params) async {
+  final directory = Directory(params.directoryPath);
+  if (!directory.existsSync()) return [];
+
+  final List<File> photos = [];
+  try {
+    for (final entity in directory.listSync(recursive: true, followLinks: false)) {
+      if (entity is File &&
+          path.extension(entity.path).toLowerCase() == '.png') {
+        final filename = path.basename(entity.path);
+        if (!params.knownNonVrcx.contains(filename)) {
+          photos.add(entity);
+        }
+      }
+    }
+  } catch (e) {
+    developer.log('Error listing directory in isolate: $e', name: 'PhotosController');
+  }
+
+  if (photos.isEmpty) return [];
+
+  final List<MapEntry<String, DateTime>> photoStats = [];
+  for (final file in photos) {
+    try {
+      final stat = file.statSync();
+      photoStats.add(MapEntry(file.path, stat.modified));
+    } catch (e) {
+      photoStats.add(MapEntry(file.path, DateTime(1970)));
+    }
+  }
+
+  photoStats.sort((a, b) => b.value.compareTo(a.value));
+  return photoStats.map((e) => e.key).toList();
 }

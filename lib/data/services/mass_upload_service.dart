@@ -73,9 +73,9 @@ class MassUploadService {
         'gallevr_mass_${DateTime.now().microsecondsSinceEpoch}_${path.basenameWithoutExtension(filePath)}.webp',
       );
 
-      if (Platform.isWindows || Platform.isLinux) {
+      if (Platform.isWindows || Platform.isLinux || Platform.isAndroid) {
         developer.log(
-          'Using Windows/Linux fast-path direct cwebp encoding for mass upload: $filePath',
+          'Using fast-path direct cwebp/native encoding for mass upload: $filePath',
           name: 'MassUploadService',
         );
         int width = 0;
@@ -140,6 +140,8 @@ class MassUploadService {
           targetWidth: targetWidth,
           targetHeight: targetHeight,
           maxSizeBytes: scaledMaxSizeBytes,
+          originalWidth: width,
+          originalHeight: height,
         );
       } else {
         Uint8List? webpBytes;

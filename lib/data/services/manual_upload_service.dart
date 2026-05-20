@@ -260,7 +260,80 @@ class ManualUploadService {
       final fileName = path.basenameWithoutExtension(sourcePath);
       final outputPath = path.join(outputDir.path, '$fileName.webp');
 
-      // Read and decode the image
+      if (Platform.isWindows || Platform.isLinux || Platform.isAndroid) {
+        developer.log(
+          'Using fast-path direct cwebp/native encoding for manual upload: $sourcePath',
+          name: 'ManualUploadService',
+        );
+        int width = 0;
+        int height = 0;
+
+        try {
+          final raf = await file.open(mode: FileMode.read);
+          final headerBytes = await raf.read(24);
+          await raf.close();
+
+          if (headerBytes.length >= 24 &&
+              headerBytes[0] == 0x89 &&
+              headerBytes[1] == 0x50 &&
+              headerBytes[2] == 0x4E &&
+              headerBytes[3] == 0x47) {
+            final bd = ByteData.sublistView(headerBytes);
+            width = bd.getInt32(16, Endian.big);
+            height = bd.getInt32(20, Endian.big);
+          }
+        } catch (e) {
+          developer.log(
+            'Failed to parse PNG header: $e',
+            name: 'ManualUploadService',
+          );
+        }
+
+        if (width <= 0 || height <= 0) {
+          throw Exception('Failed to determine image dimensions from header');
+        }
+
+        if (!_isValidAspectRatio(width, height)) {
+          final ratio = (width / height).toStringAsFixed(2);
+          final error = 'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
+          developer.log(error, name: 'ManualUploadService');
+          PhotoEventService().notifyError('processing', error, photoPath: sourcePath);
+          throw Exception(error);
+        }
+
+        int? targetWidth;
+        int? targetHeight;
+        const maxDimension = 1080;
+
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            targetWidth = maxDimension;
+            targetHeight = (height * (maxDimension / width)).round();
+          } else {
+            targetHeight = maxDimension;
+            targetWidth = (width * (maxDimension / height)).round();
+          }
+        }
+
+        await _webpEncoderService.encodeFileToWebP(
+          sourcePath,
+          outputPath,
+          quality: 85,
+          targetWidth: targetWidth,
+          targetHeight: targetHeight,
+          maxSizeBytes: 153600, // 150KB
+          originalWidth: width,
+          originalHeight: height,
+        );
+
+        developer.log(
+          'Fast-path direct encoding completed successfully: $outputPath',
+          name: 'ManualUploadService',
+        );
+        return outputPath;
+      }
+
+      // Read and decode the image (fallback)
       final bytes = await file.readAsBytes();
       final image = await compute((Uint8List bytes) {
         return img.decodeImage(bytes);
