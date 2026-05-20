@@ -95,6 +95,33 @@ bool DeleteDirectory(const std::wstring& path) {
   }
 }
 
+// Cleans up legacy shortcuts from both common and user folders
+void CleanLegacyShortcuts() {
+  WriteLog(L"Cleaning legacy shortcuts...");
+  
+  int csidls[] = {
+    CSIDL_COMMON_PROGRAMS,
+    CSIDL_COMMON_DESKTOPDIRECTORY,
+    CSIDL_PROGRAMS,
+    CSIDL_DESKTOPDIRECTORY
+  };
+
+  for (int csidl : csidls) {
+    wchar_t folderPath[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathW(NULL, csidl, NULL, SHGFP_TYPE_CURRENT, folderPath))) {
+      std::wstring shortcutPath = std::wstring(folderPath) + L"\\GalleVR.lnk";
+      if (PathFileExistsW(shortcutPath.c_str())) {
+        WriteLog(L"Found legacy shortcut: " + shortcutPath);
+        if (DeleteFileW(shortcutPath.c_str())) {
+          WriteLog(L"Successfully deleted legacy shortcut: " + shortcutPath);
+        } else {
+          WriteLog(L"Failed to delete legacy shortcut: " + shortcutPath + L" (Error: " + std::to_wstring(GetLastError()) + L")");
+        }
+      }
+    }
+  }
+}
+
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
                      _In_ LPWSTR lpCmdLine,
@@ -119,6 +146,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
   }
 
   DeleteDirectory(legacyPath);
+  
+  // Clean up legacy shortcuts to prevent dead link icons
+  CleanLegacyShortcuts();
 
   WriteLog(L"GalleVR-Migrator completed successfully.");
   return 0;
