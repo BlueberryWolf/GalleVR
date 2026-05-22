@@ -757,16 +757,18 @@ class PhotoMetadataRepository {
               );
             } else {
               metadata = metadata.copyWith(
-                galleryUrl: existingMeta.galleryUrl ?? metadata.galleryUrl,
+                galleryUrl: (metadata.galleryUrl != null && metadata.galleryUrl!.isNotEmpty)
+                    ? metadata.galleryUrl
+                    : existingMeta.galleryUrl,
                 views:
                     existingMeta.views > metadata.views
                         ? existingMeta.views
                         : metadata.views,
-                world: existingMeta.world ?? metadata.world,
+                world: metadata.world ?? existingMeta.world,
                 players:
-                    existingMeta.players.isNotEmpty
-                        ? existingMeta.players
-                        : metadata.players,
+                    metadata.players.isNotEmpty
+                        ? metadata.players
+                        : existingMeta.players,
                 isEdited: existingMeta.isEdited || metadata.isEdited,
                 isNonVrcx:
                     (existingMeta.galleryUrl != null ||

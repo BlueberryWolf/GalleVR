@@ -479,15 +479,7 @@ class AppServiceManager {
       );
     }
 
-    // Logout from VRChat service if needed
-    try {
-      await _vrchatService.logout();
-    } catch (e) {
-      developer.log(
-        'Error during VRChat logout on dispose: $e',
-        name: 'AppServiceManager',
-      );
-    }
+
 
     // Dispose update service
     try {

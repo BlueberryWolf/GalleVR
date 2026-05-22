@@ -188,8 +188,10 @@ class PhotosController extends ValueNotifier<PhotosState> {
     final List<String> badPaths = [];
     metadata.forEach((filePath, meta) {
       if (meta == null ||
-          (meta.isNonVrcx && meta.galleryUrl == null) ||
-          (meta.galleryUrl == null && meta.world == null && meta.players.isEmpty)) {
+          (meta.isNonVrcx &&
+           meta.galleryUrl == null &&
+           meta.world == null &&
+           meta.players.isEmpty)) {
         badPaths.add(filePath);
       }
     });
