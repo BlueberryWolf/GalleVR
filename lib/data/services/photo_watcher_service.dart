@@ -8,6 +8,8 @@ import '../../core/platform/platform_service.dart';
 import '../../core/platform/platform_service_factory.dart';
 import '../../core/utils/log_file_watcher.dart';
 import '../models/config_model.dart';
+import '../repositories/config_repository.dart';
+import 'app_service_manager.dart';
 import 'photo_event_service.dart';
 import 'photo_watcher_task_handler.dart';
 
@@ -142,6 +144,17 @@ class PhotoWatcherService {
         _handledPhotos.add(photoPath);
         _photoStreamController.add(photoPath);
         PhotoEventService().notifyPhotoAdded(photoPath);
+      } else if (data['action'] == 'configAligned') {
+        final newPhotosDir = data['photosDirectory'] as String;
+        developer.log(
+          'Received config alignment from background task: $newPhotosDir',
+          name: 'PhotoWatcherService',
+        );
+        final currentConfig = AppServiceManager().config;
+        if (currentConfig != null) {
+          final updatedConfig = currentConfig.copyWith(photosDirectory: newPhotosDir);
+          AppServiceManager().updateConfig(updatedConfig);
+        }
       } else if (data.containsKey('error')) {
         final errorMessage = data['error'] as String;
         developer.log(
@@ -371,6 +384,28 @@ class PhotoWatcherService {
         name: 'PhotoWatcherService',
       );
       return;
+    }
+
+    final String screenshotDir = path.dirname(path.dirname(finalPath));
+
+    final String canonicalConfigDir = path.canonicalize(config.photosDirectory);
+    final String canonicalScreenshotDir = path.canonicalize(screenshotDir);
+
+    if (canonicalConfigDir != canonicalScreenshotDir) {
+      developer.log(
+        'Photos directory mismatch detected! Config: ${config.photosDirectory}, actual: $screenshotDir. Aligning settings...',
+        name: 'PhotoWatcherService',
+      );
+      try {
+        final updatedConfig = config.copyWith(photosDirectory: screenshotDir);
+        await ConfigRepository().saveConfig(updatedConfig);
+        await AppServiceManager().updateConfig(updatedConfig);
+      } catch (e) {
+        developer.log(
+          'Error updating photos directory configuration: $e',
+          name: 'PhotoWatcherService',
+        );
+      }
     }
 
     if (_handledPhotos.contains(finalPath)) {

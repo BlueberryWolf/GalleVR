@@ -260,6 +260,33 @@ class PhotoWatcherTaskHandler extends TaskHandler {
       return;
     }
 
+    final String screenshotDir = path.dirname(path.dirname(finalPath));
+
+    final String canonicalConfigDir = path.canonicalize(config.photosDirectory);
+    final String canonicalScreenshotDir = path.canonicalize(screenshotDir);
+
+    if (canonicalConfigDir != canonicalScreenshotDir) {
+      developer.log(
+        'Photos directory mismatch detected in background task! Config: ${config.photosDirectory}, actual: $screenshotDir. Aligning settings...',
+        name: 'PhotoWatcherTaskHandler',
+      );
+      try {
+        final updatedConfig = config.copyWith(photosDirectory: screenshotDir);
+        _config = updatedConfig;
+        _configRepository.saveConfig(updatedConfig).then((_) {
+          FlutterForegroundTask.sendDataToMain({
+            'action': 'configAligned',
+            'photosDirectory': screenshotDir,
+          });
+        });
+      } catch (e) {
+        developer.log(
+          'Error updating photos directory in background task: $e',
+          name: 'PhotoWatcherTaskHandler',
+        );
+      }
+    }
+
     if (_handledPhotos.contains(finalPath)) {
       developer.log(
         'Ignoring already handled photo: $finalPath',

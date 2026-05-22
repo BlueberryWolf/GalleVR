@@ -74,9 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     // Listen for config changes from other parts of the app
     AppServiceManager().configStream.listen((updatedConfig) {
-      if (mounted &&
-          _config != null &&
-          _config!.uploadEnabled != updatedConfig.uploadEnabled) {
+      if (mounted) {
         setState(() {
           _config = updatedConfig;
         });

@@ -7,6 +7,7 @@ import '../../data/models/config_model.dart';
 import '../../data/models/photo_metadata.dart';
 import '../../data/repositories/config_repository.dart';
 import '../../data/repositories/photo_metadata_repository.dart';
+import '../../data/services/app_service_manager.dart';
 import '../../data/services/photo_event_service.dart';
 
 class PhotosState {
@@ -52,6 +53,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
 
   StreamSubscription? _photoAddedSub;
   StreamSubscription? _photoUploadedSub;
+  StreamSubscription<ConfigModel>? _configSub;
 
   int _currentPage = 0;
   static const int _pageSize = 24;
@@ -69,6 +71,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
   void dispose() {
     _photoAddedSub?.cancel();
     _photoUploadedSub?.cancel();
+    _configSub?.cancel();
     super.dispose();
   }
 
@@ -77,6 +80,10 @@ class PhotosController extends ValueNotifier<PhotosState> {
     _photoUploadedSub = _photoEventService.photoUploaded.listen(
       (path) => _refreshMetadata(path),
     );
+    _configSub = AppServiceManager().configStream.listen((updatedConfig) {
+      _config = updatedConfig;
+      refresh();
+    });
   }
 
   Future<void> loadConfig() async {
