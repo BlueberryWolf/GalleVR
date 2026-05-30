@@ -51,6 +51,8 @@ class _MonitorScreenState extends State<MonitorScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    _initializeEventsFromHistory();
+
     _loadConfig();
     _listenForConfigChanges();
     _listenForAuthChanges();
@@ -264,9 +266,44 @@ class _MonitorScreenState extends State<MonitorScreen>
     }
   }
 
+  void _initializeEventsFromHistory() {
+    _events.clear();
+    for (final errorEvent in _photoEventService.history) {
+      _EventType eventType;
+      switch (errorEvent.type) {
+        case 'error':
+        case 'watcher':
+        case 'processing':
+        case 'upload':
+          eventType = _EventType.error;
+          break;
+        case 'success':
+          eventType = _EventType.success;
+          break;
+        case 'warning':
+          eventType = _EventType.error;
+          break;
+        case 'info':
+          eventType = _EventType.info;
+          break;
+        default:
+          eventType = _EventType.info;
+      }
+      _events.add(
+        _ProcessingEvent(
+          type: eventType,
+          message: errorEvent.message,
+          timestamp: errorEvent.timestamp,
+          photoPath: errorEvent.photoPath,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isConfigMissing = _config == null ||
+    final isConfigMissing =
+        _config == null ||
         _config!.photosDirectory.isEmpty ||
         _config!.logsDirectory.isEmpty;
 
@@ -465,7 +502,10 @@ class _MonitorScreenState extends State<MonitorScreen>
       } catch (_) {}
     }
 
-    final color = isSet ? (exists ? Colors.greenAccent : Colors.orangeAccent) : Colors.redAccent;
+    final color =
+        isSet
+            ? (exists ? Colors.greenAccent : Colors.orangeAccent)
+            : Colors.redAccent;
 
     return Row(
       children: [
@@ -521,7 +561,6 @@ class _MonitorScreenState extends State<MonitorScreen>
       ],
     );
   }
-
 
   Widget _buildInteractiveBadge({
     required IconData icon,

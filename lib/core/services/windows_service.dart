@@ -362,6 +362,8 @@ class WindowsService {
       developer.log('Hiding application window', name: 'WindowsService');
       isHidden.value = true;
 
+      await Future.delayed(const Duration(milliseconds: 100));
+
       _appWindow.hide();
 
       // Perform immediate deep memory reclamation now that we are fully hidden
@@ -469,6 +471,25 @@ class WindowsService {
           name: 'WindowsService',
         );
         await hideWindow(showNotification: true);
+      }
+
+      if (call.method == 'onWindowMinimized' && !isHidden.value) {
+        developer.log(
+          'Window minimized: Virtualizing UI tree and executing memory purge...',
+          name: 'WindowsService',
+        );
+        isHidden.value = true;
+        await trimMemory();
+      }
+
+      if (call.method == 'onWindowRestored' && isHidden.value) {
+        developer.log(
+          'Window restored: Restoring UI tree and re-establishing image caches...',
+          name: 'WindowsService',
+        );
+        PaintingBinding.instance.imageCache.maximumSize = 1000;
+        PaintingBinding.instance.imageCache.maximumSizeBytes = 100 << 20;
+        isHidden.value = false;
       }
 
       return null;

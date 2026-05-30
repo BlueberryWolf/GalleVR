@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as path;
 import '../../../../data/models/photo_metadata.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/cached_image.dart';
@@ -10,6 +9,8 @@ class PhotoGridItem extends StatefulWidget {
   final PhotoMetadata? metadata;
   final VoidCallback onTap;
   final VoidCallback onOptionsPressed;
+  final bool isSelected;
+  final bool isSelectionMode;
 
   const PhotoGridItem({
     super.key,
@@ -17,6 +18,8 @@ class PhotoGridItem extends StatefulWidget {
     required this.metadata,
     required this.onTap,
     required this.onOptionsPressed,
+    this.isSelected = false,
+    this.isSelectionMode = false,
   });
 
   @override
@@ -69,9 +72,6 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
   @override
   Widget build(BuildContext context) {
     final isUploaded = widget.metadata?.galleryUrl != null;
-    final filename =
-        widget.metadata?.filename ?? path.basename(widget.entity.path);
-
     return RepaintBoundary(
       child: Container(
         decoration: BoxDecoration(
@@ -92,16 +92,24 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
               ValueListenableBuilder<bool>(
                 valueListenable: _isHovered,
                 builder: (context, hovered, child) {
-                  final bool isGreyedOut = !isUploaded && !hovered;
+                  final bool isGreyedOut =
+                      !isUploaded && !hovered && !widget.isSelected;
                   return AnimatedScale(
-                    scale: hovered ? 1.04 : 1.0,
-                    duration: const Duration(milliseconds: 400),
+                    scale:
+                        widget.isSelected
+                            ? 0.96
+                            : hovered
+                            ? 1.04
+                            : 1.0,
+                    duration: const Duration(milliseconds: 300),
                     curve: Curves.easeOutCubic,
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 400),
+                      duration: const Duration(milliseconds: 300),
                       foregroundDecoration: BoxDecoration(
                         color:
-                            hovered
+                            widget.isSelected
+                                ? AppTheme.primaryColor.withOpacity(0.15)
+                                : hovered
                                 ? Colors.white.withOpacity(0.05)
                                 : Colors.transparent,
                       ),
@@ -158,6 +166,12 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
               ),
 
               _buildTopGradient(),
+              ValueListenableBuilder<bool>(
+                valueListenable: _isHovered,
+                builder: (context, hovered, child) {
+                  return _buildSelectionIndicator(hovered);
+                },
+              ),
               _buildTopMetadata(),
               _buildTopRightActions(),
 
@@ -171,10 +185,12 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color:
-                              hovered
+                              widget.isSelected
+                                  ? AppTheme.primaryColor
+                                  : hovered
                                   ? Colors.white.withOpacity(0.3)
                                   : Colors.white.withOpacity(0.1),
-                          width: 1.5,
+                          width: widget.isSelected ? 2.5 : 1.5,
                         ),
                       ),
                     ),
@@ -364,6 +380,45 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
             border: Border.all(color: Colors.white.withOpacity(0.1)),
           ),
           child: Icon(icon, size: 16, color: color.withOpacity(0.9)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectionIndicator(bool hovered) {
+    final isUploaded = widget.metadata?.galleryUrl != null;
+    if (!widget.isSelectionMode || isUploaded) return const SizedBox.shrink();
+
+    final showIndicator = widget.isSelected || hovered;
+
+    return Positioned(
+      bottom: 12,
+      right: 12,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: showIndicator ? 1.0 : 0.0,
+        child: Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color:
+                widget.isSelected
+                    ? AppTheme.primaryColor
+                    : Colors.black.withOpacity(0.4),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: widget.isSelected ? Colors.white : Colors.white70,
+              width: 1.5,
+            ),
+          ),
+          child:
+              widget.isSelected
+                  ? const Icon(
+                    Icons.check_rounded,
+                    size: 14,
+                    color: Colors.white,
+                  )
+                  : null,
         ),
       ),
     );

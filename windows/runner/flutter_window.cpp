@@ -66,13 +66,66 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
   // Give Flutter, including plugins, an opportunity to handle window messages.
+  std::optional<LRESULT> flutter_result;
   if (flutter_controller_) {
-    std::optional<LRESULT> result =
+    flutter_result =
         flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam,
                                                       lparam);
-    if (result) {
-      return *result;
+  }
+
+  if (message == WM_SIZE || message == WM_SHOWWINDOW || 
+      message == WM_ACTIVATE || message == WM_WINDOWPOSCHANGED) {
+    HWND child = ::GetWindow(hwnd, GW_CHILD);
+    if (child != nullptr) {
+      bool parent_visible = ::IsWindowVisible(hwnd);
+      if (message == WM_SHOWWINDOW) {
+        parent_visible = wparam;
+      }
+      bool should_show = parent_visible && !::IsIconic(hwnd);
+      
+      bool child_visible = (::GetWindowLongPtr(child, GWL_STYLE) & WS_VISIBLE) != 0;
+      
+      if (should_show) {
+        if (!child_visible) {
+          ::ShowWindow(child, SW_SHOW);
+          if (flutter_controller_) {
+            flutter_controller_->ForceRedraw();
+          }
+          ::InvalidateRect(child, nullptr, TRUE);
+          ::UpdateWindow(child);
+          ::InvalidateRect(hwnd, nullptr, TRUE);
+          ::UpdateWindow(hwnd);
+        }
+      } else {
+        if (child_visible) {
+          ::ShowWindow(child, SW_HIDE);
+        }
+      }
     }
+  }
+
+  if (message == WM_SIZE) {
+    if (wparam == SIZE_MINIMIZED) {
+      if (flutter_controller_ && flutter_controller_->engine()) {
+        flutter::MethodChannel<> channel(
+            flutter_controller_->engine()->messenger(),
+            "gallevr/window",
+            &flutter::StandardMethodCodec::GetInstance());
+        channel.InvokeMethod("onWindowMinimized", nullptr);
+      }
+    } else if (wparam == SIZE_RESTORED || wparam == SIZE_MAXIMIZED) {
+      if (flutter_controller_ && flutter_controller_->engine()) {
+        flutter::MethodChannel<> channel(
+            flutter_controller_->engine()->messenger(),
+            "gallevr/window",
+            &flutter::StandardMethodCodec::GetInstance());
+        channel.InvokeMethod("onWindowRestored", nullptr);
+      }
+    }
+  }
+
+  if (flutter_result) {
+    return *flutter_result;
   }
 
   switch (message) {

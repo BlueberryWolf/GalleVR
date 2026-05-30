@@ -75,6 +75,9 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
   bool _isLoading = true;
   bool _showOnboarding = true;
 
+  // Local visibility notifier for Android
+  final ValueNotifier<bool> _mobileHidden = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
@@ -110,6 +113,39 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.detached) {
       // this is called when the app is about to be closed
       // i don't need to do anything here as the native code will handle it
+    }
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      if (state == AppLifecycleState.paused ||
+          state == AppLifecycleState.hidden) {
+        developer.log(
+          'Mobile app hidden/paused: Virtualizing UI tree and purging caches...',
+          name: 'GalleVRApp',
+        );
+        _mobileHidden.value = true;
+
+        try {
+          PaintingBinding.instance.imageCache.maximumSize = 0;
+          PaintingBinding.instance.imageCache.maximumSizeBytes = 0;
+          PaintingBinding.instance.imageCache.clear();
+          PaintingBinding.instance.imageCache.clearLiveImages();
+          PaintingBinding.instance.handleMemoryPressure();
+        } catch (e) {
+          developer.log(
+            'Error reclaiming mobile cache: $e',
+            name: 'GalleVRApp',
+          );
+        }
+      } else if (state == AppLifecycleState.resumed) {
+        developer.log(
+          'Mobile app resumed: Restoring UI tree and re-establishing caches...',
+          name: 'GalleVRApp',
+        );
+        PaintingBinding.instance.imageCache.maximumSize = 1000;
+        PaintingBinding.instance.imageCache.maximumSizeBytes =
+            100 << 20; // 100 MB
+        _mobileHidden.value = false;
+      }
     }
   }
 
@@ -189,7 +225,7 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
             ? WindowsService().isHidden
             : Platform.isLinux
             ? LinuxService().isHidden
-            : ValueNotifier<bool>(false);
+            : _mobileHidden;
 
     return MaterialApp(
       title: 'GalleVR',

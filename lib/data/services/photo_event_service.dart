@@ -11,12 +11,16 @@ class PhotoErrorEvent {
   // The related photo path, if any
   final String? photoPath;
 
+  // The timestamp of the event
+  final DateTime timestamp;
+
   // Constructor
   PhotoErrorEvent({
     required this.type,
     required this.message,
     this.photoPath,
-  });
+    DateTime? timestamp,
+  }) : this.timestamp = timestamp ?? DateTime.now();
 }
 
 // Service for broadcasting photo-related events across the app
@@ -31,6 +35,12 @@ class PhotoEventService {
 
   // Private constructor for singleton
   PhotoEventService._internal();
+
+  // History of the last 100 events to prevent desync when UI is unmounted (minimized)
+  final List<PhotoErrorEvent> _history = [];
+
+  // Public getter to retrieve history
+  List<PhotoErrorEvent> get history => List.unmodifiable(_history);
 
   // Stream controller for photo added events
   final _photoAddedController = StreamController<String>.broadcast();
@@ -57,13 +67,19 @@ class PhotoEventService {
 
   // Notify about an error
   void notifyError(String type, String message, {String? photoPath}) {
-    _errorController.add(
-      PhotoErrorEvent(
-        type: type,
-        message: message,
-        photoPath: photoPath,
-      ),
+    final event = PhotoErrorEvent(
+      type: type,
+      message: message,
+      photoPath: photoPath,
     );
+
+    // Save to persistent history
+    _history.insert(0, event);
+    if (_history.length > 100) {
+      _history.removeLast();
+    }
+
+    _errorController.add(event);
   }
 
   // Notify that a photo has been uploaded successfully

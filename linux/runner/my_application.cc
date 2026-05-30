@@ -20,6 +20,30 @@ static void first_frame_cb(MyApplication* self, FlView *view)
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
+// Called when window state (like minimized/restored) changes.
+static gboolean on_window_state_event(GtkWidget* widget, GdkEventWindowState* event, gpointer user_data) {
+  FlView* view = FL_VIEW(user_data);
+
+  if (event->changed_mask & GDK_WINDOW_STATE_ICONIFIED) {
+    g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+    g_autoptr(FlMethodChannel) channel = fl_method_channel_new(
+        fl_view_get_binary_messenger(view),
+        "gallevr/window",
+        FL_METHOD_CODEC(codec));
+
+    if (event->new_window_state & GDK_WINDOW_STATE_ICONIFIED) {
+      // Hide widget and notify Dart
+      gtk_widget_hide(GTK_WIDGET(view));
+      fl_method_channel_invoke_method(channel, "onWindowMinimized", nullptr, nullptr, nullptr, nullptr);
+    } else {
+      // Show widget and notify Dart
+      gtk_widget_show(GTK_WIDGET(view));
+      fl_method_channel_invoke_method(channel, "onWindowRestored", nullptr, nullptr, nullptr, nullptr);
+    }
+  }
+  return FALSE; // Propagate the event
+}
+
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
@@ -84,6 +108,8 @@ static void my_application_activate(GApplication* application) {
   // Requires the view to be realized so we can start rendering.
   g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb), self);
   gtk_widget_realize(GTK_WIDGET(view));
+
+  g_signal_connect(window, "window-state-event", G_CALLBACK(on_window_state_event), view);
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 

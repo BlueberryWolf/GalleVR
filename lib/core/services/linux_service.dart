@@ -15,6 +15,9 @@ import 'notification_service.dart';
 
 /// Service for Linux-specific functionality
 class LinuxService {
+  static const String _windowChannelName = 'gallevr/window';
+  final MethodChannel _windowChannel = const MethodChannel(_windowChannelName);
+
   final SystemTray _systemTray = SystemTray();
   final AppWindow _appWindow = AppWindow();
   final NotificationService _notificationService = NotificationService();
@@ -57,6 +60,9 @@ class LinuxService {
 
       // Initialize system tray
       await _initSystemTray(appTitle ?? 'GalleVR');
+
+      // Set up window event channel handler
+      _setupWindowEventChannel();
 
       _isInitialized = true;
       developer.log('Linux service initialized', name: 'LinuxService');
@@ -174,6 +180,8 @@ class LinuxService {
     if (!Platform.isLinux || !_isInitialized) return;
 
     isHidden.value = true;
+    await Future.delayed(const Duration(milliseconds: 100));
+
     _appWindow.hide();
 
     try {
@@ -206,6 +214,69 @@ class LinuxService {
   }
 
   void dispose() {}
+
+  void _setupWindowEventChannel() {
+    _windowChannel.setMethodCallHandler((call) async {
+      developer.log(
+        'Received window event: ${call.method}',
+        name: 'LinuxService',
+      );
+
+      if (call.method == 'onWindowHidden' && !isHidden.value) {
+        developer.log(
+          'Executing central hideWindow pipeline from native intercept...',
+          name: 'LinuxService',
+        );
+        await hideWindow(showNotification: true);
+      }
+
+      if (call.method == 'onWindowMinimized' && !isHidden.value) {
+        developer.log(
+          'Window minimized: Virtualizing UI tree and reclaiming memory...',
+          name: 'LinuxService',
+        );
+        isHidden.value = true;
+
+        try {
+          PaintingBinding.instance.imageCache.maximumSize = 0;
+          PaintingBinding.instance.imageCache.maximumSizeBytes = 0;
+          PaintingBinding.instance.imageCache.clear();
+          PaintingBinding.instance.imageCache.clearLiveImages();
+          PaintingBinding.instance.handleMemoryPressure();
+        } catch (e) {
+          developer.log('Error purging memory: $e', name: 'LinuxService');
+        }
+
+        try {
+          _trimHeap();
+          developer.log(
+            'Successfully trimmed Linux heap.',
+            name: 'LinuxService',
+          );
+        } catch (e) {
+          developer.log('Heap trim skipped: $e', name: 'LinuxService');
+        }
+      }
+
+      if (call.method == 'onWindowRestored' && isHidden.value) {
+        developer.log(
+          'Window restored: Restoring UI tree...',
+          name: 'LinuxService',
+        );
+        PaintingBinding.instance.imageCache.maximumSize = 1000;
+        PaintingBinding.instance.imageCache.maximumSizeBytes =
+            100 << 20; // 100 MB
+        isHidden.value = false;
+      }
+
+      return null;
+    });
+
+    developer.log(
+      'Window event channel listener bound successfully',
+      name: 'LinuxService',
+    );
+  }
 
   void _trimHeap() {
     final libc = DynamicLibrary.open('libc.so.6');

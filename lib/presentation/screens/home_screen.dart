@@ -231,10 +231,17 @@ class _HomeScreenState extends State<HomeScreen>
               ValueListenableBuilder<PhotosState>(
                 valueListenable: _photosController,
                 builder: (context, state, child) {
-                  return RefreshButton(
-                    isLoading: state.isLoading,
-                    onTap: () => _photosController.refresh(forceSync: true),
-                    tooltip: 'Refresh Photos',
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildSelectButton(state),
+                      const SizedBox(width: 12),
+                      RefreshButton(
+                        isLoading: state.isLoading,
+                        onTap: () => _photosController.refresh(forceSync: true),
+                        tooltip: 'Refresh Photos',
+                      ),
+                    ],
                   );
                 },
               ),
@@ -346,6 +353,62 @@ class _HomeScreenState extends State<HomeScreen>
           const SizedBox(width: 6),
           Text(subtext, style: textStyle),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSelectButton(PhotosState state) {
+    final isSelectionMode = state.isSelectionMode;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _photosController.toggleSelectionMode(),
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color:
+                isSelectionMode
+                    ? const Color(0xFFEF4444).withOpacity(0.1)
+                    : const Color(0xFF3B82F6).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color:
+                  isSelectionMode
+                      ? const Color(0xFFEF4444).withOpacity(0.3)
+                      : const Color(0xFF3B82F6).withOpacity(0.3),
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSelectionMode
+                    ? Icons.close_rounded
+                    : Icons.check_box_outlined,
+                size: 18,
+                color:
+                    isSelectionMode
+                        ? const Color(0xFFEF4444)
+                        : const Color(0xFF3B82F6),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isSelectionMode ? 'Cancel' : 'Select',
+                style: TextStyle(
+                  color:
+                      isSelectionMode
+                          ? const Color(0xFFEF4444)
+                          : const Color(0xFF3B82F6),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

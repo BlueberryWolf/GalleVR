@@ -1,11 +1,13 @@
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../controllers/photos_controller.dart';
 import 'photos/widgets/photo_grid_item.dart';
 import 'photos/widgets/photo_detail_view.dart';
 import 'photos/photos_utils.dart';
-import '../theme/app_theme.dart';
 import '../../data/models/photo_metadata.dart';
+import 'mass_upload_screen.dart';
 
 class PhotosScreen extends StatefulWidget {
   final PhotosController controller;
@@ -17,6 +19,7 @@ class PhotosScreen extends StatefulWidget {
 
 class PhotosScreenState extends State<PhotosScreen> {
   final ScrollController _scrollController = ScrollController();
+  int? _lastSelectedIndex;
 
   @override
   void initState() {
@@ -43,6 +46,34 @@ class PhotosScreenState extends State<PhotosScreen> {
     widget.controller.refresh();
   }
 
+  void _handlePhotoTap(int index, FileSystemEntity photo) {
+    final isCtrlPressed =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
+
+    final metadata = widget.controller.value.metadataMap[photo.path];
+    final isUploaded = metadata?.galleryUrl != null;
+
+    if (widget.controller.value.isSelectionMode ||
+        isCtrlPressed ||
+        isShiftPressed) {
+      if (isUploaded) return;
+
+      if (isShiftPressed && _lastSelectedIndex != null) {
+        final start = index < _lastSelectedIndex! ? index : _lastSelectedIndex!;
+        final end = index > _lastSelectedIndex! ? index : _lastSelectedIndex!;
+        widget.controller.selectPhotosRange(start, end);
+      } else {
+        widget.controller.togglePhotoSelection(photo.path);
+      }
+      _lastSelectedIndex = index;
+    } else {
+      _openPhotoDetails(index);
+      _lastSelectedIndex = index;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -54,37 +85,209 @@ class PhotosScreenState extends State<PhotosScreen> {
             return _buildEmptyState();
           }
 
-          return RepaintBoundary(
-            child: NotificationListener<ScrollMetricsNotification>(
-              onNotification: (notification) {
-                if (notification.metrics.maxScrollExtent < 200 &&
-                    state.allPhotos.length > state.displayedPhotos.length &&
-                    !state.isLoadingMore) {
-                  widget.controller.loadMore();
-                }
-                return false;
-              },
-              child: CustomScrollView(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                cacheExtent:
-                    0, // Force aggressive disposal of off-screen items to save RAM
-                key: const PageStorageKey('photos_grid_scroll'),
-                slivers: [
-                  SliverPadding(
-                    padding: const EdgeInsets.all(16),
-                    sliver: _PhotoGridView(
-                      state: state,
-                      onOpenDetails: _openPhotoDetails,
-                      onShowOptions: _showPhotoOptions,
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: NotificationListener<ScrollMetricsNotification>(
+                    onNotification: (notification) {
+                      if (notification.metrics.maxScrollExtent < 200 &&
+                          state.allPhotos.length >
+                              state.displayedPhotos.length &&
+                          !state.isLoadingMore) {
+                        widget.controller.loadMore();
+                      }
+                      return false;
+                    },
+                    child: CustomScrollView(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      cacheExtent:
+                          0, // Force aggressive disposal of off-screen items to save RAM
+                      key: const PageStorageKey('photos_grid_scroll'),
+                      slivers: [
+                        SliverPadding(
+                          padding: const EdgeInsets.all(16),
+                          sliver: _PhotoGridView(
+                            state: state,
+                            onOpenDetails: (index) {
+                              final photo = state.displayedPhotos[index];
+                              _handlePhotoTap(index, photo);
+                            },
+                            onShowOptions: _showPhotoOptions,
+                          ),
+                        ),
+                        const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                      ],
                     ),
                   ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                ),
+              ),
+              _buildSelectionBar(state),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSelectionBar(PhotosState state) {
+    final hasSelection = state.selectedPhotoPaths.isNotEmpty;
+    final count = state.selectedPhotoPaths.length;
+
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      left: 0,
+      right: 0,
+      bottom: hasSelection ? 24 : -100,
+      child: Center(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1B26).withOpacity(0.75),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.1),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.4),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Selections Count Badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3B82F6).withOpacity(0.15),
+                      border: Border.all(
+                        color: const Color(0xFF3B82F6).withOpacity(0.2),
+                        width: 1,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 20,
+                          height: 20,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF3B82F6),
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '$count',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          count == 1 ? 'photo selected' : 'photos selected',
+                          style: const TextStyle(
+                            color: Color(0xFF60A5FA),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Divider
+                  Container(
+                    height: 24,
+                    width: 1,
+                    color: Colors.white.withOpacity(0.1),
+                    margin: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+
+                  // Actions
+                  ElevatedButton.icon(
+                    onPressed:
+                        count == 0
+                            ? null
+                            : () {
+                              final paths = state.selectedPhotoPaths.toList();
+                              widget.controller.clearSelection();
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder:
+                                      (context) => MassUploadScreen(
+                                        initialFilePaths: paths,
+                                        isManualUpload: true,
+                                      ),
+                                ),
+                              );
+                            },
+                    icon: const Icon(Icons.cloud_upload_rounded, size: 18),
+                    label: const Text('UPLOAD'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(
+                        0xFF3B82F6,
+                      ).withOpacity(0.15),
+                      foregroundColor: const Color(0xFF60A5FA),
+                      disabledBackgroundColor: Colors.white.withOpacity(0.05),
+                      disabledForegroundColor: Colors.white24,
+                      elevation: 0,
+                      side: BorderSide(
+                        color:
+                            count == 0
+                                ? Colors.white.withOpacity(0.1)
+                                : const Color(0xFF3B82F6).withOpacity(0.5),
+                        width: 1.5,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+
+                  // Divider
+                  Container(
+                    height: 24,
+                    width: 1,
+                    color: Colors.white.withOpacity(0.1),
+                    margin: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+
+                  // Cancel / Close
+                  IconButton(
+                    onPressed: () => widget.controller.clearSelection(),
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    color: Colors.grey,
+                    hoverColor: Colors.white.withOpacity(0.1),
+                    padding: const EdgeInsets.all(8),
+                    constraints: const BoxConstraints(),
+                  ),
                 ],
               ),
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
@@ -259,6 +462,10 @@ class _ThrottledGridState extends State<_ThrottledGrid> {
 
           final photo = widget.state.displayedPhotos[index];
           final metadata = widget.state.metadataMap[photo.path];
+          final isSelected = widget.state.selectedPhotoPaths.contains(
+            photo.path,
+          );
+          final isSelectionMode = widget.state.isSelectionMode;
 
           return PhotoGridItem(
             key: ValueKey(photo.path),
@@ -266,6 +473,8 @@ class _ThrottledGridState extends State<_ThrottledGrid> {
             metadata: metadata,
             onTap: () => widget.onOpenDetails(index),
             onOptionsPressed: () => widget.onShowOptions(photo, metadata),
+            isSelected: isSelected,
+            isSelectionMode: isSelectionMode,
           );
         },
         childCount:

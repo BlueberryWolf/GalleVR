@@ -17,6 +17,8 @@ class PhotosState {
   final bool isLoading;
   final bool isLoadingMore;
   final String? error;
+  final Set<String> selectedPhotoPaths;
+  final bool isSelectionMode;
 
   PhotosState({
     this.allPhotos = const [],
@@ -25,6 +27,8 @@ class PhotosState {
     this.isLoading = false,
     this.isLoadingMore = false,
     this.error,
+    this.selectedPhotoPaths = const {},
+    this.isSelectionMode = false,
   });
 
   PhotosState copyWith({
@@ -34,6 +38,8 @@ class PhotosState {
     bool? isLoading,
     bool? isLoadingMore,
     String? error,
+    Set<String>? selectedPhotoPaths,
+    bool? isSelectionMode,
   }) {
     return PhotosState(
       allPhotos: allPhotos ?? this.allPhotos,
@@ -42,6 +48,8 @@ class PhotosState {
       isLoading: isLoading ?? this.isLoading,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       error: error ?? this.error,
+      selectedPhotoPaths: selectedPhotoPaths ?? this.selectedPhotoPaths,
+      isSelectionMode: isSelectionMode ?? this.isSelectionMode,
     );
   }
 }
@@ -133,11 +141,8 @@ class PhotosController extends ValueNotifier<PhotosState> {
       _currentPage = 0;
       final initialBatch = photos.take(_pageSize).toList();
 
-      value = value.copyWith(
-        allPhotos: photos,
-        displayedPhotos: initialBatch,
-      );
-      
+      value = value.copyWith(allPhotos: photos, displayedPhotos: initialBatch);
+
       // Always reload metadata for the first batch to update sync status/metadata on refresh
       await _loadMetadataForBatch(initialBatch);
 
@@ -196,9 +201,9 @@ class PhotosController extends ValueNotifier<PhotosState> {
     metadata.forEach((filePath, meta) {
       if (meta == null ||
           (meta.isNonVrcx &&
-           meta.galleryUrl == null &&
-           meta.world == null &&
-           meta.players.isEmpty)) {
+              meta.galleryUrl == null &&
+              meta.world == null &&
+              meta.players.isEmpty)) {
         badPaths.add(filePath);
       }
     });
@@ -231,6 +236,48 @@ class PhotosController extends ValueNotifier<PhotosState> {
     newMetadataMap[filePath] = metadata;
     value = value.copyWith(metadataMap: newMetadataMap);
   }
+
+  void toggleSelectionMode() {
+    final newMode = !value.isSelectionMode;
+    value = value.copyWith(
+      isSelectionMode: newMode,
+      selectedPhotoPaths: newMode ? value.selectedPhotoPaths : const {},
+    );
+  }
+
+  void togglePhotoSelection(String path) {
+    final current = Set<String>.from(value.selectedPhotoPaths);
+    if (current.contains(path)) {
+      current.remove(path);
+    } else {
+      current.add(path);
+    }
+    value = value.copyWith(
+      selectedPhotoPaths: current,
+      isSelectionMode: current.isNotEmpty ? true : value.isSelectionMode,
+    );
+  }
+
+  void clearSelection() {
+    value = value.copyWith(
+      selectedPhotoPaths: const {},
+      isSelectionMode: false,
+    );
+  }
+
+  void selectPhotosRange(int start, int end) {
+    final current = Set<String>.from(value.selectedPhotoPaths);
+    for (int i = start; i <= end; i++) {
+      if (i >= 0 && i < value.displayedPhotos.length) {
+        final path = value.displayedPhotos[i].path;
+        final meta = value.metadataMap[path];
+        if (meta?.galleryUrl == null) {
+          current.add(path);
+        }
+      }
+    }
+    value = value.copyWith(selectedPhotoPaths: current, isSelectionMode: true);
+  }
 }
 
 class ScanParams {
@@ -246,7 +293,10 @@ Future<List<String>> _scanDirectoryIsolate(ScanParams params) async {
 
   final List<File> photos = [];
   try {
-    for (final entity in directory.listSync(recursive: true, followLinks: false)) {
+    for (final entity in directory.listSync(
+      recursive: true,
+      followLinks: false,
+    )) {
       if (entity is File &&
           path.extension(entity.path).toLowerCase() == '.png') {
         final filename = path.basename(entity.path);
@@ -256,7 +306,10 @@ Future<List<String>> _scanDirectoryIsolate(ScanParams params) async {
       }
     }
   } catch (e) {
-    developer.log('Error listing directory in isolate: $e', name: 'PhotosController');
+    developer.log(
+      'Error listing directory in isolate: $e',
+      name: 'PhotosController',
+    );
   }
 
   if (photos.isEmpty) return [];

@@ -8,6 +8,7 @@ import 'dart:developer' as developer;
 import '../../data/repositories/config_repository.dart';
 import '../../data/models/config_model.dart';
 import '../../data/services/mass_upload_service.dart';
+import '../../data/services/manual_upload_service.dart';
 import '../../data/services/vrchat_service.dart';
 import '../../data/repositories/photo_metadata_repository.dart';
 import '../theme/app_theme.dart';
@@ -15,7 +16,13 @@ import '../widgets/cached_image.dart';
 import '../widgets/app_card.dart';
 
 class MassUploadScreen extends StatefulWidget {
-  const MassUploadScreen({super.key});
+  final List<String>? initialFilePaths;
+  final bool isManualUpload;
+  const MassUploadScreen({
+    super.key,
+    this.initialFilePaths,
+    this.isManualUpload = false,
+  });
 
   @override
   State<MassUploadScreen> createState() => _MassUploadScreenState();
@@ -24,6 +31,7 @@ class MassUploadScreen extends StatefulWidget {
 class _MassUploadScreenState extends State<MassUploadScreen>
     with TickerProviderStateMixin {
   final MassUploadService _massUploadService = MassUploadService();
+  final ManualUploadService _manualUploadService = ManualUploadService();
   final ConfigRepository _configRepository = ConfigRepository();
   final VRChatService _vrchatService = VRChatService();
 
@@ -41,6 +49,33 @@ class _MassUploadScreenState extends State<MassUploadScreen>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
+
+    if (widget.initialFilePaths != null &&
+        widget.initialFilePaths!.isNotEmpty) {
+      final initialTasks =
+          widget.initialFilePaths!.map((path) => FileTask(path: path)).toList();
+      _tasks.addAll(initialTasks);
+      _summaryController.forward();
+      _loadMetadataForInitialTasks(initialTasks);
+    }
+  }
+
+  Future<void> _loadMetadataForInitialTasks(List<FileTask> newTasks) async {
+    final metadataMap = await PhotoMetadataRepository().getMetadataForFiles(
+      newTasks.map((t) => t.path).toList(),
+    );
+
+    if (!mounted) return;
+    setState(() {
+      for (var task in newTasks) {
+        final metadata = metadataMap[task.path];
+        task.hasMetadata = metadata != null && metadata.world != null;
+        if (!task.hasMetadata) {
+          task.message =
+              'No metadata found. Rename to match original VRChat filename.';
+        }
+      }
+    });
   }
 
   @override
@@ -128,29 +163,50 @@ class _MassUploadScreenState extends State<MassUploadScreen>
       Future<void> runWorker() async {
         while (taskPointer < tasksToProcess.length) {
           final taskIndex = tasksToProcess[taskPointer++];
-          
+
           setState(() {
             _tasks[taskIndex].status = TaskStatus.processing;
           });
 
           try {
-            final result = await _massUploadService.processFile(
-              _tasks[taskIndex].path,
-              config,
-            );
+            if (widget.isManualUpload) {
+              final resultUrl = await _manualUploadService.uploadPhoto(
+                _tasks[taskIndex].path,
+                config,
+              );
 
-            if (!mounted) return;
-            setState(() {
-              if (result.success) {
-                _tasks[taskIndex].status = TaskStatus.completed;
-                _tasks[taskIndex].message = 'Success';
-                _completedCount++;
-              } else {
-                _tasks[taskIndex].status = TaskStatus.failed;
-                _tasks[taskIndex].message = result.errorMessage ?? 'Unknown error';
-                _failedCount++;
-              }
-            });
+              if (!mounted) return;
+              setState(() {
+                if (resultUrl != null) {
+                  _tasks[taskIndex].status = TaskStatus.completed;
+                  _tasks[taskIndex].message = 'Success';
+                  _completedCount++;
+                } else {
+                  _tasks[taskIndex].status = TaskStatus.failed;
+                  _tasks[taskIndex].message = 'Upload failed';
+                  _failedCount++;
+                }
+              });
+            } else {
+              final result = await _massUploadService.processFile(
+                _tasks[taskIndex].path,
+                config,
+              );
+
+              if (!mounted) return;
+              setState(() {
+                if (result.success) {
+                  _tasks[taskIndex].status = TaskStatus.completed;
+                  _tasks[taskIndex].message = 'Success';
+                  _completedCount++;
+                } else {
+                  _tasks[taskIndex].status = TaskStatus.failed;
+                  _tasks[taskIndex].message =
+                      result.errorMessage ?? 'Unknown error';
+                  _failedCount++;
+                }
+              });
+            }
           } catch (e) {
             if (!mounted) return;
             setState(() {
@@ -162,7 +218,8 @@ class _MassUploadScreenState extends State<MassUploadScreen>
         }
       }
 
-      final int concurrency = tasksToProcess.length < 4 ? tasksToProcess.length : 4;
+      final int concurrency =
+          tasksToProcess.length < 4 ? tasksToProcess.length : 4;
       final workers = List.generate(concurrency, (_) => runWorker());
       await Future.wait(workers);
     }
@@ -220,9 +277,9 @@ class _MassUploadScreenState extends State<MassUploadScreen>
                 onPressed: () => Navigator.of(context).pop(),
               ),
               const SizedBox(width: 8),
-              const Text(
-                'Mass Upload',
-                style: TextStyle(
+              Text(
+                widget.isManualUpload ? 'Bulk Upload' : 'Mass Upload',
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -271,9 +328,9 @@ class _MassUploadScreenState extends State<MassUploadScreen>
             ),
           ),
           const SizedBox(height: 32),
-          const Text(
-            'Mass Upload',
-            style: TextStyle(
+          Text(
+            widget.isManualUpload ? 'Bulk Upload' : 'Mass Upload',
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 28,
               fontWeight: FontWeight.w900,
@@ -281,7 +338,9 @@ class _MassUploadScreenState extends State<MassUploadScreen>
           ),
           const SizedBox(height: 12),
           Text(
-            'Batch process and upload edited photos.\nSelect PNGs from your computer to begin.',
+            widget.isManualUpload
+                ? 'Batch process and upload your original gallery photos.\nYour local photos will be safely queued and verified.'
+                : 'Batch process and upload edited photos.\nSelect PNGs from your computer to begin.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white.withOpacity(0.5),
