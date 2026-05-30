@@ -65,24 +65,31 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  bool parent_visible = ::IsWindowVisible(hwnd);
+  if (message == WM_SHOWWINDOW) {
+    parent_visible = wparam;
+  }
+  bool should_show = parent_visible && !::IsIconic(hwnd);
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   std::optional<LRESULT> flutter_result;
   if (flutter_controller_) {
-    flutter_result =
-        flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam,
-                                                      lparam);
+    bool skip_engine = !should_show && 
+        (message == WM_SIZE || message == WM_SHOWWINDOW || 
+         message == WM_ACTIVATE || message == WM_WINDOWPOSCHANGED || 
+         message == WM_PAINT);
+
+    if (!skip_engine) {
+      flutter_result =
+          flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam,
+                                                        lparam);
+    }
   }
 
   if (message == WM_SIZE || message == WM_SHOWWINDOW || 
       message == WM_ACTIVATE || message == WM_WINDOWPOSCHANGED) {
     HWND child = ::GetWindow(hwnd, GW_CHILD);
     if (child != nullptr) {
-      bool parent_visible = ::IsWindowVisible(hwnd);
-      if (message == WM_SHOWWINDOW) {
-        parent_visible = wparam;
-      }
-      bool should_show = parent_visible && !::IsIconic(hwnd);
-      
       bool child_visible = (::GetWindowLongPtr(child, GWL_STYLE) & WS_VISIBLE) != 0;
       
       if (should_show) {

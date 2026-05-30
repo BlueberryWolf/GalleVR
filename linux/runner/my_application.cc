@@ -26,8 +26,9 @@ static gboolean on_window_state_event(GtkWidget* widget, GdkEventWindowState* ev
 
   if (event->changed_mask & GDK_WINDOW_STATE_ICONIFIED) {
     g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+    FlEngine* engine = fl_view_get_engine(view);
     g_autoptr(FlMethodChannel) channel = fl_method_channel_new(
-        fl_view_get_binary_messenger(view),
+        fl_engine_get_binary_messenger(engine),
         "gallevr/window",
         FL_METHOD_CODEC(codec));
 
