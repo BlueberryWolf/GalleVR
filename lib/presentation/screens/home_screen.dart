@@ -6,6 +6,7 @@ import 'account_screen.dart';
 import 'settings_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/refresh_button.dart';
+import '../widgets/walkthrough_dialog.dart';
 import '../controllers/photos_controller.dart';
 import '../../data/services/photo_upload_service.dart';
 import 'dart:io';
@@ -80,6 +81,10 @@ class _HomeScreenState extends State<HomeScreen>
     _fadeController.value = 1.0;
 
     _screens = _navItems.map((item) => item.screen).toList();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WalkthroughDialog.showIfRequired(context);
+    });
   }
 
   @override
@@ -240,6 +245,11 @@ class _HomeScreenState extends State<HomeScreen>
                         isLoading: state.isLoading,
                         onTap: () => _photosController.refresh(forceSync: true),
                         tooltip: 'Refresh Photos',
+                      ),
+                      const SizedBox(width: 12),
+                      _HelpButton(
+                        onTap: () => WalkthroughDialog.showIfRequired(context, force: true),
+                        tooltip: 'Show Walkthrough',
                       ),
                     ],
                   );
@@ -770,6 +780,85 @@ class _GradientText extends StatelessWidget {
             end: Alignment.centerRight,
           ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
       child: Text(text, style: style.copyWith(color: Colors.white)),
+    );
+  }
+}
+
+class _HelpButton extends StatefulWidget {
+  final VoidCallback onTap;
+  final String tooltip;
+
+  const _HelpButton({
+    required this.onTap,
+    required this.tooltip,
+  });
+
+  @override
+  State<_HelpButton> createState() => _HelpButtonState();
+}
+
+class _HelpButtonState extends State<_HelpButton> {
+  bool _isHovered = false;
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    double scale = 1.0;
+    if (_isPressed) {
+      scale = 0.92;
+    } else if (_isHovered) {
+      scale = 1.05;
+    }
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Tooltip(
+        message: widget.tooltip,
+        child: GestureDetector(
+          onTapDown: (_) => setState(() => _isPressed = true),
+          onTapUp: (_) => setState(() => _isPressed = false),
+          onTapCancel: () => setState(() => _isPressed = false),
+          onTap: widget.onTap,
+          child: AnimatedScale(
+            scale: scale,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(
+                  _isPressed ? 0.15 : (_isHovered ? 0.1 : 0.05),
+                ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Colors.white.withOpacity(_isHovered ? 0.2 : 0.1),
+                  width: 1,
+                ),
+                boxShadow: [
+                  if (_isHovered)
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                ],
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.help_outline_rounded,
+                  size: 20,
+                  color: _isHovered
+                      ? Colors.white
+                      : Colors.white.withOpacity(0.6),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

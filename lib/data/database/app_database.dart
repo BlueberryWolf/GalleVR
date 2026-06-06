@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:developer' as developer;
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -27,7 +28,29 @@ class AppDatabase {
     final dbDirectory = await getApplicationSupportDirectory();
     final path = join(dbDirectory.path, 'gallevr.db');
 
-    return await openDatabase(path, version: 1, onCreate: _onCreate);
+    return await openDatabase(
+      path,
+      version: 2,
+      onCreate: _onCreate,
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          try {
+            await db.execute(
+              'ALTER TABLE photo_metadata ADD COLUMN log_checked INTEGER DEFAULT 0',
+            );
+            developer.log(
+              'Successfully migrated database from v1 to v2: added log_checked',
+              name: 'AppDatabase',
+            );
+          } catch (e) {
+            developer.log(
+              'Database upgrade error from v1 to v2: $e',
+              name: 'AppDatabase',
+            );
+          }
+        }
+      },
+    );
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -41,6 +64,7 @@ class AppDatabase {
         views INTEGER DEFAULT 0,
         is_non_vrcx INTEGER DEFAULT 0,
         is_edited INTEGER DEFAULT 0,
+        log_checked INTEGER DEFAULT 0,
   
         world_id TEXT,
         world_name TEXT,

@@ -31,6 +31,9 @@ class PhotoMetadata {
   // Whether this photo is an edited version
   final bool isEdited;
 
+  // Whether this photo has been checked against logs for metadata recovery
+  final bool logChecked;
+
   // Default constructor
   PhotoMetadata({
     required this.takenDate,
@@ -43,6 +46,7 @@ class PhotoMetadata {
     this.remoteId,
     this.isNonVrcx = false,
     this.isEdited = false,
+    this.logChecked = false,
   });
 
   // Create a PhotoMetadata from JSON
@@ -77,6 +81,7 @@ class PhotoMetadata {
       remoteId: json['remoteId'] as String?,
       isNonVrcx: json['isNonVrcx'] as bool? ?? false,
       isEdited: json['isEdited'] as bool? ?? false,
+      logChecked: json['logChecked'] as bool? ?? false,
     );
   }
 
@@ -93,6 +98,7 @@ class PhotoMetadata {
       if (remoteId != null) 'remoteId': remoteId,
       'isNonVrcx': isNonVrcx,
       'isEdited': isEdited,
+      'logChecked': logChecked,
     };
   }
 
@@ -108,6 +114,7 @@ class PhotoMetadata {
     String? remoteId,
     bool? isNonVrcx,
     bool? isEdited,
+    bool? logChecked,
   }) {
     return PhotoMetadata(
       takenDate: takenDate ?? this.takenDate,
@@ -120,6 +127,7 @@ class PhotoMetadata {
       remoteId: remoteId ?? this.remoteId,
       isNonVrcx: isNonVrcx ?? this.isNonVrcx,
       isEdited: isEdited ?? this.isEdited,
+      logChecked: logChecked ?? this.logChecked,
     );
   }
 }

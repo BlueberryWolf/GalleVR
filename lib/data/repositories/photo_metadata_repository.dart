@@ -86,6 +86,7 @@ class PhotoMetadataRepository {
           });
 
       syncWithBackend();
+      runRetroactiveLogScanner();
 
       _initCompleter?.complete();
     } catch (e) {
@@ -221,6 +222,7 @@ class PhotoMetadataRepository {
       galleryUrl: map['gallery_url'] as String?,
       isNonVrcx: (map['is_non_vrcx'] as int? ?? 0) == 1,
       isEdited: (map['is_edited'] as int? ?? 0) == 1,
+      logChecked: (map['log_checked'] as int? ?? 0) == 1,
       world: world,
       players: players,
     );
@@ -281,6 +283,7 @@ class PhotoMetadataRepository {
       'views': metadata.views,
       'is_non_vrcx': metadata.isNonVrcx ? 1 : 0,
       'is_edited': metadata.isEdited ? 1 : 0,
+      'log_checked': metadata.logChecked ? 1 : 0,
 
       'world_id': metadata.world?.id,
       'world_name': metadata.world?.name,
@@ -754,12 +757,15 @@ class PhotoMetadataRepository {
                     existingMeta.players.isNotEmpty
                         ? existingMeta.players
                         : metadata.players,
+                logChecked: existingMeta.logChecked || metadata.logChecked,
               );
             } else {
               metadata = metadata.copyWith(
-                galleryUrl: (metadata.galleryUrl != null && metadata.galleryUrl!.isNotEmpty)
-                    ? metadata.galleryUrl
-                    : existingMeta.galleryUrl,
+                galleryUrl:
+                    (metadata.galleryUrl != null &&
+                            metadata.galleryUrl!.isNotEmpty)
+                        ? metadata.galleryUrl
+                        : existingMeta.galleryUrl,
                 views:
                     existingMeta.views > metadata.views
                         ? existingMeta.views
@@ -779,6 +785,7 @@ class PhotoMetadataRepository {
                             metadata.players.isNotEmpty)
                         ? false
                         : metadata.isNonVrcx,
+                logChecked: existingMeta.logChecked || metadata.logChecked,
               );
             }
           }
@@ -1044,6 +1051,10 @@ class PhotoMetadataRepository {
       });
     }
 
+    Timer(const Duration(seconds: 2), () {
+      runRetroactiveLogScanner();
+    });
+
     return result;
   }
 
@@ -1064,6 +1075,288 @@ class PhotoMetadataRepository {
       return {};
     }
   }
+
+  // Set to track photo paths currently queued for log scanning
+  static final Set<String> _scanningQueue = {};
+
+  /// Scans background log files for any photos in database marked as non-VRCX but not yet log checked
+  Future<void> runRetroactiveLogScanner() async {
+    await _initializeCache();
+    final config = AppServiceManager().config;
+    if (config == null ||
+        config.photosDirectory.isEmpty ||
+        config.logsDirectory.isEmpty) {
+      developer.log(
+        'Retroactive log scanner skipped: config or directories not set (photos: ${config?.photosDirectory}, logs: ${config?.logsDirectory})',
+        name: 'PhotoMetadataRepository',
+      );
+      return;
+    }
+
+    developer.log(
+      'Retroactive log scanner started. Photos: ${config.photosDirectory}, Logs: ${config.logsDirectory}',
+      name: 'PhotoMetadataRepository',
+    );
+
+    try {
+      final photosDir = Directory(config.photosDirectory);
+      if (await photosDir.exists()) {
+        final List<File> localFiles = [];
+        try {
+          await for (final entity in photosDir.list(
+            recursive: true,
+            followLinks: false,
+          )) {
+            if (entity is File && entity.path.toLowerCase().endsWith('.png')) {
+              localFiles.add(entity);
+            }
+          }
+        } catch (e) {
+          developer.log(
+            'Error scanning photos directory for placeholders: $e',
+            name: 'PhotoMetadataRepository',
+          );
+        }
+
+        if (localFiles.isNotEmpty) {
+          final db = await AppDatabase().database;
+          final List<Map<String, dynamic>> dbRows = await db.query(
+            'photo_metadata',
+            columns: ['filename', 'local_path'],
+          );
+
+          final Set<String> existingNames = {};
+          final Set<String> existingPaths = {};
+          for (final row in dbRows) {
+            final filename = row['filename'] as String;
+            final localPath = row['local_path'] as String?;
+            existingNames.add(filename);
+            if (localPath != null) {
+              existingPaths.add(localPath);
+            }
+          }
+
+          final List<String> newPaths = [];
+          for (final file in localFiles) {
+            final filename = path.basename(file.path);
+            if (!existingNames.contains(filename) &&
+                !existingPaths.contains(file.path)) {
+              newPaths.add(file.path);
+            }
+          }
+
+          if (newPaths.isNotEmpty) {
+            developer.log(
+              'Processing ${newPaths.length} new local photos for VRCX metadata in background',
+              name: 'PhotoMetadataRepository',
+            );
+            await _batchProcessMetadataBackground(newPaths);
+          }
+        }
+      }
+
+      final db = await AppDatabase().database;
+
+      // Discard photos taken before the earliest log file on disk (VRChat clears old logs)
+      try {
+        final logsDir = Directory(config.logsDirectory);
+        if (await logsDir.exists()) {
+          DateTime? earliestLogStart;
+          final filenameRegex = RegExp(
+            r'output_log_(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})',
+          );
+
+          await for (final entity in logsDir.list(
+            recursive: false,
+            followLinks: false,
+          )) {
+            if (entity is File &&
+                path.basename(entity.path).startsWith('output_log_')) {
+              DateTime? sessionStart;
+              final filename = path.basename(entity.path);
+
+              final match = filenameRegex.firstMatch(filename);
+              if (match != null) {
+                try {
+                  final datePart = match.group(1)!;
+                  final hh = match.group(2)!;
+                  final mm = match.group(3)!;
+                  final ss = match.group(4)!;
+                  sessionStart = DateTime.parse('$datePart $hh:$mm:$ss');
+                } catch (_) {}
+              }
+
+              if (sessionStart == null) {
+                try {
+                  final mod = entity.statSync().modified;
+                  sessionStart = mod.subtract(const Duration(hours: 2));
+                } catch (_) {}
+              }
+
+              if (sessionStart != null) {
+                if (earliestLogStart == null ||
+                    sessionStart.isBefore(earliestLogStart)) {
+                  earliestLogStart = sessionStart;
+                }
+              }
+            }
+          }
+
+          developer.log(
+            'Earliest log session start time parsed from filename: $earliestLogStart',
+            name: 'PhotoMetadataRepository',
+          );
+
+          if (earliestLogStart != null) {
+            final thresholdMs =
+                earliestLogStart
+                    .subtract(const Duration(minutes: 2))
+                    .millisecondsSinceEpoch;
+            final updated = await db.update(
+              'photo_metadata',
+              {'log_checked': 1},
+              where: 'taken_date < ? AND log_checked = 0 AND is_non_vrcx = 1',
+              whereArgs: [thresholdMs],
+            );
+            if (updated > 0) {
+              developer.log(
+                'Discarded $updated photos taken before the earliest VRChat log session ($earliestLogStart)',
+                name: 'PhotoMetadataRepository',
+              );
+            }
+          }
+        }
+      } catch (e) {
+        developer.log(
+          'Error checking earliest log session: $e',
+          name: 'PhotoMetadataRepository',
+        );
+      }
+
+      final List<Map<String, dynamic>> toCheck = await db.query(
+        'photo_metadata',
+        where: 'is_non_vrcx = 1 AND log_checked = 0',
+      );
+
+      developer.log(
+        'Database query for is_non_vrcx = 1 AND log_checked = 0 returned ${toCheck.length} records: ${toCheck.map((r) => r['filename']).toList()}',
+        name: 'PhotoMetadataRepository',
+      );
+
+      if (toCheck.isEmpty) return;
+
+      final List<Map<String, dynamic>> eligibleToCheck = [];
+      for (final row in toCheck) {
+        final localPath = row['local_path'] as String?;
+        if (localPath != null &&
+            localPath.isNotEmpty &&
+            !_scanningQueue.contains(localPath)) {
+          eligibleToCheck.add(row);
+        }
+      }
+
+      developer.log(
+        'Eligible photos to scan in VRChat logs: ${eligibleToCheck.map((r) => r['filename']).toList()}',
+        name: 'PhotoMetadataRepository',
+      );
+
+      if (eligibleToCheck.isEmpty) return;
+
+      developer.log(
+        'Found ${eligibleToCheck.length} photos requiring retroactive log checking',
+        name: 'PhotoMetadataRepository',
+      );
+
+      _processLogScannerQueue(eligibleToCheck, config.logsDirectory);
+    } catch (e) {
+      developer.log(
+        'Error starting retroactive log scanner: $e',
+        name: 'PhotoMetadataRepository',
+      );
+    }
+  }
+
+  Future<void> _processLogScannerQueue(
+    List<Map<String, dynamic>> rows,
+    String logsDirectory,
+  ) async {
+    final List<Map<String, String>> batchParams = [];
+    for (final row in rows) {
+      final localPath = row['local_path'] as String?;
+      final filename = row['filename'] as String;
+
+      if (localPath == null || localPath.isEmpty) continue;
+
+      final file = File(localPath);
+      if (!await file.exists()) continue;
+
+      _scanningQueue.add(localPath);
+      batchParams.add({'filePath': localPath, 'filename': filename});
+    }
+
+    if (batchParams.isEmpty) return;
+
+    IsolateWorkerPool()
+        .execute<Map<String, dynamic>, List<PhotoMetadata>>(
+          _scanLogsForPhotosBatchTask,
+          {'photos': batchParams, 'logsDirectory': logsDirectory},
+        )
+        .then((results) async {
+          for (final param in batchParams) {
+            _scanningQueue.remove(param['filePath']);
+          }
+
+          if (results.isNotEmpty) {
+            developer.log(
+              'Successfully recovered log metadata for ${results.length} photos',
+              name: 'PhotoMetadataRepository',
+            );
+            await savePhotoMetadataBatch(results);
+            // Notify the UI that metadata has loaded/changed
+            PhotoEventService().notifyPhotoAdded('__LOG_RECOVER_COMPLETE__');
+          }
+
+          final Set<String> foundPaths =
+              results.map((r) => r.localPath!).toSet();
+          final List<String> failedPaths = [];
+
+          for (final param in batchParams) {
+            final path = param['filePath']!;
+            if (!foundPaths.contains(path)) {
+              failedPaths.add(path);
+            }
+          }
+
+          if (failedPaths.isNotEmpty) {
+            final db = await AppDatabase().database;
+            await db.transaction((txn) async {
+              final batch = txn.batch();
+              for (final path in failedPaths) {
+                batch.update(
+                  'photo_metadata',
+                  {'log_checked': 1},
+                  where: 'local_path = ?',
+                  whereArgs: [path],
+                );
+              }
+              await batch.commit(noResult: true);
+            });
+            developer.log(
+              'Finished log scan for ${failedPaths.length} photos (no metadata found in logs)',
+              name: 'PhotoMetadataRepository',
+            );
+          }
+        })
+        .catchError((e) {
+          for (final param in batchParams) {
+            _scanningQueue.remove(param['filePath']);
+          }
+          developer.log(
+            'Error running batch log scan: $e',
+            name: 'PhotoMetadataRepository',
+          );
+        });
+  }
 }
 
 Map<String, PhotoMetadata?> _batchExtractMetadataTask(List<String> filePaths) {
@@ -1072,13 +1365,14 @@ Map<String, PhotoMetadata?> _batchExtractMetadataTask(List<String> filePaths) {
     try {
       final metadata = VrcxMetadataService.extractVrcxMetadataSync(filePath);
       if (metadata != null) {
-        results[filePath] = metadata;
+        results[filePath] = metadata.copyWith(logChecked: true);
       } else {
         results[filePath] = PhotoMetadata(
           takenDate: File(filePath).statSync().modified.millisecondsSinceEpoch,
           filename: path.basename(filePath),
           localPath: filePath,
           isNonVrcx: true,
+          logChecked: false,
         );
       }
     } catch (e) {
@@ -1086,4 +1380,348 @@ Map<String, PhotoMetadata?> _batchExtractMetadataTask(List<String> filePaths) {
     }
   }
   return results;
+}
+
+List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
+  final photos = List<Map<String, String>>.from(params['photos'] as List);
+  final logsDirectory = params['logsDirectory'] as String;
+
+  final List<PhotoMetadata> recovered = [];
+  if (photos.isEmpty) return recovered;
+
+  final Map<String, _PhotoSearchEntry> searchMap = {};
+  DateTime? earliestThreshold;
+
+  for (final photo in photos) {
+    final filePath = photo['filePath']!;
+    final filename = photo['filename']!;
+    final file = File(filePath);
+    if (!file.existsSync()) continue;
+
+    DateTime? photoTime;
+    final match = RegExp(
+      r'VRChat_(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})',
+    ).firstMatch(filename);
+    if (match != null) {
+      try {
+        final datePart = match.group(1)!;
+        final hh = match.group(2)!;
+        final mm = match.group(3)!;
+        final ss = match.group(4)!;
+        photoTime = DateTime.parse('$datePart $hh:$mm:$ss');
+      } catch (_) {}
+    }
+    photoTime ??= file.statSync().modified;
+
+    // Search term prefix
+    final nameWithoutExt = path.basenameWithoutExtension(filename);
+    final vrcBaseMatch = RegExp(
+      r'VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}',
+    ).firstMatch(nameWithoutExt);
+    final searchTerm =
+        vrcBaseMatch != null ? vrcBaseMatch.group(0)! : nameWithoutExt;
+
+    final entry = _PhotoSearchEntry(
+      filePath: filePath,
+      filename: filename,
+      photoTime: photoTime,
+      searchTerm: searchTerm,
+    );
+    searchMap[searchTerm] = entry;
+
+    // Keep track of the earliest photo time
+    final threshold = photoTime.subtract(const Duration(minutes: 2));
+    if (earliestThreshold == null || threshold.isBefore(earliestThreshold)) {
+      earliestThreshold = threshold;
+    }
+  }
+
+  if (searchMap.isEmpty) return recovered;
+
+  final logsDir = Directory(logsDirectory);
+  if (!logsDir.existsSync()) return recovered;
+
+  final List<File> logFiles = [];
+  try {
+    for (final entity in logsDir.listSync()) {
+      if (entity is File &&
+          path.basename(entity.path).startsWith('output_log_')) {
+        logFiles.add(entity);
+      }
+    }
+  } catch (_) {
+    return recovered;
+  }
+
+  if (logFiles.isEmpty) return recovered;
+
+  final List<MapEntry<File, DateTime>> candidates = [];
+  for (final logFile in logFiles) {
+    try {
+      final modified = logFile.statSync().modified;
+      if (earliestThreshold == null || modified.isAfter(earliestThreshold)) {
+        candidates.add(MapEntry(logFile, modified));
+      }
+    } catch (_) {}
+  }
+
+  if (candidates.isEmpty) return recovered;
+
+  // Sort candidates ascending (oldest modified first)
+  candidates.sort((a, b) => a.value.compareTo(b.value));
+
+  final screenshotRegex = RegExp(
+    r'VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}',
+  );
+  final playerRegex = RegExp(
+    r'\[Behaviour\] OnPlayer(Joined|Left) (.+?) \((.+?)\)',
+  );
+
+  for (final candidate in candidates) {
+    if (searchMap.isEmpty) break; // All photos processed!
+
+    final logFile = candidate.key;
+    List<String> lines = [];
+    try {
+      lines = logFile.readAsLinesSync();
+    } catch (_) {
+      continue;
+    }
+
+    DateTime? logStartTime;
+    DateTime? logEndTime;
+    final timestampRegex = RegExp(
+      r'^(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2})',
+    );
+
+    // Find start time of this log session
+    for (int i = 0; i < lines.length && i < 100; i++) {
+      final m = timestampRegex.firstMatch(lines[i]);
+      if (m != null) {
+        try {
+          logStartTime = DateTime.parse(
+            '${m.group(1)}-${m.group(2)}-${m.group(3)} ${m.group(4)}:${m.group(5)}:${m.group(6)}',
+          );
+          break;
+        } catch (_) {}
+      }
+    }
+
+    // Find end time of this log session
+    for (int i = lines.length - 1; i >= 0 && i >= lines.length - 100; i--) {
+      final m = timestampRegex.firstMatch(lines[i]);
+      if (m != null) {
+        try {
+          logEndTime = DateTime.parse(
+            '${m.group(1)}-${m.group(2)}-${m.group(3)} ${m.group(4)}:${m.group(5)}:${m.group(6)}',
+          );
+          break;
+        } catch (_) {}
+      }
+    }
+
+    // Filter check to see if any photo could possibly be inside this log session duration
+    bool hasAnyPotentialPhoto = false;
+    for (final entry in searchMap.values) {
+      final time = entry.photoTime;
+      final takenBeforeStart =
+          logStartTime != null &&
+          time.isBefore(logStartTime.subtract(const Duration(minutes: 2)));
+      final takenAfterEnd =
+          logEndTime != null &&
+          time.isAfter(logEndTime.add(const Duration(minutes: 2)));
+      if (!takenBeforeStart && !takenAfterEnd) {
+        hasAnyPotentialPhoto = true;
+        break;
+      }
+    }
+
+    if (!hasAnyPotentialPhoto) {
+      continue; // Skip scanning the lines of this log entirely
+    }
+
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      if (!line.contains('VRChat_')) {
+        continue;
+      }
+
+      final match = screenshotRegex.firstMatch(line);
+      if (match == null) continue;
+
+      final extractedBaseName = match.group(0)!;
+      final entry = searchMap[extractedBaseName];
+      if (entry == null) continue;
+
+      // Found a match for this photo! Search backward for world join
+      int worldJoinLineIndex = -1;
+      for (int k = i; k >= 0; k--) {
+        final backwardLine = lines[k];
+        if (backwardLine.contains('[Behaviour] Joining wrld_') ||
+            backwardLine.contains('[Behaviour] Entering Room:')) {
+          worldJoinLineIndex = k;
+          break;
+        }
+      }
+
+      if (worldJoinLineIndex == -1) {
+        // Photo line found but no world join line exists in this log before it
+        recovered.add(
+          PhotoMetadata(
+            takenDate: entry.photoTime.millisecondsSinceEpoch,
+            filename: entry.filename,
+            localPath: entry.filePath,
+            isNonVrcx: true,
+            logChecked: true,
+          ),
+        );
+        searchMap.remove(extractedBaseName);
+        continue;
+      }
+
+      // Parse room name
+      String roomName = '';
+      for (
+        int j = (worldJoinLineIndex - 5 < 0 ? 0 : worldJoinLineIndex - 5);
+        j <=
+            (worldJoinLineIndex + 5 >= lines.length
+                ? lines.length - 1
+                : worldJoinLineIndex + 5);
+        j++
+      ) {
+        final m = RegExp(
+          r'\[Behaviour\] Entering Room: (.*?)(?:\r?\n|$)',
+        ).firstMatch(lines[j]);
+        if (m != null) {
+          roomName = m.group(1)?.trim() ?? '';
+          break;
+        }
+      }
+
+      WorldInfo? worldInfo;
+      final joinLine = lines[worldJoinLineIndex];
+      final List<RegExp> worldPatterns = [
+        RegExp(
+          r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~([^(]+)\(([^)]+)\)~canRequestInvite~region\(([^)]+)\)',
+        ),
+        RegExp(
+          r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~([^(]+)\(([^)]+)\)~region\(([^)]+)\)',
+        ),
+        RegExp(
+          r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~group\(([^)]+)\)~groupAccessType\(([^)]+)\)~region\(([^)]+)\)',
+        ),
+        RegExp(
+          r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~group\(([^)]+)\)~groupAccessType\(([^)]+)\)~inviteOnly~region\(([^)]+)\)',
+        ),
+        RegExp(r'\[Behaviour\] Joining (wrld_[^:]+):([^~]+)~region\(([^)]+)\)'),
+      ];
+
+      for (final regex in worldPatterns) {
+        final m = regex.firstMatch(joinLine);
+        if (m != null) {
+          if (regex.pattern.contains('canRequestInvite')) {
+            worldInfo = WorldInfo(
+              name: roomName,
+              id: m.group(1) ?? '',
+              instanceId: m.group(2),
+              accessType: m.group(3),
+              ownerId: m.group(4),
+              region: m.group(5),
+              canRequestInvite: true,
+            );
+          } else if (regex.pattern.contains('group')) {
+            final isInviteOnly = regex.pattern.contains('inviteOnly');
+            worldInfo = WorldInfo(
+              name: roomName,
+              id: m.group(1) ?? '',
+              instanceId: m.group(2),
+              accessType: 'group',
+              groupId: m.group(3),
+              groupAccessType: m.group(4),
+              region: m.group(5),
+              inviteOnly: isInviteOnly ? true : null,
+            );
+          } else if (m.groupCount >= 5) {
+            worldInfo = WorldInfo(
+              name: roomName,
+              id: m.group(1) ?? '',
+              instanceId: m.group(2),
+              accessType: m.group(3),
+              ownerId: m.group(4),
+              region: m.group(5),
+            );
+          } else {
+            worldInfo = WorldInfo(
+              name: roomName,
+              id: m.group(1) ?? '',
+              instanceId: m.group(2),
+              accessType: 'public',
+              region: m.group(3),
+            );
+          }
+          break;
+        }
+      }
+
+      if (worldInfo == null && roomName.isNotEmpty) {
+        final worldIdMatch = RegExp(
+          r'Joining (wrld_[^:]+):',
+        ).firstMatch(joinLine);
+        final worldId = worldIdMatch?.group(1) ?? '';
+        worldInfo = WorldInfo(name: roomName, id: worldId);
+      }
+
+      // Reconstruct players
+      final playerMap = <String, String>{};
+      for (int k = worldJoinLineIndex; k <= i; k++) {
+        final playerLine = lines[k];
+        final pm = playerRegex.firstMatch(playerLine);
+        if (pm != null && pm.groupCount >= 3) {
+          final action = pm.group(1);
+          final name = pm.group(2) ?? '';
+          final id = pm.group(3) ?? '';
+          if (action == 'Joined') {
+            playerMap[id] = name;
+          } else if (action == 'Left') {
+            playerMap.remove(id);
+          }
+        }
+      }
+
+      final players =
+          playerMap.entries
+              .map((e) => Player(id: e.key, name: e.value))
+              .toList();
+
+      recovered.add(
+        PhotoMetadata(
+          takenDate: entry.photoTime.millisecondsSinceEpoch,
+          filename: entry.filename,
+          localPath: entry.filePath,
+          isNonVrcx: worldInfo == null,
+          logChecked: true,
+          world: worldInfo,
+          players: players,
+        ),
+      );
+
+      searchMap.remove(extractedBaseName);
+    }
+  }
+
+  return recovered;
+}
+
+class _PhotoSearchEntry {
+  final String filePath;
+  final String filename;
+  final DateTime photoTime;
+  final String searchTerm;
+
+  _PhotoSearchEntry({
+    required this.filePath,
+    required this.filename,
+    required this.photoTime,
+    required this.searchTerm,
+  });
 }
