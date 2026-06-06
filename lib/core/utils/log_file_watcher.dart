@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:path/path.dart' as path;
@@ -201,7 +202,7 @@ class LogFileWatcher {
         );
         await randomAccessFile.close();
 
-        final newContent = String.fromCharCodes(newBytes);
+        final newContent = utf8.decode(newBytes, allowMalformed: true);
         _lastPosition = currentSize;
 
         // Process new lines for screenshot events
