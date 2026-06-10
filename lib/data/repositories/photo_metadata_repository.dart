@@ -428,8 +428,76 @@ class PhotoMetadataRepository {
       }
 
       final backendPhotos = await VRChatService().fetchPhotoList();
+      if (backendPhotos == null) {
+        developer.log(
+          'Skipping backend sync because backend photo list fetch failed',
+          name: 'PhotoMetadataRepository',
+        );
+        return;
+      }
+
+      // Identify local photos that have a gallery_url but are not in the remote list,
+      // and clear their gallery_url so they can be re-uploaded.
+      final db = await AppDatabase().database;
+      final List<Map<String, dynamic>> localUploaded = await db.query(
+        'photo_metadata',
+        where: 'gallery_url IS NOT NULL AND gallery_url != ?',
+        whereArgs: [''],
+      );
+
+      if (localUploaded.isNotEmpty) {
+        final Set<String> remoteUrls =
+            backendPhotos.map((p) => p.galleryUrl).whereType<String>().toSet();
+        final Set<String> remoteBasenames =
+            backendPhotos
+                .map(
+                  (p) =>
+                      path.basenameWithoutExtension(p.filename).toLowerCase(),
+                )
+                .toSet();
+
+        final List<String> idsToClear = [];
+        for (final row in localUploaded) {
+          final localUrl = row['gallery_url'] as String?;
+          final localFilename = row['filename'] as String;
+          final localBase =
+              path.basenameWithoutExtension(localFilename).toLowerCase();
+
+          bool isStillRemote = false;
+          if (localUrl != null && remoteUrls.contains(localUrl)) {
+            isStillRemote = true;
+          } else if (remoteBasenames.contains(localBase)) {
+            isStillRemote = true;
+          }
+
+          if (!isStillRemote) {
+            idsToClear.add(row['id'] as String);
+          }
+        }
+
+        if (idsToClear.isNotEmpty) {
+          developer.log(
+            'Found ${idsToClear.length} local photos no longer present on the remote backend. Clearing local gallery URLs to allow re-upload.',
+            name: 'PhotoMetadataRepository',
+          );
+          await db.transaction((txn) async {
+            final batch = txn.batch();
+            for (final id in idsToClear) {
+              batch.update(
+                'photo_metadata',
+                {'gallery_url': null},
+                where: 'id = ?',
+                whereArgs: [id],
+              );
+            }
+            await batch.commit(noResult: true);
+          });
+        }
+      }
+
       if (backendPhotos.isEmpty) {
         await _prefs?.setInt('last_backend_sync_time', now);
+        PhotoEventService().notifyPhotoAdded('__CLOUD_SYNC_COMPLETE__');
         return;
       }
 

@@ -582,7 +582,10 @@ class VRChatService {
           name: 'VRChatService',
         );
 
-        final statusResult = await checkVerificationStatus(authData, forceRefresh: true);
+        final statusResult = await checkVerificationStatus(
+          authData,
+          forceRefresh: true,
+        );
         if (statusResult) {
           verificationSuccessful = true;
           break;
@@ -677,7 +680,10 @@ class VRChatService {
     }
   }
 
-  Future<bool> checkVerificationStatus(AuthData authData, {bool forceRefresh = false}) async {
+  Future<bool> checkVerificationStatus(
+    AuthData authData, {
+    bool forceRefresh = false,
+  }) async {
     final now = DateTime.now();
     if (!forceRefresh &&
         _cachedIsVerified == true &&
@@ -815,12 +821,14 @@ class VRChatService {
     return null;
   }
 
-  Future<List<PhotoMetadata>> fetchPhotoList() async {
+  Future<List<PhotoMetadata>?> fetchPhotoList() async {
     try {
       final authData = await loadAuthData();
-      if (authData == null) return [];
+      if (authData == null) return null;
 
-      final url = Uri.parse('https://api.gallevr.app/vrchat/photo/list?user=${authData.userId}');
+      final url = Uri.parse(
+        'https://api.gallevr.app/vrchat/photo/list?user=${authData.userId}',
+      );
       developer.log('Fetching photo list from $url', name: 'VRChatService');
 
       final response = await http.get(
@@ -845,7 +853,7 @@ class VRChatService {
     } catch (e) {
       developer.log('Error fetching photo list: $e', name: 'VRChatService');
     }
-    return [];
+    return null;
   }
 
   Future<bool> checkFriendStatus(String username) async {
@@ -1065,7 +1073,9 @@ class VRChatService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['success'] == true && data['accessKey'] != null && data['userId'] != null) {
+        if (data['success'] == true &&
+            data['accessKey'] != null &&
+            data['userId'] != null) {
           final authData = AuthData(
             accessKey: data['accessKey'],
             userId: data['userId'],
@@ -1073,7 +1083,7 @@ class VRChatService {
             displayName: data['displayName'],
             avatarUrl: data['avatarUrl'],
           );
-          
+
           await saveAuthData(authData);
           return authData;
         }
@@ -1105,52 +1115,58 @@ class LoginResult {
 
 List<PhotoMetadata> _parsePhotosTask(String jsonBody) {
   final List<dynamic> responseData = json.decode(jsonBody);
-  return responseData.map((json) {
-    try {
-      final metadataJson = json['metadata'] as Map<String, dynamic>;
-      final rawTakenDate = metadataJson['takenDate'];
-      int takenDateMs = DateTime.now().millisecondsSinceEpoch;
+  return responseData
+      .map((json) {
+        try {
+          final metadataJson = json['metadata'] as Map<String, dynamic>;
+          final rawTakenDate = metadataJson['takenDate'];
+          int takenDateMs = DateTime.now().millisecondsSinceEpoch;
 
-      if (rawTakenDate is int) {
-        takenDateMs = rawTakenDate;
-      } else if (rawTakenDate is String) {
-        final parsed = DateTime.tryParse(rawTakenDate);
-        if (parsed != null) {
-          takenDateMs = parsed.millisecondsSinceEpoch;
+          if (rawTakenDate is int) {
+            takenDateMs = rawTakenDate;
+          } else if (rawTakenDate is String) {
+            final parsed = DateTime.tryParse(rawTakenDate);
+            if (parsed != null) {
+              takenDateMs = parsed.millisecondsSinceEpoch;
+            }
+          }
+
+          final photoId = json['id'] as String?;
+          final userId = json['userId'] as String?;
+          String? resolvedUrl = json['url'] as String?;
+
+          if (photoId != null) {
+            resolvedUrl = 'https://gallevr.app/p/$photoId';
+          }
+
+          return PhotoMetadata(
+            takenDate: takenDateMs,
+            filename: (metadataJson['filename'] as String? ?? 'unknown.png')
+                .replaceAll('.webp', '.png'),
+            galleryUrl: resolvedUrl,
+            remoteId: photoId,
+            views: metadataJson['views'] as int? ?? 0,
+            isEdited: metadataJson['isEdited'] == true,
+            world:
+                metadataJson['world'] != null
+                    ? WorldInfo.fromJson(
+                      metadataJson['world'] as Map<String, dynamic>,
+                    )
+                    : null,
+            players:
+                (metadataJson['players'] as List<dynamic>?)
+                    ?.map((p) => Player.fromJson(p as Map<String, dynamic>))
+                    .toList() ??
+                [],
+          );
+        } catch (e) {
+          developer.log(
+            'Skipping corrupt backend photo object: $e',
+            name: 'VRChatService',
+          );
+          return null;
         }
-      }
-
-      final photoId = json['id'] as String?;
-      final userId = json['userId'] as String?;
-      String? resolvedUrl = json['url'] as String?;
-
-      if (photoId != null) {
-        resolvedUrl = 'https://gallevr.app/p/$photoId';
-      }
-
-      return PhotoMetadata(
-        takenDate: takenDateMs,
-        filename: (metadataJson['filename'] as String? ?? 'unknown.png')
-            .replaceAll('.webp', '.png'),
-        galleryUrl: resolvedUrl,
-        remoteId: photoId,
-        views: metadataJson['views'] as int? ?? 0,
-        isEdited: metadataJson['isEdited'] == true,
-        world:
-            metadataJson['world'] != null
-                ? WorldInfo.fromJson(
-                  metadataJson['world'] as Map<String, dynamic>,
-                )
-                : null,
-        players:
-            (metadataJson['players'] as List<dynamic>?)
-                ?.map((p) => Player.fromJson(p as Map<String, dynamic>))
-                .toList() ??
-            [],
-      );
-    } catch (e) {
-      developer.log('Skipping corrupt backend photo object: $e', name: 'VRChatService');
-      return null;
-    }
-  }).whereType<PhotoMetadata>().toList();
+      })
+      .whereType<PhotoMetadata>()
+      .toList();
 }
