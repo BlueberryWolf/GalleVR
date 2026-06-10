@@ -743,6 +743,8 @@ class VRChatService {
         }
 
         return isVerified;
+      } else if (response.statusCode >= 500) {
+        throw Exception('Server error checking verification status: ${response.statusCode}');
       }
 
       _cachedIsVerified = null;
@@ -755,7 +757,7 @@ class VRChatService {
       );
       _cachedIsVerified = null;
       _lastVerificationCheck = null;
-      return false;
+      rethrow;
     }
   }
 
@@ -765,7 +767,7 @@ class VRChatService {
   }) async {
     try {
       final url = Uri.parse(
-        'https://api.gallevr.app/vrchat/auth/me${forceRefresh ? '&cache=false' : ''}',
+        'https://api.gallevr.app/vrchat/auth/me${forceRefresh ? '?cache=false' : ''}',
       );
       developer.log('Fetching user profile from $url', name: 'VRChatService');
 
