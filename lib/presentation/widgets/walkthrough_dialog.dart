@@ -63,7 +63,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
       title: 'How Photos Appear',
       content:
           'To show up in the Photos tab, a screenshot needs embedded world and player metadata.\n\n'
-          'VRChat\'s default photo capture does not include this. If a photo was taken while GalleVR (or VRCX with metadata enabled) was running, it will be tagged and appear in the tab. Otherwise, it will not show up.',
+          'VRChat\'s default photo capture now has limited support (allowing uploads with just world info). Otherwise, if a photo was taken while GalleVR (or VRCX with metadata enabled) was running, it will be tagged with full metadata and appear in the tab.',
     ),
     _SlideData(
       icon: Icons.cloud_upload_rounded,
@@ -71,7 +71,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
       title: 'Grey vs. Uploaded Photos',
       content:
           'The Photos tab displays all eligible photos. If a photo is grey, it means it has metadata but has not been uploaded to the GalleVR website yet. Simply click on any grey photo and select Upload Photo to upload it!\n\n'
-          'Older VRCX photos with Screenshot Metadata enabled will also show up as grey and can be retroactively uploaded.',
+          'Older VRChat screenshots and VRCX photos with metadata enabled will also show up as grey and can be retroactively uploaded.',
     ),
     _SlideData(
       icon: Icons.collections_bookmark_rounded,

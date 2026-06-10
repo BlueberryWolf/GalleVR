@@ -167,7 +167,7 @@ Map<String, dynamic>? _parseVrcxMetadata(String jsonString) {
     
     // Quick validation
     if (json is Map<String, dynamic> && 
-        json['application'] == 'VRCX' && 
+        (json['application'] == 'VRCX' || json['application'] == 'VRChat') && 
         json['version'] != null) {
       return json;
     }
@@ -189,6 +189,8 @@ PhotoMetadata _convertToGalleVrMetadata(
     final stats = file.statSync();
     final creationTimeMs = stats.modified.millisecondsSinceEpoch;
     final filename = path.basename(imagePath);
+
+    final isVrcObject = vrcxMetadata['application'] == 'VRChat';
 
     // Extract world information efficiently
     WorldInfo? worldInfo;
@@ -228,7 +230,7 @@ PhotoMetadata _convertToGalleVrMetadata(
       }
 
       worldInfo = WorldInfo(
-        name: worldData['name'] as String,
+        name: worldData['name'] as String? ?? '',
         id: worldId ?? '',
         instanceId: instanceIdStr,
         accessType: accessType,
@@ -265,6 +267,11 @@ PhotoMetadata _convertToGalleVrMetadata(
           players.add(Player(id: authorId, name: authorName));
         }
       }
+    } else if (isVrcObject) {
+      final authorName = vrcxMetadata['authorName'] as String?;
+      if (authorName != null && authorName.isNotEmpty) {
+        players.add(Player(id: '', name: authorName));
+      }
     }
 
     return PhotoMetadata(
@@ -274,6 +281,7 @@ PhotoMetadata _convertToGalleVrMetadata(
       world: worldInfo,
       players: players,
       localPath: imagePath,
+      application: vrcxMetadata['application'] as String?,
     );
   } catch (e) {
     // Return minimal valid metadata on error

@@ -34,6 +34,9 @@ class PhotoMetadata {
   // Whether this photo has been checked against logs for metadata recovery
   final bool logChecked;
 
+  // Application that created the metadata (e.g. 'VRCX', 'VRChat')
+  final String? application;
+
   // Default constructor
   PhotoMetadata({
     required this.takenDate,
@@ -47,6 +50,7 @@ class PhotoMetadata {
     this.isNonVrcx = false,
     this.isEdited = false,
     this.logChecked = false,
+    this.application,
   });
 
   // Create a PhotoMetadata from JSON
@@ -82,6 +86,7 @@ class PhotoMetadata {
       isNonVrcx: json['isNonVrcx'] as bool? ?? false,
       isEdited: json['isEdited'] as bool? ?? false,
       logChecked: json['logChecked'] as bool? ?? false,
+      application: json['application'] as String?,
     );
   }
 
@@ -99,6 +104,7 @@ class PhotoMetadata {
       'isNonVrcx': isNonVrcx,
       'isEdited': isEdited,
       'logChecked': logChecked,
+      if (application != null) 'application': application,
     };
   }
 
@@ -115,6 +121,7 @@ class PhotoMetadata {
     bool? isNonVrcx,
     bool? isEdited,
     bool? logChecked,
+    String? application,
   }) {
     return PhotoMetadata(
       takenDate: takenDate ?? this.takenDate,
@@ -128,6 +135,7 @@ class PhotoMetadata {
       isNonVrcx: isNonVrcx ?? this.isNonVrcx,
       isEdited: isEdited ?? this.isEdited,
       logChecked: logChecked ?? this.logChecked,
+      application: application ?? this.application,
     );
   }
 }

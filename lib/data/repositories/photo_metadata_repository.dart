@@ -85,6 +85,28 @@ class PhotoMetadataRepository {
             );
           });
 
+      final vrcXmpMigrationDone =
+          _prefs?.getBool('gallevr_vrc_xmp_migration_done') ?? false;
+      if (!vrcXmpMigrationDone) {
+        AppDatabase().database
+            .then((db) async {
+              await db.execute(
+                'DELETE FROM photo_metadata WHERE world_name IS NULL AND gallery_url IS NULL',
+              );
+              await _prefs?.setBool('gallevr_vrc_xmp_migration_done', true);
+              developer.log(
+                'Cleared placeholder metadata records for VRChat XMP migration',
+                name: 'PhotoMetadataRepository',
+              );
+            })
+            .catchError((e) {
+              developer.log(
+                'Error clearing placeholders: $e',
+                name: 'PhotoMetadataRepository',
+              );
+            });
+      }
+
       syncWithBackend();
       runRetroactiveLogScanner();
 
@@ -688,6 +710,8 @@ class PhotoMetadataRepository {
     if (metadataList.isEmpty) return true;
     await _initializeCache();
 
+    final authData = await VRChatService().loadAuthData();
+
     final db = await AppDatabase().database;
 
     const int batchSize = 50;
@@ -758,6 +782,24 @@ class PhotoMetadataRepository {
         final batch = txn.batch();
 
         for (var metadata in currentBatch) {
+          if (metadata.application == 'VRChat' && authData != null) {
+            final updatedPlayers =
+                metadata.players.map((p) {
+                  if (p.id.isEmpty) {
+                    return Player(id: authData.userId, name: p.name);
+                  }
+                  return p;
+                }).toList();
+            if (updatedPlayers.isEmpty) {
+              updatedPlayers.add(
+                Player(
+                  id: authData.userId,
+                  name: authData.displayName ?? authData.userId,
+                ),
+              );
+            }
+            metadata = metadata.copyWith(players: updatedPlayers);
+          }
           PhotoMetadata? existingMeta;
           String? existingId;
 
@@ -1190,7 +1232,7 @@ class PhotoMetadataRepository {
           final db = await AppDatabase().database;
           final List<Map<String, dynamic>> dbRows = await db.query(
             'photo_metadata',
-            columns: ['filename', 'local_path'],
+            columns: ['filename', 'local_path', 'world_name', 'gallery_url'],
           );
 
           final Set<String> existingNames = {};
@@ -1198,9 +1240,14 @@ class PhotoMetadataRepository {
           for (final row in dbRows) {
             final filename = row['filename'] as String;
             final localPath = row['local_path'] as String?;
-            existingNames.add(filename);
-            if (localPath != null) {
-              existingPaths.add(localPath);
+            final worldName = row['world_name'] as String?;
+            final galleryUrl = row['gallery_url'] as String?;
+
+            if (worldName != null || galleryUrl != null) {
+              existingNames.add(filename);
+              if (localPath != null) {
+                existingPaths.add(localPath);
+              }
             }
           }
 
@@ -1215,7 +1262,7 @@ class PhotoMetadataRepository {
 
           if (newPaths.isNotEmpty) {
             developer.log(
-              'Processing ${newPaths.length} new local photos for VRCX metadata in background',
+              'Processing ${newPaths.length} local photos for VRChat/VRCX metadata extraction in background',
               name: 'PhotoMetadataRepository',
             );
             await _batchProcessMetadataBackground(newPaths);

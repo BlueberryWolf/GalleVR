@@ -93,8 +93,16 @@ class PhotoUploadService {
         return false;
       }
 
-      final photoMetadata =
+      PhotoMetadata photoMetadata =
           metadata ?? _createPhotoMetadata(photoPath, logMetadata);
+
+      if (photoMetadata.application == 'VRChat') {
+        photoMetadata = photoMetadata.copyWith(
+          players: [
+            Player(id: authData.userId, name: authData.displayName ?? authData.userId),
+          ],
+        );
+      }
 
       final saveResult = await _photoMetadataRepository.savePhotoMetadata(
         photoMetadata,
