@@ -136,7 +136,8 @@ class ManualUploadService {
         photoPath: photoPath,
       );
       
-      final webpPath = await _processPhotoToWebP(photoPath);
+      final badges = authData.badges.map((b) => b.toString().toLowerCase()).toList();
+      final webpPath = await _processPhotoToWebP(photoPath, badges);
       if (webpPath == null) {
         final error = 'Failed to process photo to WebP format';
         PhotoEventService().notifyError('processing', error, photoPath: photoPath);
@@ -235,7 +236,7 @@ class ManualUploadService {
   }
 
   /// Process a photo to WebP format with compression
-  Future<String?> _processPhotoToWebP(String sourcePath) async {
+  Future<String?> _processPhotoToWebP(String sourcePath, List<String> badges) async {
     try {
       final file = File(sourcePath);
       if (!await file.exists()) {
@@ -259,6 +260,12 @@ class ManualUploadService {
 
       final fileName = path.basenameWithoutExtension(sourcePath);
       final outputPath = path.join(outputDir.path, '$fileName.webp');
+
+      final tier = _getTierSettings(badges);
+      final int maxDimension = tier['maxDimension']!;
+      final int webpQuality = tier['webpQuality']!;
+      final int maxSizeBytes = tier['maxSizeBytes']!;
+      final int maxTierPixels = tier['maxTierPixels']!;
 
       if (Platform.isWindows || Platform.isLinux || Platform.isAndroid) {
         developer.log(
@@ -303,7 +310,6 @@ class ManualUploadService {
 
         int? targetWidth;
         int? targetHeight;
-        const maxDimension = 1080;
 
         if (width > maxDimension || height > maxDimension) {
           if (width > height) {
@@ -315,13 +321,24 @@ class ManualUploadService {
           }
         }
 
+        final int processedWidth = targetWidth ?? width;
+        final int processedHeight = targetHeight ?? height;
+        final int processedPixels = processedWidth * processedHeight;
+
+        int scaledMaxSizeBytes =
+            (maxSizeBytes * (processedPixels / maxTierPixels)).round();
+        scaledMaxSizeBytes = scaledMaxSizeBytes.clamp(153600, maxSizeBytes);
+        if (scaledMaxSizeBytes > maxSizeBytes) {
+          scaledMaxSizeBytes = maxSizeBytes;
+        }
+
         await _webpEncoderService.encodeFileToWebP(
           sourcePath,
           outputPath,
-          quality: 85,
+          quality: webpQuality,
           targetWidth: targetWidth,
           targetHeight: targetHeight,
-          maxSizeBytes: 153600, // 150KB
+          maxSizeBytes: scaledMaxSizeBytes,
           originalWidth: width,
           originalHeight: height,
         );
@@ -353,19 +370,43 @@ class ManualUploadService {
         throw Exception(error);
       }
 
-      // Resize if needed (max 1080p)
-      final processedImage = await _resizeImageIfNeeded(image);
+      // Resize if needed
+      final processedImage = await _resizeImageIfNeeded(image, maxDimension);
       developer.log(
         'Image resized to ${processedImage.width}x${processedImage.height}',
         name: 'ManualUploadService',
       );
 
+      final int processedPixels =
+          processedImage.width * processedImage.height;
+
+      int scaledMaxSizeBytes =
+          (maxSizeBytes * (processedPixels / maxTierPixels)).round();
+      scaledMaxSizeBytes = scaledMaxSizeBytes.clamp(153600, maxSizeBytes);
+      if (scaledMaxSizeBytes > maxSizeBytes) {
+        scaledMaxSizeBytes = maxSizeBytes;
+      }
+
       // Encode to WebP with size constraints
-      final webpBytes = await _webpEncoderService.encodeToWebP(
+      var webpBytes = await _webpEncoderService.encodeToWebP(
         processedImage,
-        quality: 85,
+        quality: webpQuality,
         method: 6,
       );
+
+      if (webpBytes.length > scaledMaxSizeBytes) {
+        int currentQuality = webpQuality;
+        while (webpBytes.length > scaledMaxSizeBytes && currentQuality > 50) {
+          currentQuality -= 10;
+          if (currentQuality < 50) currentQuality = 50;
+          webpBytes = await _webpEncoderService.encodeToWebP(
+            processedImage,
+            quality: currentQuality,
+            method: 6,
+          );
+          if (currentQuality == 50) break;
+        }
+      }
 
       developer.log(
         'Encoded to WebP: ${webpBytes.length} bytes',
@@ -446,41 +487,75 @@ class ManualUploadService {
         (ratio - ratio9_16).abs() < tolerance;
   }
 
-  /// Resize image if it exceeds 1080p while maintaining aspect ratio
-  Future<img.Image> _resizeImageIfNeeded(img.Image image) async {
-    const maxDimension = 1080;
-
+  /// Resize image if it exceeds maxDimension while maintaining aspect ratio
+  Future<img.Image> _resizeImageIfNeeded(img.Image image, int maxDimension) async {
     if (image.width <= maxDimension && image.height <= maxDimension) {
       return image;
     }
 
-    return await compute((img.Image image) {
+    return await compute((Map<String, dynamic> params) {
+      final img.Image imgObj = params['image'];
+      final int maxDim = params['maxDimension'];
       int newWidth, newHeight;
 
-      if (image.width > image.height) {
-        if (image.height > maxDimension) {
-          newHeight = maxDimension;
-          newWidth = (image.width * (maxDimension / image.height)).round();
+      if (imgObj.width > imgObj.height) {
+        if (imgObj.height > maxDim) {
+          newHeight = maxDim;
+          newWidth = (imgObj.width * (maxDim / imgObj.height)).round();
         } else {
-          newWidth = image.width;
-          newHeight = image.height;
+          newWidth = imgObj.width;
+          newHeight = imgObj.height;
         }
       } else {
-        if (image.width > maxDimension) {
-          newWidth = maxDimension;
-          newHeight = (image.height * (maxDimension / image.width)).round();
+        if (imgObj.width > maxDim) {
+          newWidth = maxDim;
+          newHeight = (imgObj.height * (maxDim / imgObj.width)).round();
         } else {
-          newWidth = image.width;
-          newHeight = image.height;
+          newWidth = imgObj.width;
+          newHeight = imgObj.height;
         }
       }
 
       return img.copyResize(
-        image,
+        imgObj,
         width: newWidth,
         height: newHeight,
         interpolation: img.Interpolation.cubic,
       );
-    }, image);
+    }, {'image': image, 'maxDimension': maxDimension});
+  }
+
+  Map<String, dynamic> _getTierSettings(List<String> badges) {
+    if (badges.contains('mega_supporter') ||
+        badges.contains('mega supporter')) {
+      return {
+        'maxDimension': 7680, // 8K
+        'webpQuality': 95,
+        'maxSizeBytes': 5242880, // 5.0MB limit
+        'maxTierPixels': 33177600, // 7680x4320
+      };
+    } else if (badges.contains('super_supporter') ||
+        badges.contains('super supporter')) {
+      return {
+        'maxDimension': 3840, // 4K
+        'webpQuality': 92,
+        'maxSizeBytes': 2621440, // 2.5MB limit
+        'maxTierPixels': 8294400, // 3840x2160
+      };
+    } else if (badges.contains('supporter')) {
+      return {
+        'maxDimension': 2560, // 2K
+        'webpQuality': 90,
+        'maxSizeBytes': 1048576, // 1MB limit
+        'maxTierPixels': 3686400, // 2560x1440
+      };
+    } else {
+      return {
+        'maxDimension': 1920, // 1080p
+        'webpQuality': 85,
+        'maxSizeBytes': 153600, // 150KB limit
+        'maxTierPixels': 2073600, // 1920x1080
+      };
+    }
   }
 }

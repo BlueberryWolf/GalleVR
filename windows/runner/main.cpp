@@ -7,6 +7,9 @@
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
+  // Create mutex for Inno Setup installer/updater detection
+  ::CreateMutex(nullptr, FALSE, L"2fc54373-926e-545c-883a-dabcd36b229f");
+
   // Attach to console when present (e.g., 'flutter run') or create a
   // new console when running with a debugger.
   if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::IsDebuggerPresent()) {

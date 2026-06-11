@@ -261,7 +261,11 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
                           'Stopping foreground tasks',
                           name: 'GalleVRApp',
                         );
-                        await FlutterForegroundTask.stopService();
+                        if (Platform.isAndroid || Platform.isIOS) {
+                          await FlutterForegroundTask.stopService().timeout(
+                            const Duration(milliseconds: 100),
+                          );
+                        }
                       } catch (e) {
                         developer.log(
                           'Error stopping foreground tasks: $e',
@@ -271,9 +275,12 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
 
                       try {
                         // try the normal exit path
-                        await AppServiceManager().handleWindowClose(
-                          forceExit: true,
-                        );
+                        await AppServiceManager()
+                            .handleWindowClose(forceExit: true)
+                            .timeout(
+                              const Duration(milliseconds: 200),
+                              onTimeout: () => false,
+                            );
                       } catch (e) {
                         developer.log(
                           'Error during normal exit: $e',

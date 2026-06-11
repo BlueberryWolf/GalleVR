@@ -70,9 +70,13 @@ class _MassUploadScreenState extends State<MassUploadScreen>
       for (var task in newTasks) {
         final metadata = metadataMap[task.path];
         task.hasMetadata = metadata != null && metadata.world != null;
+        final galleryUrl = metadata?.galleryUrl;
         if (!task.hasMetadata) {
           task.message =
               'No metadata found. Rename to match original VRChat filename.';
+        } else if (galleryUrl != null && galleryUrl.isNotEmpty) {
+          task.status = TaskStatus.completed;
+          task.message = 'Already uploaded';
         }
       }
     });
@@ -112,9 +116,13 @@ class _MassUploadScreenState extends State<MassUploadScreen>
         for (var task in newTasks) {
           final metadata = metadataMap[task.path];
           task.hasMetadata = metadata != null && metadata.world != null;
+          final galleryUrl = metadata?.galleryUrl;
           if (!task.hasMetadata) {
             task.message =
                 'No metadata found. Rename to match original VRChat filename.';
+          } else if (galleryUrl != null && galleryUrl.isNotEmpty) {
+            task.status = TaskStatus.completed;
+            task.message = 'Already uploaded';
           }
         }
       });
@@ -679,7 +687,7 @@ class _TaskTile extends StatelessWidget {
             child: CachedImage(
               filePath: task.path,
               fit: BoxFit.cover,
-              useOriginal: true,
+              useOriginal: false,
             ),
           ),
         ),

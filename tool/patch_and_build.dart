@@ -50,6 +50,14 @@ Future<void> _patchScript(File file) async {
   print('Patching Inno Setup script to handle process termination and migration...');
   var content = await file.readAsString();
 
+  // Add AppMutex and CloseApplications setup directives
+  if (content.contains('AppId=2fc54373-926e-545c-883a-dabcd36b229f')) {
+    content = content.replaceFirst(
+      'AppId=2fc54373-926e-545c-883a-dabcd36b229f',
+      'AppId=2fc54373-926e-545c-883a-dabcd36b229f\nAppMutex=2fc54373-926e-545c-883a-dabcd36b229f\nCloseApplications=yes',
+    );
+  }
+
   final migratorPath = p.join(
     Directory.current.path,
     'build',

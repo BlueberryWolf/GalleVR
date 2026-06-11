@@ -243,7 +243,7 @@ class MassUploadService {
       return {
         'maxDimension': 7680, // 8K
         'webpQuality': 95,
-        'maxSizeBytes': 7864320, // 7.5MB limit
+        'maxSizeBytes': 5242880, // 5.0MB limit
         'maxTierPixels': 33177600, // 7680x4320
       };
     } else if (badges.contains('super_supporter') ||

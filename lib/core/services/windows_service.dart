@@ -218,14 +218,26 @@ class WindowsService {
         // Hide the window first
         _appWindow.hide();
 
-        await _systemTray.setToolTip('');
-        await _systemTray.setTitle('');
+        await _systemTray.setToolTip('').timeout(
+          const Duration(milliseconds: 100),
+          onTimeout: () => false,
+        );
+        await _systemTray.setTitle('').timeout(
+          const Duration(milliseconds: 100),
+          onTimeout: () => false,
+        );
 
         final emptyMenu = Menu();
-        await emptyMenu.buildFrom([]);
-        await _systemTray.setContextMenu(emptyMenu);
+        await emptyMenu.buildFrom([]).timeout(
+          const Duration(milliseconds: 100),
+          onTimeout: () => false,
+        );
+        await _systemTray.setContextMenu(emptyMenu).timeout(
+          const Duration(milliseconds: 100),
+          onTimeout: () => false,
+        );
 
-        await Future.delayed(Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 50));
 
         developer.log('System tray cleanup completed', name: 'WindowsService');
       } catch (e) {
@@ -237,9 +249,13 @@ class WindowsService {
     }
 
     try {
-      // Try to stop any foreground tasks that might be running
-      developer.log('Stopping any foreground tasks', name: 'WindowsService');
-      await FlutterForegroundTask.stopService();
+      if (Platform.isAndroid || Platform.isIOS) {
+        // Try to stop any foreground tasks that might be running
+        developer.log('Stopping any foreground tasks', name: 'WindowsService');
+        await FlutterForegroundTask.stopService().timeout(
+          const Duration(milliseconds: 100),
+        );
+      }
     } catch (e) {
       developer.log(
         'Error stopping foreground tasks: $e',

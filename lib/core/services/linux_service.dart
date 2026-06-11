@@ -157,7 +157,11 @@ class LinuxService {
   Future<void> exitApplication() async {
     developer.log('Exiting application', name: 'LinuxService');
     try {
-      await FlutterForegroundTask.stopService();
+      if (Platform.isAndroid || Platform.isIOS) {
+        await FlutterForegroundTask.stopService().timeout(
+          const Duration(milliseconds: 100),
+        );
+      }
     } catch (e) {
       developer.log(
         'Error stopping foreground tasks: $e',
