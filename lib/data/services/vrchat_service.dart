@@ -22,8 +22,8 @@ class VRChatService {
   bool _isInitialized = false;
 
   // Cache for verification checks (5-minute TTL)
-  static bool? _cachedIsVerified;
-  static DateTime? _lastVerificationCheck;
+  static final Map<String, bool> _cachedIsVerifiedMap = {};
+  static final Map<String, DateTime> _lastVerificationCheckMap = {};
 
   CurrentUser? get currentUser => _api.auth.currentUser;
 
@@ -95,8 +95,8 @@ class VRChatService {
     required String password,
     String? totpCode,
   }) async {
-    _cachedIsVerified = null;
-    _lastVerificationCheck = null;
+    _cachedIsVerifiedMap.clear();
+    _lastVerificationCheckMap.clear();
 
     if (!_isInitialized) {
       await initialize();
@@ -236,8 +236,8 @@ class VRChatService {
   }
 
   Future<bool> logout() async {
-    _cachedIsVerified = null;
-    _lastVerificationCheck = null;
+    _cachedIsVerifiedMap.clear();
+    _lastVerificationCheckMap.clear();
 
     if (!_isInitialized) {
       await initialize();
@@ -688,24 +688,27 @@ class VRChatService {
     AuthData authData, {
     bool forceRefresh = false,
   }) async {
+    final userId = authData.userId;
     final now = DateTime.now();
+    final cachedVal = _cachedIsVerifiedMap[userId];
+    final lastCheck = _lastVerificationCheckMap[userId];
     if (!forceRefresh &&
-        _cachedIsVerified == true &&
-        _lastVerificationCheck != null &&
-        now.difference(_lastVerificationCheck!) < const Duration(minutes: 5)) {
+        cachedVal == true &&
+        lastCheck != null &&
+        now.difference(lastCheck) < const Duration(minutes: 5)) {
       developer.log(
-        'Using cached verification status: $_cachedIsVerified',
+        'Using cached verification status for $userId: $cachedVal',
         name: 'VRChatService',
       );
-      return _cachedIsVerified!;
+      return cachedVal!;
     }
 
     try {
       final url = Uri.parse(
-        'https://api.gallevr.app/vrchat/verify/status/${authData.userId}',
+        'https://api.gallevr.app/vrchat/verify/status/$userId',
       );
       developer.log(
-        'Checking verification status for ${authData.userId} at URL: $url',
+        'Checking verification status for $userId at URL: $url',
         name: 'VRChatService',
       );
 
@@ -718,7 +721,7 @@ class VRChatService {
       );
 
       developer.log(
-        'Verification status response: ${response.statusCode} ${response.body}',
+        'Verification status response for $userId: ${response.statusCode} ${response.body}',
         name: 'VRChatService',
       );
 
@@ -726,13 +729,13 @@ class VRChatService {
         final responseData = json.decode(response.body);
         final isVerified = responseData['status'] == 'verified';
         developer.log(
-          'Verification status result: $isVerified',
+          'Verification status result for $userId: $isVerified',
           name: 'VRChatService',
         );
 
         if (isVerified) {
-          _cachedIsVerified = true;
-          _lastVerificationCheck = now;
+          _cachedIsVerifiedMap[userId] = true;
+          _lastVerificationCheckMap[userId] = now;
           try {
             await fetchMe(authData, forceRefresh: true);
           } catch (e) {
@@ -742,8 +745,8 @@ class VRChatService {
             );
           }
         } else {
-          _cachedIsVerified = null;
-          _lastVerificationCheck = null;
+          _cachedIsVerifiedMap.remove(userId);
+          _lastVerificationCheckMap.remove(userId);
         }
 
         return isVerified;
@@ -753,16 +756,16 @@ class VRChatService {
         );
       }
 
-      _cachedIsVerified = null;
-      _lastVerificationCheck = null;
+      _cachedIsVerifiedMap.remove(userId);
+      _lastVerificationCheckMap.remove(userId);
       return false;
     } catch (e) {
       developer.log(
         'Error checking verification status: $e',
         name: 'VRChatService',
       );
-      _cachedIsVerified = null;
-      _lastVerificationCheck = null;
+      _cachedIsVerifiedMap.remove(userId);
+      _lastVerificationCheckMap.remove(userId);
       rethrow;
     }
   }
