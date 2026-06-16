@@ -1,4 +1,5 @@
 import 'dart:developer' as developer;
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -103,9 +104,18 @@ class _AccountScreenState extends State<AccountScreen> {
       setState(() {
         _authData = verifiedPrimary;
         _authDataSec = verifiedSecondary;
-        _isVerified = _authData != null || _authDataSec != null;
 
-        final activeAuth = _authData ?? _authDataSec;
+        final isAndroid = Platform.isAndroid;
+        final hasPrimary =
+            _authData != null &&
+            (!isAndroid || !_authData!.userId.startsWith('U-'));
+        final hasSecondary =
+            _authDataSec != null &&
+            (!isAndroid || !_authDataSec!.userId.startsWith('U-'));
+        _isVerified = hasPrimary || hasSecondary;
+
+        final activeAuth =
+            hasPrimary ? _authData : (hasSecondary ? _authDataSec : null);
         if (activeAuth != null) {
           _galleryUrl = 'https://gallevr.app/?auth=${activeAuth.accessKey}';
         } else {
@@ -410,16 +420,23 @@ class _AccountScreenState extends State<AccountScreen> {
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 700;
         final list = <Widget>[];
+        final isAndroid = Platform.isAndroid;
 
         // Primary account
         if (_authData != null) {
-          list.add(_buildProfileCard(_authData!, false, isWide));
+          final isRes = _authData!.userId.startsWith('U-');
+          if (!isAndroid || !isRes) {
+            list.add(_buildProfileCard(_authData!, false, isWide));
+          }
         }
 
         // Secondary account
         if (_authDataSec != null) {
-          if (list.isNotEmpty) list.add(const SizedBox(height: 16));
-          list.add(_buildProfileCard(_authDataSec!, true, isWide));
+          final isRes = _authDataSec!.userId.startsWith('U-');
+          if (!isAndroid || !isRes) {
+            if (list.isNotEmpty) list.add(const SizedBox(height: 16));
+            list.add(_buildProfileCard(_authDataSec!, true, isWide));
+          }
         }
 
         // Link button
@@ -430,12 +447,17 @@ class _AccountScreenState extends State<AccountScreen> {
             (_authData != null && _authData!.userId.startsWith('U-')) ||
             (_authDataSec != null && _authDataSec!.userId.startsWith('U-'));
 
-        if (!hasVRC || !hasResonite) {
-          final targetPlatform = hasVRC ? 'resonite' : 'vrchat';
+        final bool canLink = isAndroid ? !hasVRC : (!hasVRC || !hasResonite);
+        if (canLink) {
+          final targetPlatform = (isAndroid || !hasVRC) ? 'vrchat' : 'resonite';
           final label =
-              hasVRC ? 'Link Resonite Account' : 'Link VRChat Account';
+              targetPlatform == 'vrchat'
+                  ? 'Link VRChat Account'
+                  : 'Link Resonite Account';
           final btnColor =
-              hasVRC ? const Color(0xFF00b4d8) : const Color(0xFF8b5cf6);
+              targetPlatform == 'vrchat'
+                  ? const Color(0xFF8b5cf6)
+                  : const Color(0xFF00b4d8);
 
           list.add(const SizedBox(height: 24));
           list.add(
