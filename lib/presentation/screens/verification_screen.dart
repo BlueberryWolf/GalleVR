@@ -16,7 +16,10 @@ import 'onboarding_screen.dart';
 
 // Screen for VRChat verification
 class VerificationScreen extends StatefulWidget {
-  const VerificationScreen({super.key});
+  final String? initialPlatform;
+  final bool isLinkMode;
+
+  const VerificationScreen({super.key, this.initialPlatform, this.isLinkMode = false});
 
   @override
   State<VerificationScreen> createState() => _VerificationScreenState();
@@ -45,10 +48,15 @@ class _VerificationScreenState extends State<VerificationScreen> {
   DateTime? _selectedDate;
   Map<String, dynamic>? _lookedUpAccount;
   bool _isLookingUp = false;
+  String? _activePlatform;
 
   @override
   void initState() {
     super.initState();
+    _activePlatform = widget.initialPlatform;
+    if (_activePlatform == 'resonite') {
+      _selectedMethod = VerificationMethod.manual;
+    }
     _initializeService();
   }
 
@@ -81,7 +89,29 @@ class _VerificationScreenState extends State<VerificationScreen> {
         );
       }
 
-      final authData = await _vrchatService.loadAuthData();
+      AuthData? authData;
+      final primaryAuth = await _vrchatService.loadAuthData();
+      final secondaryAuth = await _vrchatService.loadAuthDataSecondary();
+
+      if (widget.isLinkMode && widget.initialPlatform != null) {
+        final targetPlatform = widget.initialPlatform;
+        if (targetPlatform == 'resonite') {
+          if (primaryAuth != null && primaryAuth.userId.startsWith('U-')) {
+            authData = primaryAuth;
+          } else if (secondaryAuth != null && secondaryAuth.userId.startsWith('U-')) {
+            authData = secondaryAuth;
+          }
+        } else {
+          if (primaryAuth != null && !primaryAuth.userId.startsWith('U-')) {
+            authData = primaryAuth;
+          } else if (secondaryAuth != null && !secondaryAuth.userId.startsWith('U-')) {
+            authData = secondaryAuth;
+          }
+        }
+      } else {
+        authData = primaryAuth ?? secondaryAuth;
+      }
+
       if (authData != null) {
         if (authData.ageVerified && !_isAgeVerified) {
           setState(() {
@@ -94,7 +124,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
           _statusMessage = 'Checking verification status...';
         });
 
-        // Check if the user is fully verified (has valid VRChat verification)
+        // Check if the user is fully verified (has valid verification)
         final isVerified = await _vrchatService.checkVerificationStatus(
           authData,
         );
@@ -103,7 +133,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
           setState(() {
             _isVerified = true;
             _authData = authData;
-            _galleryUrl = 'https://gallevr.app/?auth=${authData.accessKey}';
+            _galleryUrl = 'https://gallevr.app/?auth=${authData!.accessKey}';
           });
 
           // Check if user needs to accept TOS if they're already verified
@@ -270,7 +300,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
       );
     }
 
-    await _vrchatService.saveAuthData(finalAuth);
+    if (widget.isLinkMode) {
+      await _vrchatService.saveAuthDataSecondary(finalAuth);
+    } else {
+      await _vrchatService.saveAuthData(finalAuth);
+    }
     await _vrchatService.setAgeVerified(true);
 
     if (mounted) {
@@ -285,10 +319,13 @@ class _VerificationScreenState extends State<VerificationScreen> {
   }
 
   Future<void> _startManualVerification() async {
+    final isResonite = _activePlatform == 'resonite';
     if (_manualVerificationStep == 0) {
       if (_usernameController.text.isEmpty) {
         setState(() {
-          _errorMessage = 'Please enter your VRChat username';
+          _errorMessage = isResonite
+              ? 'Please enter your Resonite username'
+              : 'Please enter your VRChat username';
         });
         return;
       }
@@ -300,13 +337,18 @@ class _VerificationScreenState extends State<VerificationScreen> {
       });
 
       try {
+        final lookupId = _lookedUpAccount?['id'] ?? _usernameController.text;
         final verificationResult = await _vrchatService.startManualVerification(
-          _usernameController.text,
+          lookupId,
           ageVerified: _isAgeVerified,
         );
 
         if (verificationResult.success && verificationResult.authData != null) {
-          await _vrchatService.saveAuthData(verificationResult.authData!);
+          if (widget.isLinkMode) {
+            await _vrchatService.saveAuthDataSecondary(verificationResult.authData!);
+          } else {
+            await _vrchatService.saveAuthData(verificationResult.authData!);
+          }
 
           setState(() {
             _manualVerificationStep = 1;
@@ -337,9 +379,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
       });
 
       try {
-        final isFriend = await _vrchatService.checkFriendStatus(
-          _usernameController.text,
-        );
+        String lookupId = _lookedUpAccount?['id'] ?? _usernameController.text;
+        if (isResonite && !lookupId.startsWith('U-')) {
+          lookupId = 'U-$lookupId';
+        }
+        final isFriend = await _vrchatService.checkFriendStatus(lookupId);
 
         if (isFriend) {
           setState(() {
@@ -348,8 +392,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
           });
         } else {
           setState(() {
-            _errorMessage =
-                'Friend request not found. Please add GalleVR as a friend in VRChat and try again.';
+            _errorMessage = isResonite
+                ? 'Friend request not found. Please add GalleVR as a friend in Resonite and try again.'
+                : 'Friend request not found. Please add GalleVR as a friend in VRChat and try again.';
           });
         }
       } catch (e) {
@@ -387,8 +432,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
               await _markAsVerified(_authData!);
             } else {
               setState(() {
-                _errorMessage =
-                    'Verification failed. Please make sure you\'ve set your VRChat status to the verification token and try again.';
+                _errorMessage = isResonite
+                    ? 'Verification failed. Please make sure you\'ve sent the verification token to the Resonite bot and try again.'
+                    : 'Verification failed. Please make sure you\'ve set your VRChat status to the verification token and try again.';
               });
             }
           }
@@ -422,11 +468,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
     });
 
     try {
-      final account = await _vrchatService.lookupAccount(text);
+      final platform = _activePlatform ?? 'vrchat';
+      final account = await _vrchatService.lookupAccount(text, platform: platform);
       setState(() {
         _lookedUpAccount = account;
         if (account == null) {
-          _errorMessage = 'No matching VRChat account found on API.';
+          _errorMessage = platform == 'resonite'
+              ? 'No matching Resonite account found on API.'
+              : 'No matching VRChat account found on API.';
         }
       });
     } catch (e) {
@@ -534,15 +583,29 @@ class _VerificationScreenState extends State<VerificationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('VRChat Verification'),
+        title: Text(_activePlatform == null
+            ? 'Link Account'
+            : _activePlatform == 'resonite'
+                ? 'Resonite Verification'
+                : 'VRChat Verification'),
         backgroundColor: AppTheme.backgroundColor,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            if (_selectedMethod != null) {
+            if (_activePlatform == 'resonite' && _selectedMethod != null) {
+              setState(() {
+                _selectedMethod = null;
+                _activePlatform = widget.initialPlatform == null ? null : _activePlatform;
+                _errorMessage = '';
+              });
+            } else if (_selectedMethod != null) {
               setState(() {
                 _selectedMethod = null;
                 _errorMessage = '';
+              });
+            } else if (_activePlatform != null && widget.initialPlatform == null) {
+              setState(() {
+                _activePlatform = null;
               });
             } else if (Navigator.of(context).canPop()) {
               Navigator.of(context).pop();
@@ -568,7 +631,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (_selectedMethod == null)
+                        if (_activePlatform == null)
+                          _buildPlatformPickerView()
+                        else if (_selectedMethod == null)
                           _buildMethodSelectionLanding()
                         else if (_selectedMethod ==
                             VerificationMethod.pairCode)
@@ -622,6 +687,95 @@ class _VerificationScreenState extends State<VerificationScreen> {
     );
   }
 
+  Widget _buildPlatformPickerView() {
+    return Padding(
+      padding: const EdgeInsets.only(
+        top: 32.0,
+        bottom: 24.0,
+        left: 12.0,
+        right: 12.0,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Primary Platform',
+            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: -1.0,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            height: 4,
+            width: 48,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
+              ),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Pick the account you want to link to GalleVR or enter a website pairing code.',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[400],
+              height: 1.5,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 36),
+
+          _buildGradientActionCard(
+            title: 'Instant Link Code',
+            description: 'Best option. If you followed onboarding on the website, just type the 6-digit code here.',
+            icon: Icons.flash_on_rounded,
+            gradientColors: [const Color(0xFF3B82F6), const Color(0xFF06B6D4)],
+            onTap: () {
+              setState(() {
+                _selectedMethod = VerificationMethod.pairCode;
+                _activePlatform = 'vrchat'; // Default state to proceed
+                _errorMessage = '';
+              });
+            },
+          ),
+          const SizedBox(height: 20),
+
+          _buildGradientActionCard(
+            title: 'VRChat',
+            description: 'Link your VRChat account to organize and share your VRChat photos.',
+            imageAsset: 'assets/images/VRChat_logo.png',
+            gradientColors: [const Color(0xFF8B5CF6), const Color(0xFF4C1D95)],
+            onTap: () {
+              setState(() {
+                _activePlatform = 'vrchat';
+                _errorMessage = '';
+              });
+            },
+          ),
+          const SizedBox(height: 20),
+
+          _buildGradientActionCard(
+            title: 'Resonite',
+            description: 'Link your Resonite account using our verification bot.',
+            imageAsset: 'assets/images/resonite_logo.png',
+            gradientColors: [const Color(0xFF00B4D8), const Color(0xFF0077B6)],
+            onTap: () {
+              setState(() {
+                _activePlatform = 'resonite';
+                _selectedMethod = VerificationMethod.manual;
+                _errorMessage = '';
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMethodSelectionLanding() {
     return Padding(
       padding: const EdgeInsets.only(
@@ -634,7 +788,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Link Account',
+            'Link VRChat',
             style: Theme.of(context).textTheme.displayMedium?.copyWith(
               fontWeight: FontWeight.w900,
               color: Colors.white,
@@ -654,7 +808,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
           ),
           const SizedBox(height: 20),
           Text(
-            'To link your account, I just need to confirm you own it. You verify with a temporary code in your VRChat status.',
+            'To link your VRChat account, I just need to confirm you own it. You verify with a temporary code in your VRChat status.',
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey[400],
@@ -663,21 +817,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
             ),
           ),
           const SizedBox(height: 48),
-
-          _buildGradientActionCard(
-            title: 'Instant Link Code',
-            description:
-                'Best option. If you followed onboarding on the website, just type the 6-digit code here.',
-            icon: Icons.flash_on_rounded,
-            gradientColors: [const Color(0xFF3B82F6), const Color(0xFF06B6D4)],
-            onTap: () {
-              setState(() {
-                _selectedMethod = VerificationMethod.pairCode;
-                _errorMessage = '';
-              });
-            },
-          ),
-          const SizedBox(height: 20),
 
           _buildGradientActionCard(
             title: 'Automatic Verification',
@@ -858,7 +997,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
   Widget _buildGradientActionCard({
     required String title,
     required String description,
-    required IconData icon,
+    IconData? icon,
+    String? imageAsset,
     required List<Color> gradientColors,
     required VoidCallback onTap,
   }) {
@@ -894,12 +1034,21 @@ class _VerificationScreenState extends State<VerificationScreen> {
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(14),
+                  width: 56,
+                  height: 56,
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(colors: gradientColors),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, size: 28, color: Colors.white),
+                  child: imageAsset != null
+                      ? imageAsset.endsWith('.svg')
+                          ? Icon(Icons.hub_rounded, size: 28, color: Colors.white) // Native flutter SVG packages aren't imported here, fallback to nice icon for safety
+                          : Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Image.asset(imageAsset, fit: BoxFit.contain),
+                            )
+                      : Icon(icon ?? Icons.flash_on_rounded, size: 28, color: Colors.white),
                 ),
                 const SizedBox(width: 20),
                 Expanded(
@@ -1158,6 +1307,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
   }
 
   Widget _buildManualVerificationView() {
+    final isResonite = _activePlatform == 'resonite';
     return AppCard(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -1347,7 +1497,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ],
             ],
           ] else if (_manualVerificationStep == 1) ...[
-            const Text('Add GalleVR as a friend in VRChat:'),
+            Text(isResonite ? 'Add GalleVR as a friend in Resonite:' : 'Add GalleVR as a friend in VRChat:'),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
@@ -1360,9 +1510,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 children: [
                   const Icon(Icons.person, color: AppTheme.primaryColor),
                   const SizedBox(width: 8),
-                  const Text(
-                    'GalleVR',
-                    style: TextStyle(
+                  Text(
+                    isResonite ? 'GalleVR' : 'GalleVR',
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontFamily: 'monospace',
                     ),
@@ -1371,11 +1521,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   IconButton(
                     icon: const Icon(Icons.copy),
                     onPressed: () {
-                      Clipboard.setData(const ClipboardData(text: 'GalleVR'));
+                      Clipboard.setData(ClipboardData(text: isResonite ? 'GalleVR' : 'GalleVR'));
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Copied "GalleVR" to clipboard'),
-                          duration: Duration(seconds: 2),
+                        SnackBar(
+                          content: Text(isResonite ? 'Copied "GalleVR" to clipboard' : 'Copied "GalleVR" to clipboard'),
+                          duration: const Duration(seconds: 2),
                         ),
                       );
                     },
@@ -1385,36 +1535,37 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text('Follow these steps in VRChat:'),
+            Text(isResonite ? 'Follow these steps in Resonite:' : 'Follow these steps in VRChat:'),
             const SizedBox(height: 8),
-            const ListTile(
-              leading: CircleAvatar(child: Text('1')),
-              title: Text('Check your VRChat Notifications'),
+            ListTile(
+              leading: const CircleAvatar(child: Text('1')),
+              title: Text(isResonite ? 'Send a friend request to "GalleVR"' : 'Check your VRChat Notifications'),
               subtitle: Text(
-                'A friend request from "GalleVR" should be waiting for you.',
+                isResonite ? 'Search for "GalleVR" in Resonite and add them.' : 'A friend request from "GalleVR" should be waiting for you.',
               ),
             ),
-            const ListTile(
-              leading: CircleAvatar(child: Text('2')),
-              title: Text('Accept the friend request'),
-              subtitle: Text('This allows us to verify your profile status.'),
+            ListTile(
+              leading: const CircleAvatar(child: Text('2')),
+              title: Text(isResonite ? 'Wait for bot to accept friend request' : 'Accept the friend request'),
+              subtitle: Text(isResonite ? 'The bot automatically accepts all friend requests within a few seconds.' : 'This allows us to verify your profile status.'),
             ),
-            const ListTile(
-              leading: CircleAvatar(child: Text('3')),
-              title: Text('Click "Check Status" below'),
-              subtitle: Text('We\'ll confirm once the friendship is active.'),
+            ListTile(
+              leading: const CircleAvatar(child: Text('3')),
+              title: Text(isResonite ? 'Click "Continue" below' : 'Click "Check Status" below'),
+              subtitle: Text(isResonite ? 'We\'ll progress to token message verification.' : 'We\'ll confirm once the friendship is active.'),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Tip: If you don\'t see a request, you can also search for "GalleVR" manually and send one to us.',
-              style: TextStyle(
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-                color: Colors.grey,
+            if (!isResonite)
+              const Text(
+                'Tip: If you don\'t see a request, you can also search for "GalleVR" manually and send one to us.',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.grey,
+                ),
               ),
-            ),
           ] else if (_manualVerificationStep == 2) ...[
-            const Text('Set your VRChat status to the verification token:'),
+            Text(isResonite ? 'Send the verification token to the Resonite bot:' : 'Set your VRChat status to the verification token:'),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
@@ -1458,46 +1609,51 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text('Follow these steps in VRChat:'),
+            Text(isResonite ? 'Follow these steps in Resonite:' : 'Follow these steps in VRChat:'),
             const SizedBox(height: 8),
-            const ListTile(
-              leading: CircleAvatar(child: Text('1')),
-              title: Text('In VRChat, go to your Profile and edit your status'),
+            ListTile(
+              leading: const CircleAvatar(child: Text('1')),
+              title: Text(isResonite ? 'Open chat with GalleVR in Resonite' : 'In VRChat, go to your Profile and edit your status'),
             ),
-            const ListTile(
-              leading: CircleAvatar(child: Text('2')),
-              title: Text('Paste the verification token as your status'),
+            ListTile(
+              leading: const CircleAvatar(child: Text('2')),
+              title: Text(isResonite ? 'Send the token text exactly as a message' : 'Paste the verification token as your status'),
             ),
-            const ListTile(
-              leading: CircleAvatar(child: Text('3')),
-              title: Text('Click "Verify Status" below'),
+            ListTile(
+              leading: const CircleAvatar(child: Text('3')),
+              title: const Text('Click "Verify Status" below'),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'When you click "Verify Status", we\'ll check if your VRChat status contains the verification token.',
+            Text(
+              isResonite
+                  ? 'When you click "Verify Status", we\'ll check if our Resonite bot received your token.'
+                  : 'When you click "Verify Status", we\'ll check if your VRChat status contains the verification token.',
             ),
             const SizedBox(height: 16),
             const Text('If verification fails, please make sure:'),
             const SizedBox(height: 8),
-            const ListTile(
-              leading: Icon(Icons.check_circle_outline),
-              title: Text('You\'ve added GalleVR as a friend'),
+            ListTile(
+              leading: const Icon(Icons.check_circle_outline),
+              title: Text(isResonite ? 'You\'ve added GalleVR as a friend' : 'You\'ve added GalleVR as a friend'),
               dense: true,
             ),
-            const ListTile(
-              leading: Icon(Icons.check_circle_outline),
+            ListTile(
+              leading: const Icon(Icons.check_circle_outline),
               title: Text(
-                'Your status message contains the exact verification token',
+                isResonite
+                    ? 'You sent the exact token message to the bot'
+                    : 'Your status message contains the exact verification token',
               ),
               dense: true,
             ),
-            const ListTile(
-              leading: Icon(Icons.check_circle_outline),
-              title: Text(
-                'You\'ve waited a few minutes for VRChat to update your status',
+            if (!isResonite)
+              const ListTile(
+                leading: Icon(Icons.check_circle_outline),
+                title: Text(
+                  'You\'ve waited a few minutes for VRChat to update your status',
+                ),
+                dense: true,
               ),
-              dense: true,
-            ),
           ],
           if (_errorMessage.isNotEmpty) ...[
             const SizedBox(height: 16),

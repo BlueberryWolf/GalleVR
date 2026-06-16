@@ -658,14 +658,18 @@ class VRChatService {
     }
   }
 
-  Future<Map<String, dynamic>?> lookupAccount(String identifier) async {
+  Future<Map<String, dynamic>?> lookupAccount(
+    String identifier, {
+    String? platform,
+  }) async {
     try {
+      final platformStr = platform != null ? '?platform=$platform' : '';
       final url = Uri.parse(
-        'https://api.gallevr.app/vrchat/account-lookup/${Uri.encodeComponent(identifier)}',
+        'https://api.gallevr.app/vrchat/account-lookup/${Uri.encodeComponent(identifier)}$platformStr',
       );
 
       developer.log(
-        'Looking up user identifier: $identifier',
+        'Looking up user identifier: $identifier, platform: $platform',
         name: 'VRChatService',
       );
       final response = await http.get(url);
@@ -744,7 +748,9 @@ class VRChatService {
 
         return isVerified;
       } else if (response.statusCode >= 500) {
-        throw Exception('Server error checking verification status: ${response.statusCode}');
+        throw Exception(
+          'Server error checking verification status: ${response.statusCode}',
+        );
       }
 
       _cachedIsVerified = null;
@@ -805,11 +811,88 @@ class VRChatService {
               responseData['pfp'] as String?,
         );
 
-        await saveAuthData(updatedAuthData);
+        final sec = await loadAuthDataSecondary();
+        if (sec != null && sec.userId == authData.userId) {
+          await saveAuthDataSecondary(updatedAuthData);
+        } else {
+          await saveAuthData(updatedAuthData);
+        }
         developer.log(
           'Successfully fetched and saved updated auth data for ${updatedAuthData.displayName}',
           name: 'VRChatService',
         );
+
+        // Auto-discover and sync linked account locally if missing
+        try {
+          final isResonite = authData.userId.startsWith('U-');
+          final hasPrimary = (await loadAuthData()) != null;
+          final hasSecondary = (await loadAuthDataSecondary()) != null;
+
+          if (!hasPrimary || !hasSecondary) {
+            final linkResponse = await http.get(
+              Uri.parse('https://api.gallevr.app/vrchat/account/linked'),
+              headers: {
+                'Authorization': 'Bearer ${authData.accessKey}',
+                'Accept': 'application/json',
+              },
+            );
+
+            if (linkResponse.statusCode == 200) {
+              final linkData = json.decode(linkResponse.body);
+              if (linkData['linked'] == true &&
+                  linkData['linkedAccount'] != null) {
+                final linkedUserId =
+                    linkData['linkedAccount']['userId'] as String;
+                final existingPrimary = await loadAuthData();
+                final existingSecondary = await loadAuthDataSecondary();
+                final alreadyStored =
+                    (existingPrimary?.userId == linkedUserId) ||
+                    (existingSecondary?.userId == linkedUserId);
+
+                if (!alreadyStored) {
+                  final switchResponse = await http.post(
+                    Uri.parse('https://api.gallevr.app/vrchat/account/switch'),
+                    headers: {
+                      'Authorization': 'Bearer ${authData.accessKey}',
+                      'Content-Type': 'application/json',
+                    },
+                  );
+
+                  if (switchResponse.statusCode == 200) {
+                    final switchData = json.decode(switchResponse.body);
+                    if (switchData['accessKey'] != null) {
+                      final linkedAuth = AuthData(
+                        accessKey: switchData['accessKey'],
+                        userId: linkedUserId,
+                        displayName: linkData['linkedAccount']['displayName'],
+                        avatarUrl: linkData['linkedAccount']['avatarUrl'],
+                        ageVerified: true,
+                      );
+
+                      if (isResonite) {
+                        // Resonite is currently active, store VRChat as primary (default)
+                        await saveAuthData(linkedAuth);
+                      } else {
+                        // VRChat is currently active, store Resonite as secondary
+                        await saveAuthDataSecondary(linkedAuth);
+                      }
+                      developer.log(
+                        'Auto-synced and stored linked account locally: ${linkedAuth.displayName}',
+                        name: 'VRChatService',
+                      );
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (linkErr) {
+          developer.log(
+            'Non-fatal error auto-syncing linked account: $linkErr',
+            name: 'VRChatService',
+          );
+        }
+
         return updatedAuthData;
       } else {
         developer.log(
@@ -902,6 +985,23 @@ class VRChatService {
     }
   }
 
+  Future<bool> saveAuthDataSecondary(AuthData authData) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'gallevr_auth_data_secondary',
+        json.encode(authData.toJson()),
+      );
+      return true;
+    } catch (e) {
+      developer.log(
+        'Error saving secondary auth data: $e',
+        name: 'VRChatService',
+      );
+      return false;
+    }
+  }
+
   Future<AuthData?> loadAuthData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -914,6 +1014,25 @@ class VRChatService {
       return AuthData.fromJson(json.decode(authDataJson));
     } catch (e) {
       developer.log('Error loading auth data: $e', name: 'VRChatService');
+      return null;
+    }
+  }
+
+  Future<AuthData?> loadAuthDataSecondary() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final authDataJson = prefs.getString('gallevr_auth_data_secondary');
+
+      if (authDataJson == null) {
+        return null;
+      }
+
+      return AuthData.fromJson(json.decode(authDataJson));
+    } catch (e) {
+      developer.log(
+        'Error loading secondary auth data: $e',
+        name: 'VRChatService',
+      );
       return null;
     }
   }

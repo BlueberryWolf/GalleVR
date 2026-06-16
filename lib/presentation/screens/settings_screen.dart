@@ -41,6 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   ConfigModel? _config;
   AuthData? _authData;
+  AuthData? _authDataSec;
   bool _isLoading = true;
   String _appVersion = '1.0.0'; // Default version
   bool _updateAvailable = false;
@@ -195,10 +196,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       developer.log('Config loaded successfully', name: 'SettingsScreen');
 
       final authData = await _vrchatService.loadAuthData();
+      final authDataSec = await _vrchatService.loadAuthDataSecondary();
 
       setState(() {
         _config = config;
         _authData = authData;
+        _authDataSec = authDataSec;
         _isLoading = false;
       });
     } catch (e) {
@@ -503,7 +506,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final padding =
         isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
     final spacing = isSmallScreen ? 16.0 : 20.0;
-    final isResonite = _authData?.userId.startsWith('U-') == true;
+    
+    final hasVRC = (_authData != null && !_authData!.userId.startsWith('U-')) ||
+        (_authDataSec != null && !_authDataSec!.userId.startsWith('U-'));
+    final hasResonite = (_authData != null && _authData!.userId.startsWith('U-')) ||
+        (_authDataSec != null && _authDataSec!.userId.startsWith('U-'));
+    final showVRC = hasVRC || (!hasVRC && !hasResonite);
+    final showResonite = hasResonite;
+
+    final widgets = <Widget>[];
+
+    if (showVRC) {
+      widgets.add(
+        _buildDirectoryPicker(
+          label: 'Photos Directory',
+          value: _config!.photosDirectory,
+          isSmallScreen: isSmallScreen,
+          onChanged: (value) {
+            if (value != null) {
+              _saveConfig(_config!.copyWith(photosDirectory: value));
+            }
+          },
+        ),
+      );
+      widgets.add(SizedBox(height: spacing));
+      widgets.add(
+        _buildDirectoryPicker(
+          label: 'Logs Directory',
+          value: _config!.logsDirectory,
+          isSmallScreen: isSmallScreen,
+          onChanged: (value) {
+            if (value != null) {
+              _saveConfig(_config!.copyWith(logsDirectory: value));
+            }
+          },
+        ),
+      );
+    }
+
+    if (showResonite) {
+      if (widgets.isNotEmpty) {
+        widgets.add(SizedBox(height: spacing));
+      }
+      widgets.add(
+        _buildDirectoryPicker(
+          label: 'Resonite Photos Directory',
+          value: _config!.resonitePhotosDirectory,
+          isSmallScreen: isSmallScreen,
+          onChanged: (value) {
+            if (value != null) {
+              _saveConfig(
+                _config!.copyWith(resonitePhotosDirectory: value),
+              );
+            }
+          },
+        ),
+      );
+    }
 
     return RepaintBoundary(
       child: AppCard(
@@ -530,42 +589,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
             SizedBox(height: spacing),
-            if (isResonite)
-              _buildDirectoryPicker(
-                label: 'Resonite Photos Directory',
-                value: _config!.resonitePhotosDirectory,
-                isSmallScreen: isSmallScreen,
-                onChanged: (value) {
-                  if (value != null) {
-                    _saveConfig(
-                      _config!.copyWith(resonitePhotosDirectory: value),
-                    );
-                  }
-                },
-              )
-            else ...[
-              _buildDirectoryPicker(
-                label: 'Photos Directory',
-                value: _config!.photosDirectory,
-                isSmallScreen: isSmallScreen,
-                onChanged: (value) {
-                  if (value != null) {
-                    _saveConfig(_config!.copyWith(photosDirectory: value));
-                  }
-                },
-              ),
-              SizedBox(height: spacing),
-              _buildDirectoryPicker(
-                label: 'Logs Directory',
-                value: _config!.logsDirectory,
-                isSmallScreen: isSmallScreen,
-                onChanged: (value) {
-                  if (value != null) {
-                    _saveConfig(_config!.copyWith(logsDirectory: value));
-                  }
-                },
-              ),
-            ],
+            ...widgets,
           ],
         ),
       ),
@@ -765,8 +789,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: _config!.uploadEnabled,
               onChanged: (value) async {
                 if (value) {
-                  final isResonite = _authData?.userId.startsWith('U-') == true;
-                  if (!isResonite && Platform.isWindows) {
+                  final hasVRC = (_authData != null && !_authData!.userId.startsWith('U-')) ||
+                      (_authDataSec != null && !_authDataSec!.userId.startsWith('U-'));
+                  if (hasVRC && Platform.isWindows) {
                     try {
                       final isLoggingEnabled =
                           await _vrchatRegistryService.isFullLoggingEnabled();

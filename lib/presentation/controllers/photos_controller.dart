@@ -9,6 +9,7 @@ import '../../data/repositories/config_repository.dart';
 import '../../data/repositories/photo_metadata_repository.dart';
 import '../../data/services/app_service_manager.dart';
 import '../../data/services/photo_event_service.dart';
+import '../../data/services/vrchat_service.dart';
 
 class PhotosState {
   final List<FileSystemEntity> allPhotos;
@@ -112,13 +113,24 @@ class PhotosController extends ValueNotifier<PhotosState> {
   Future<void> refresh({bool forceSync = false}) async {
     final loadId = ++_currentLoadId;
     final authData = AppServiceManager().authData;
-    final isResonite = authData?.userId.startsWith('U-') == true;
-    final photosDir =
-        isResonite
-            ? _config?.resonitePhotosDirectory
-            : _config?.photosDirectory;
+    final authDataSec = await VRChatService().loadAuthDataSecondary();
 
-    if (_config == null || photosDir == null || photosDir.isEmpty) {
+    final hasVRC =
+        (authData != null && !authData.userId.startsWith('U-')) ||
+        (authDataSec != null && !authDataSec.userId.startsWith('U-'));
+    final hasResonite =
+        (authData != null && authData.userId.startsWith('U-')) ||
+        (authDataSec != null && authDataSec.userId.startsWith('U-'));
+
+    final vrcPhotosDir = hasVRC ? _config?.photosDirectory : null;
+    final resonitePhotosDir =
+        hasResonite ? _config?.resonitePhotosDirectory : null;
+
+    final hasVrcDir = vrcPhotosDir != null && vrcPhotosDir.isNotEmpty;
+    final hasResoniteDir =
+        resonitePhotosDir != null && resonitePhotosDir.isNotEmpty;
+
+    if (_config == null || (!hasVrcDir && !hasResoniteDir)) {
       value = value.copyWith(
         isLoading: false,
         allPhotos: [],
@@ -136,27 +148,52 @@ class PhotosController extends ValueNotifier<PhotosState> {
         await _metadataRepository.syncWithBackend();
       }
 
-      final directory = Directory(photosDir);
-      if (!await directory.exists()) {
-        value = value.copyWith(
-          isLoading: false,
-          allPhotos: [],
-          displayedPhotos: [],
-        );
-        return;
+      final List<FileSystemEntity> allPhotosList = [];
+
+      if (hasVrcDir) {
+        final directory = Directory(vrcPhotosDir);
+        if (await directory.exists()) {
+          final vrcPhotos = await _scanDirectoryAsync(
+            directory,
+            isResonite: false,
+          );
+          allPhotosList.addAll(vrcPhotos);
+        }
       }
 
-      final photos = await _scanDirectoryAsync(
-        directory,
-        isResonite: isResonite,
-      );
+      if (hasResoniteDir) {
+        final directory = Directory(resonitePhotosDir);
+        if (await directory.exists()) {
+          final resonitePhotos = await _scanDirectoryAsync(
+            directory,
+            isResonite: true,
+          );
+          allPhotosList.addAll(resonitePhotos);
+        }
+      }
+
+      // Sort merged photos by modified time
+      final List<MapEntry<FileSystemEntity, DateTime>> photoStats = [];
+      for (final file in allPhotosList) {
+        try {
+          final stat = file.statSync();
+          photoStats.add(MapEntry(file, stat.modified));
+        } catch (e) {
+          photoStats.add(MapEntry(file, DateTime(1970)));
+        }
+      }
+      photoStats.sort((a, b) => b.value.compareTo(a.value));
+      final sortedPhotos = photoStats.map((e) => e.key).toList();
 
       if (loadId != _currentLoadId) return;
 
       _currentPage = 0;
-      final initialBatch = photos.take(_pageSize).toList();
+      final initialBatch = sortedPhotos.take(_pageSize).toList();
 
-      value = value.copyWith(allPhotos: photos, displayedPhotos: initialBatch);
+      value = value.copyWith(
+        allPhotos: sortedPhotos,
+        displayedPhotos: initialBatch,
+      );
 
       // Always reload metadata for the first batch to update sync status/metadata on refresh
       await _loadMetadataForBatch(initialBatch);

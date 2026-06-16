@@ -101,7 +101,8 @@ class ConfigModel {
       soundVolume: soundVolume ?? this.soundVolume,
       photosDirectory: photosDirectory ?? this.photosDirectory,
       logsDirectory: logsDirectory ?? this.logsDirectory,
-      resonitePhotosDirectory: resonitePhotosDirectory ?? this.resonitePhotosDirectory,
+      resonitePhotosDirectory:
+          resonitePhotosDirectory ?? this.resonitePhotosDirectory,
       compressionDelay: compressionDelay ?? this.compressionDelay,
       uploadEnabled: uploadEnabled ?? this.uploadEnabled,
       minimizeToTray: minimizeToTray ?? this.minimizeToTray,

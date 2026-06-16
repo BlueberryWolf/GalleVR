@@ -46,6 +46,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   // Flow control
   bool _wantsToLinkAccount = true;
+  String? _selectedPlatform;
 
   // Windows settings
   bool _minimizeToTray = true;
@@ -360,15 +361,21 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedStep = prefs.getInt('onboarding_step') ?? 0;
-      if (savedStep > 0 && mounted) {
+      final savedPlatform = prefs.getString('onboarding_platform');
+      if (mounted) {
         setState(() {
-          _currentStep = savedStep;
-        });
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_pageController.hasClients) {
-            _pageController.jumpToPage(savedStep);
+          _selectedPlatform = savedPlatform;
+          if (savedStep > 0) {
+            _currentStep = savedStep;
           }
         });
+        if (savedStep > 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_pageController.hasClients) {
+              _pageController.jumpToPage(savedStep);
+            }
+          });
+        }
       }
     } catch (e) {
       developer.log(
@@ -465,7 +472,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     if (mounted) {
       if (_wantsToLinkAccount) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const VerificationScreen()),
+          MaterialPageRoute(
+            builder: (context) => VerificationScreen(
+              initialPlatform: _selectedPlatform,
+            ),
+          ),
         );
       } else {
         Navigator.of(context).pushReplacement(

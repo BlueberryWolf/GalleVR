@@ -5,6 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/models/verification_models.dart';
 import '../../data/services/vrchat_service.dart';
+import '../../data/models/config_model.dart';
+import '../../data/repositories/config_repository.dart';
 import '../widgets/blurrable_qr_code.dart';
 import '../widgets/app_card.dart';
 import 'verification_screen.dart';
@@ -20,11 +22,14 @@ class AccountScreen extends StatefulWidget {
 
 class _AccountScreenState extends State<AccountScreen> {
   final VRChatService _vrchatService = VRChatService();
+  final ConfigRepository _configRepository = ConfigRepository();
 
   bool _isLoading = true;
   bool _isVerified = false;
   String _galleryUrl = '';
   AuthData? _authData;
+  AuthData? _authDataSec;
+  ConfigModel? _config;
   bool _isQrCodeVisible = true;
 
   @override
@@ -44,6 +49,9 @@ class _AccountScreenState extends State<AccountScreen> {
       // Initialize VRChat service
       await _vrchatService.initialize();
 
+      // Load config
+      _config = await _configRepository.loadConfig();
+
       // Check if already verified
       await _checkLoginStatus();
     } catch (e) {
@@ -58,41 +66,66 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Future<void> _checkLoginStatus() async {
-    // Check if there's saved verification data
     final authData = await _vrchatService.loadAuthData();
+    final authDataSec = await _vrchatService.loadAuthDataSecondary();
+
+    AuthData? verifiedPrimary;
+    AuthData? verifiedSecondary;
+
     if (authData != null) {
-      final isVerified = await _vrchatService.checkVerificationStatus(authData);
-
-      if (isVerified) {
-        final latestAuthData = await _vrchatService.fetchMe(authData);
-
-        if (mounted) {
-          setState(() {
-            _isVerified = true;
-            _authData = latestAuthData ?? authData;
-            _galleryUrl = 'https://gallevr.app/?auth=${_authData!.accessKey}';
-          });
+      try {
+        final isVerified = await _vrchatService.checkVerificationStatus(
+          authData,
+        );
+        if (isVerified) {
+          verifiedPrimary = await _vrchatService.fetchMe(authData) ?? authData;
         }
-      } else {
-        if (mounted) {
-          setState(() {
-            _isVerified = false;
-            _authData = null;
-            _galleryUrl = '';
-          });
-        }
+      } catch (e) {
+        verifiedPrimary = authData;
       }
+    }
+
+    if (authDataSec != null) {
+      try {
+        final isVerified = await _vrchatService.checkVerificationStatus(
+          authDataSec,
+        );
+        if (isVerified) {
+          verifiedSecondary =
+              await _vrchatService.fetchMe(authDataSec) ?? authDataSec;
+        }
+      } catch (e) {
+        verifiedSecondary = authDataSec;
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _authData = verifiedPrimary;
+        _authDataSec = verifiedSecondary;
+        _isVerified = _authData != null || _authDataSec != null;
+
+        final activeAuth = _authData ?? _authDataSec;
+        if (activeAuth != null) {
+          _galleryUrl = 'https://gallevr.app/?auth=${activeAuth.accessKey}';
+        } else {
+          _galleryUrl = '';
+        }
+      });
     }
   }
 
-  Future<void> _showLogoutConfirmation() async {
+  Future<void> _showLogoutConfirmationFor(
+    bool isSecondary,
+    String accountName,
+  ) async {
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder:
           (context) => AlertDialog(
-            title: const Text('Confirm Logout'),
+            title: Text('Confirm Logout - $accountName'),
             content: const Text(
-              'Are you sure you want to log out? You will need to verify your account again to access your gallery.',
+              'Are you sure you want to log out of this account? You will need to verify it again to access its features.',
             ),
             actions: [
               TextButton(
@@ -112,30 +145,26 @@ class _AccountScreenState extends State<AccountScreen> {
     );
 
     if (shouldLogout == true) {
-      await _logout();
+      await _logoutAccount(isSecondary);
     }
   }
 
-  Future<void> _logout() async {
+  Future<void> _logoutAccount(bool isSecondary) async {
     try {
-      await _vrchatService.logout();
-
-      // Preserve age verification status globally
-      bool ageVerified = _authData?.ageVerified ?? false;
-      if (ageVerified) {
-        await _vrchatService.setAgeVerified(true);
-      }
-
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('gallevr_auth_data');
-
-      if (mounted) {
-        setState(() {
-          _isVerified = false;
-          _authData = null;
-          _galleryUrl = '';
-        });
+      if (isSecondary) {
+        await prefs.remove('gallevr_auth_data_secondary');
+      } else {
+        final secondaryJson = prefs.getString('gallevr_auth_data_secondary');
+        await prefs.remove('gallevr_auth_data');
+        if (secondaryJson != null) {
+          await prefs.setString('gallevr_auth_data', secondaryJson);
+          await prefs.remove('gallevr_auth_data_secondary');
+        } else {
+          await _vrchatService.logout();
+        }
       }
+      await _loadConfig();
     } catch (e) {
       developer.log('Error logging out: $e', name: 'AccountScreen');
     }
@@ -180,7 +209,7 @@ class _AccountScreenState extends State<AccountScreen> {
               ),
               const SizedBox(height: 24),
               const Text(
-                'VRChat Account',
+                'Social Account',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 20,
@@ -200,7 +229,7 @@ class _AccountScreenState extends State<AccountScreen> {
               ),
               const SizedBox(height: 24),
               const Text(
-                'Verify your VRChat account to unlock your personal gallery and enable photo sharing.',
+                'Verify your account to unlock your personal gallery and enable photo sharing.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white60,
@@ -231,123 +260,208 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
-  Widget _buildVerifiedView() {
-    final displayName =
-        _authData?.displayName ??
-        _vrchatService.currentUser?.displayName ??
-        'User';
+  Widget _buildProfileCard(AuthData auth, bool isSecondary, bool isWide) {
+    final displayName = auth.displayName ?? 'User';
+    final isResonite = auth.userId.startsWith('U-');
+    final platformColor =
+        isResonite ? const Color(0xFF00b4d8) : const Color(0xFF8b5cf6);
+    final platformText = isResonite ? 'Resonite' : 'VRChat';
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWide = constraints.maxWidth > 700;
+    final avatarWidget = Container(
+      width: isWide ? 100 : 70,
+      height: isWide ? 100 : 70,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: platformColor.withOpacity(0.1),
+        shape: BoxShape.circle,
+        border: Border.all(color: platformColor.withOpacity(0.3), width: 2),
+      ),
+      child:
+          auth.avatarUrl != null
+              ? Image.network(
+                auth.avatarUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Icon(
+                    Icons.person_rounded,
+                    size: isWide ? 50 : 40,
+                    color: platformColor,
+                  );
+                },
+              )
+              : Icon(
+                Icons.person_rounded,
+                size: isWide ? 50 : 40,
+                color: platformColor,
+              ),
+    );
 
-        final avatarWidget = Container(
-          width: isWide ? 120 : 80,
-          height: isWide ? 120 : 80,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: const Color(0xFF4ade80).withOpacity(0.1),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: const Color(0xFF4ade80).withOpacity(0.3),
-              width: 2,
-            ),
-          ),
-          child:
-              _authData?.avatarUrl != null
-                  ? Image.network(
-                    _authData!.avatarUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Icon(
-                        Icons.verified_user_rounded,
-                        size: isWide ? 60 : 50,
-                        color: const Color(0xFF4ade80),
-                      );
-                    },
-                  )
-                  : Icon(
-                    Icons.verified_user_rounded,
-                    size: isWide ? 60 : 50,
-                    color: const Color(0xFF4ade80),
-                  ),
-        );
-
-        final nameAndStatus = Column(
-          crossAxisAlignment:
-              isWide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+    final nameAndStatus = Column(
+      crossAxisAlignment:
+          isWide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               displayName,
-              textAlign: isWide ? TextAlign.left : TextAlign.center,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: isWide ? 28 : 22,
+                fontSize: isWide ? 22 : 18,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 0.5,
               ),
             ),
-          ],
-        );
-
-        final actions = Column(
-          crossAxisAlignment:
-              isWide ? CrossAxisAlignment.end : CrossAxisAlignment.center,
-          children: [
-            _buildActionButton(
-              onPressed: _launchGallery,
-              icon: Icons.open_in_new_rounded,
-              label: 'Open Web Gallery',
-              color: const Color(0xFF3b82f6),
-              width: isWide ? 220 : null,
-            ),
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: _showLogoutConfirmation,
-              icon: const Icon(Icons.logout_rounded, size: 14),
-              label: const Text(
-                'LOGOUT ACCOUNT',
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: platformColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: platformColor.withOpacity(0.5)),
+              ),
+              child: Text(
+                platformText.toUpperCase(),
                 style: TextStyle(
-                  fontSize: 11,
+                  color: platformColor,
+                  fontSize: 10,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 0.5,
                 ),
               ),
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFFf87171).withOpacity(0.6),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-              ),
             ),
           ],
-        );
+        ),
+      ],
+    );
 
-        final profileBanner = AppCard(
-          padding: EdgeInsets.all(isWide ? 40 : 20),
-          child:
-              isWide
-                  ? Row(
-                    children: [
-                      avatarWidget,
-                      const SizedBox(width: 32),
-                      Expanded(child: nameAndStatus),
-                      actions,
-                    ],
-                  )
-                  : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      avatarWidget,
-                      const SizedBox(height: 12),
-                      nameAndStatus,
-                      const SizedBox(height: 20),
-                      actions,
-                    ],
-                  ),
-        );
+    final actions = Column(
+      crossAxisAlignment:
+          isWide ? CrossAxisAlignment.end : CrossAxisAlignment.center,
+      children: [
+        _buildActionButton(
+          onPressed: () => _launchAccountGallery(auth),
+          icon: Icons.open_in_new_rounded,
+          label: 'Open Gallery',
+          color: platformColor,
+          width: isWide ? 180 : null,
+        ),
+        const SizedBox(height: 8),
+        TextButton.icon(
+          onPressed: () => _showLogoutConfirmationFor(isSecondary, displayName),
+          icon: const Icon(Icons.logout_rounded, size: 14),
+          label: const Text(
+            'LOGOUT',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFFf87171).withOpacity(0.6),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+        ),
+      ],
+    );
 
+    return AppCard(
+      padding: EdgeInsets.all(isWide ? 24 : 16),
+      child:
+          isWide
+              ? Row(
+                children: [
+                  avatarWidget,
+                  const SizedBox(width: 24),
+                  Expanded(child: nameAndStatus),
+                  actions,
+                ],
+              )
+              : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  avatarWidget,
+                  const SizedBox(height: 12),
+                  nameAndStatus,
+                  const SizedBox(height: 16),
+                  actions,
+                ],
+              ),
+    );
+  }
+
+  Future<void> _launchAccountGallery(AuthData auth) async {
+    final url = Uri.parse('https://gallevr.app/?auth=${auth.accessKey}');
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      developer.log(
+        'Error launching account gallery: $e',
+        name: 'AccountScreen',
+      );
+    }
+  }
+
+  Widget _buildVerifiedView() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth > 700;
+        final list = <Widget>[];
+
+        // Primary account
+        if (_authData != null) {
+          list.add(_buildProfileCard(_authData!, false, isWide));
+        }
+
+        // Secondary account
+        if (_authDataSec != null) {
+          if (list.isNotEmpty) list.add(const SizedBox(height: 16));
+          list.add(_buildProfileCard(_authDataSec!, true, isWide));
+        }
+
+        // Link button
+        final hasVRC =
+            (_authData != null && !_authData!.userId.startsWith('U-')) ||
+            (_authDataSec != null && !_authDataSec!.userId.startsWith('U-'));
+        final hasResonite =
+            (_authData != null && _authData!.userId.startsWith('U-')) ||
+            (_authDataSec != null && _authDataSec!.userId.startsWith('U-'));
+
+        if (!hasVRC || !hasResonite) {
+          final targetPlatform = hasVRC ? 'resonite' : 'vrchat';
+          final label =
+              hasVRC ? 'Link Resonite Account' : 'Link VRChat Account';
+          final btnColor =
+              hasVRC ? const Color(0xFF00b4d8) : const Color(0xFF8b5cf6);
+
+          list.add(const SizedBox(height: 24));
+          list.add(
+            Center(
+              child: _buildActionButton(
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder:
+                          (context) => VerificationScreen(
+                            initialPlatform: targetPlatform,
+                            isLinkMode: true,
+                          ),
+                    ),
+                  );
+                  await _loadConfig();
+                },
+                icon: Icons.add_circle_outline,
+                label: label,
+                color: btnColor,
+              ),
+            ),
+          );
+        }
+
+        // QR code card
         final qrCard = AppCard(
           padding: EdgeInsets.all(isWide ? 40 : 24),
           child: Column(
@@ -412,7 +526,7 @@ class _AccountScreenState extends State<AccountScreen> {
               constraints: const BoxConstraints(maxWidth: 800),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [profileBanner, const SizedBox(height: 24), qrCard],
+                children: [...list, const SizedBox(height: 24), qrCard],
               ),
             ),
           ),
@@ -436,7 +550,7 @@ class _AccountScreenState extends State<AccountScreen> {
         borderRadius: BorderRadius.circular(12),
         child: Container(
           width: width,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: outlined ? Colors.transparent : color.withOpacity(0.15),
             borderRadius: BorderRadius.circular(12),
@@ -483,7 +597,11 @@ class _AccountScreenState extends State<AccountScreen> {
         );
       }
     } catch (e) {
-      developer.log('Error launching gallery url: $e', name: 'AccountScreen', error: e);
+      developer.log(
+        'Error launching gallery url: $e',
+        name: 'AccountScreen',
+        error: e,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not open gallery link: $e')),

@@ -301,17 +301,15 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                   ),
                   const SizedBox(width: 4),
                   Flexible(
-                    child: Text.rich(
-                      parseResoniteTags(
-                        worldName,
-                        TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          shadows: const [
-                            Shadow(color: Colors.black45, blurRadius: 2),
-                          ],
-                        ),
+                    child: Text(
+                      stripResoniteTags(worldName),
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        shadows: const [
+                          Shadow(color: Colors.black45, blurRadius: 2),
+                        ],
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
