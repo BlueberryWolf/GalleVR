@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:flutter/services.dart';
+import 'package:gallevr/data/models/verification_models.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
@@ -55,27 +56,50 @@ class PhotoUploadService {
         return false;
       }
 
-      final authData = await _vrchatService.loadAuthData();
-      if (authData == null) {
+      PhotoMetadata photoMetadata =
+          metadata ?? _createPhotoMetadata(photoPath, logMetadata);
+
+      final isResonitePhoto = photoMetadata.application == 'Resonite';
+      final primaryAuth = await _vrchatService.loadAuthData();
+      final secondaryAuth = await _vrchatService.loadAuthDataSecondary();
+
+      AuthData? uploadAuth;
+      if (isResonitePhoto) {
+        if (primaryAuth != null && primaryAuth.userId.startsWith('U-')) {
+          uploadAuth = primaryAuth;
+        } else if (secondaryAuth != null &&
+            secondaryAuth.userId.startsWith('U-')) {
+          uploadAuth = secondaryAuth;
+        }
+      } else {
+        if (primaryAuth != null && !primaryAuth.userId.startsWith('U-')) {
+          uploadAuth = primaryAuth;
+        } else if (secondaryAuth != null &&
+            !secondaryAuth.userId.startsWith('U-')) {
+          uploadAuth = secondaryAuth;
+        }
+      }
+
+      if (uploadAuth == null) {
         final error =
-            'No authentication data found. Please log in to upload photos';
+            'No authentication data found for ${isResonitePhoto ? "Resonite" : "VRChat"}. Please log in.';
         developer.log(error, name: 'PhotoUploadService');
         PhotoEventService().notifyError('upload', error, photoPath: photoPath);
         return false;
       }
 
       developer.log(
-        'Checking verification status before upload',
+        'Checking verification status before upload for ${uploadAuth.userId}',
         name: 'PhotoUploadService',
       );
-      final isVerified = await _vrchatService.checkVerificationStatus(authData);
+      final isVerified = await _vrchatService.checkVerificationStatus(
+        uploadAuth,
+      );
       if (!isVerified) {
         final error =
-            'Your account is not verified. Please verify your account in the Account tab';
+            'Account ${uploadAuth.displayName} is not verified. Please verify your account in the Account tab';
         developer.log(error, name: 'PhotoUploadService');
         PhotoEventService().notifyError('upload', error, photoPath: photoPath);
-
-        await _vrchatService.logout();
         return false;
       }
 
@@ -93,14 +117,11 @@ class PhotoUploadService {
         return false;
       }
 
-      PhotoMetadata photoMetadata =
-          metadata ?? _createPhotoMetadata(photoPath, logMetadata);
-
-      final isResoniteAccount = authData.userId.startsWith('U-');
-      final isResonitePhoto = photoMetadata.application == 'Resonite';
+      final isResoniteAccount = uploadAuth.userId.startsWith('U-');
 
       if (isResonitePhoto && !isResoniteAccount) {
-        final error = 'Resonite photos can only be uploaded to Resonite accounts';
+        final error =
+            'Resonite photos can only be uploaded to Resonite accounts';
         developer.log(error, name: 'PhotoUploadService');
         PhotoEventService().notifyError('upload', error, photoPath: photoPath);
         return false;
@@ -115,7 +136,10 @@ class PhotoUploadService {
       if (photoMetadata.application == 'VRChat') {
         photoMetadata = photoMetadata.copyWith(
           players: [
-            Player(id: authData.userId, name: authData.displayName ?? authData.userId),
+            Player(
+              id: uploadAuth.userId,
+              name: uploadAuth.displayName ?? uploadAuth.userId,
+            ),
           ],
         );
       }
@@ -147,14 +171,14 @@ class PhotoUploadService {
             name: 'PhotoUploadService',
           );
           final uploadUrlStr =
-              'https://api.gallevr.app/vrchat/photo/upload?user=${Uri.encodeComponent(authData.userId)}&type=webp';
+              'https://api.gallevr.app/vrchat/photo/upload?user=${Uri.encodeComponent(uploadAuth.userId)}&type=webp';
 
           final curlArgs = [
             '-s', // Silent mode
             '-X', 'POST',
             uploadUrlStr,
             '-H', 'Content-Type: application/octet-stream',
-            '-H', 'Authorization: Bearer ${authData.accessKey}',
+            '-H', 'Authorization: Bearer ${uploadAuth.accessKey}',
             '-H', 'metadata: $metadataBase64',
             '--data-binary', '@$photoPath',
           ];
@@ -203,13 +227,13 @@ class PhotoUploadService {
       );
 
       final uploadUrl = Uri.parse(
-        'https://api.gallevr.app/vrchat/photo/upload?user=${Uri.encodeComponent(authData.userId)}&type=webp',
+        'https://api.gallevr.app/vrchat/photo/upload?user=${Uri.encodeComponent(uploadAuth.userId)}&type=webp',
       );
 
       final request = http.Request('POST', uploadUrl);
       request.bodyBytes = fileBytes;
       request.headers['Content-Type'] = 'application/octet-stream';
-      request.headers['Authorization'] = 'Bearer ${authData.accessKey}';
+      request.headers['Authorization'] = 'Bearer ${uploadAuth.accessKey}';
       request.headers['metadata'] = metadataBase64;
 
       try {

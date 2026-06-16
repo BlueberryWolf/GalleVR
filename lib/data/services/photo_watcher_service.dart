@@ -23,7 +23,8 @@ class PhotoWatcherService {
 
   final Set<String> _handledPhotos = {};
 
-  StreamSubscription<FileSystemEvent>? _watcherSubscription;
+  StreamSubscription<FileSystemEvent>? _resoniteWatcherSubscription;
+  StreamSubscription<FileSystemEvent>? _vrcWatcherSubscription;
   StreamSubscription<String>? _logWatcherSubscription;
   LogFileWatcher? _logFileWatcher;
 
@@ -153,7 +154,9 @@ class PhotoWatcherService {
         );
         final currentConfig = AppServiceManager().config;
         if (currentConfig != null) {
-          final updatedConfig = currentConfig.copyWith(photosDirectory: newPhotosDir);
+          final updatedConfig = currentConfig.copyWith(
+            photosDirectory: newPhotosDir,
+          );
           AppServiceManager().updateConfig(updatedConfig);
         }
       } else if (data.containsKey('error')) {
@@ -180,51 +183,56 @@ class PhotoWatcherService {
       name: 'PhotoWatcherService',
     );
 
-    await _watcherSubscription?.cancel();
-    _watcherSubscription = null;
+    await _resoniteWatcherSubscription?.cancel();
+    _resoniteWatcherSubscription = null;
+    await _vrcWatcherSubscription?.cancel();
+    _vrcWatcherSubscription = null;
     await _logWatcherSubscription?.cancel();
     _logWatcherSubscription = null;
     await _logFileWatcher?.stopWatching();
     _logFileWatcher = null;
 
     final authData = await VRChatService().loadAuthData();
-    final bool isResonite = authData?.userId.startsWith('U-') == true;
+    final authDataSec = await VRChatService().loadAuthDataSecondary();
 
-    if (isResonite) {
+    final bool hasVRC =
+        (authData != null && !authData.userId.startsWith('U-')) ||
+        (authDataSec != null && !authDataSec.userId.startsWith('U-'));
+    final bool hasResonite =
+        (authData != null && authData.userId.startsWith('U-')) ||
+        (authDataSec != null && authDataSec.userId.startsWith('U-'));
+
+    if (hasResonite) {
       final resoniteDir = config.resonitePhotosDirectory;
-      if (resoniteDir.isEmpty) {
-        final error = 'Resonite photos directory is not set';
-        developer.log(error, name: 'PhotoWatcherService');
-        PhotoEventService().notifyError('watcher', error);
-        throw Exception(error);
-      }
-
-      final directory = Directory(resoniteDir);
-      try {
-        if (!await directory.exists()) {
-          final error = 'Resonite photos directory does not exist: $resoniteDir';
-          developer.log(error, name: 'PhotoWatcherService');
-          PhotoEventService().notifyError('watcher', error);
-          throw Exception(error);
+      if (resoniteDir.isNotEmpty) {
+        final directory = Directory(resoniteDir);
+        try {
+          if (await directory.exists()) {
+            _resoniteWatcherSubscription = directory
+                .watch(events: FileSystemEvent.create, recursive: true)
+                .listen((event) {
+                  _handleResonitePhoto(event.path, config);
+                });
+            developer.log(
+              'Resonite photo watcher started successfully (recursive) on: $resoniteDir',
+              name: 'PhotoWatcherService',
+            );
+          } else {
+            developer.log(
+              'Resonite photos directory does not exist: $resoniteDir',
+              name: 'PhotoWatcherService',
+            );
+          }
+        } catch (e) {
+          developer.log(
+            'Failed to watch Resonite directory: $e',
+            name: 'PhotoWatcherService',
+          );
         }
-      } catch (e) {
-        final error = 'Failed to access Resonite photos directory: $e';
-        developer.log(error, name: 'PhotoWatcherService');
-        PhotoEventService().notifyError('watcher', error);
-        throw Exception(error);
       }
+    }
 
-      _watcherSubscription = directory
-          .watch(events: FileSystemEvent.create, recursive: true)
-          .listen((event) {
-            _handleResonitePhoto(event.path, config);
-          });
-
-      developer.log(
-        'Resonite photo watcher started successfully (recursive)',
-        name: 'PhotoWatcherService',
-      );
-    } else {
+    if (hasVRC || !hasResonite) {
       final logsDir = config.logsDirectory;
       if (logsDir.isEmpty) {
         final error = 'Logs directory is not set';
@@ -277,7 +285,8 @@ class PhotoWatcherService {
           await _logFileWatcher!.startWatching();
 
           _logWatcherSubscription = _logFileWatcher!.screenshotStream.listen(
-            (screenshotPath) => _handleScreenshotFromLog(screenshotPath, config),
+            (screenshotPath) =>
+                _handleScreenshotFromLog(screenshotPath, config),
             onError: (e) {
               final error = 'Error in log file watcher: $e';
               developer.log(error, name: 'PhotoWatcherService');
@@ -288,7 +297,7 @@ class PhotoWatcherService {
           try {
             final photosDir = Directory(config.photosDirectory);
             if (await photosDir.exists()) {
-              _watcherSubscription = photosDir
+              _vrcWatcherSubscription = photosDir
                   .watch(events: FileSystemEvent.create, recursive: true)
                   .listen((event) {
                     developer.log(
@@ -333,8 +342,10 @@ class PhotoWatcherService {
       await _stopForegroundService();
     }
 
-    await _watcherSubscription?.cancel();
-    _watcherSubscription = null;
+    await _resoniteWatcherSubscription?.cancel();
+    _resoniteWatcherSubscription = null;
+    await _vrcWatcherSubscription?.cancel();
+    _vrcWatcherSubscription = null;
 
     await _logWatcherSubscription?.cancel();
     _logWatcherSubscription = null;
@@ -470,10 +481,17 @@ class PhotoWatcherService {
     _photoStreamController.add(finalPath);
   }
 
-  Future<void> _handleResonitePhoto(String photoPath, ConfigModel config) async {
+  Future<void> _handleResonitePhoto(
+    String photoPath,
+    ConfigModel config,
+  ) async {
     final file = File(photoPath);
     final ext = photoPath.toLowerCase();
-    if (!ext.endsWith('.png') && !ext.endsWith('.jpg') && !ext.endsWith('.jpeg') && !ext.endsWith('.webp')) return;
+    if (!ext.endsWith('.png') &&
+        !ext.endsWith('.jpg') &&
+        !ext.endsWith('.jpeg') &&
+        !ext.endsWith('.webp'))
+      return;
 
     bool ready = false;
     int lastSize = -1;
@@ -532,8 +550,10 @@ class PhotoWatcherService {
     }
 
     try {
-      await _watcherSubscription?.cancel();
-      _watcherSubscription = null;
+      await _resoniteWatcherSubscription?.cancel();
+      _resoniteWatcherSubscription = null;
+      await _vrcWatcherSubscription?.cancel();
+      _vrcWatcherSubscription = null;
     } catch (e) {
       developer.log(
         'Error cancelling watcher subscription: $e',
