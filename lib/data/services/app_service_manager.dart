@@ -22,6 +22,7 @@ import '../repositories/photo_metadata_repository.dart';
 import '../../core/isolate/isolate_worker_pool.dart';
 import '../models/verification_models.dart';
 import '../database/app_database.dart';
+import '../../core/platform/platform_service_factory.dart';
 
 // Singleton service manager for the application
 // Manages global services that should run throughout the app lifecycle
@@ -35,7 +36,27 @@ class AppServiceManager {
   }
 
   // Private constructor for singleton
-  AppServiceManager._internal();
+  AppServiceManager._internal() {
+    authDataStream.listen((authData) async {
+      if (authData != null && authData.userId.startsWith('U-')) {
+        if (_config != null && _config!.resonitePhotosDirectory.isEmpty) {
+          try {
+            final defaultResoniteDir = await PlatformServiceFactory.getPlatformService().getResonitePhotosDirectory();
+            if (defaultResoniteDir.isNotEmpty) {
+              final updatedConfig = _config!.copyWith(resonitePhotosDirectory: defaultResoniteDir);
+              await _configRepository.saveConfig(updatedConfig);
+              await updateConfig(updatedConfig);
+            }
+          } catch (e) {
+            developer.log(
+              'Error initializing default Resonite photos directory on login: $e',
+              name: 'AppServiceManager',
+            );
+          }
+        }
+      }
+    });
+  }
 
   // Flag to track if services have been initialized
   bool _isInitialized = false;
@@ -100,6 +121,13 @@ class AppServiceManager {
   // Get the current auth data
   AuthData? get authData => _authData;
 
+  // Set the auth data and notify if changed
+  void _setAuthData(AuthData? newData) {
+    if (_authData == newData) return;
+    _authData = newData;
+    _authDataStreamController.add(newData);
+  }
+
   // Track if a TOS modal is currently being shown
   bool _isTOSModalVisible = false;
 
@@ -162,16 +190,13 @@ class AppServiceManager {
           );
           // Clear auth data if verification is invalid
           await _vrchatService.logout();
-          _authData = null;
-          _authDataStreamController.add(null);
+          _setAuthData(null);
         } else {
           final updatedAuthData = await _vrchatService.loadAuthData();
-          _authData = updatedAuthData;
-          _authDataStreamController.add(updatedAuthData);
+          _setAuthData(updatedAuthData);
         }
       } else {
-        _authData = null;
-        _authDataStreamController.add(null);
+        _setAuthData(null);
       }
     } catch (e) {
       developer.log(
@@ -186,6 +211,7 @@ class AppServiceManager {
     if (_isInitialized) return;
 
     try {
+      _authData = await _vrchatService.loadAuthData();
       await Future.wait([
         _configRepository.loadConfig().then((config) => _config = config),
         AppDatabase().database,
@@ -216,10 +242,8 @@ class AppServiceManager {
       PaintingBinding.instance.imageCache.maximumSize = 50;
 
       // Load initial auth data
-      _authData = await _vrchatService.loadAuthData();
-      if (_authData != null) {
-        _authDataStreamController.add(_authData);
-      }
+      final loadedAuth = await _vrchatService.loadAuthData();
+      _setAuthData(loadedAuth);
 
       await checkVerificationStatus();
 
@@ -321,6 +345,10 @@ class AppServiceManager {
 
   // Update configuration and restart services if needed
   Future<void> updateConfig(ConfigModel config) async {
+    final authData = await _vrchatService.loadAuthData();
+    _setAuthData(authData);
+    final isResonite = authData?.userId.startsWith('U-') == true;
+
     final bool photosDirectoryChanged =
         _config?.photosDirectory != config.photosDirectory;
     final bool logsDirectoryChanged =
@@ -351,8 +379,6 @@ class AppServiceManager {
         linuxService.updateMinimizeToTray(config.minimizeToTray);
       }
     }
-
-    final isResonite = _authData?.userId.startsWith('U-') == true;
     final bool dirChanged = isResonite ? resonitePhotosDirectoryChanged : (photosDirectoryChanged || logsDirectoryChanged);
 
     // Restart photo watcher if important filesystem paths changed

@@ -29,7 +29,14 @@ class ConfigRepository {
       final jsonString = await configFile.readAsString();
       final jsonMap = json.decode(jsonString) as Map<String, dynamic>;
 
-      return ConfigModel.fromJson(jsonMap);
+      final loaded = ConfigModel.fromJson(jsonMap);
+      if (loaded.resonitePhotosDirectory.isEmpty) {
+        final resonitePhotosDir = await _platformService.getResonitePhotosDirectory();
+        final updated = loaded.copyWith(resonitePhotosDirectory: resonitePhotosDir);
+        await saveConfig(updated);
+        return updated;
+      }
+      return loaded;
     } catch (e) {
       // If there's an error loading the config, return default config
       return _createDefaultConfig();

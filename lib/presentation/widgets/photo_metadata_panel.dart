@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:gallevr/data/models/log_metadata.dart';
+import 'package:gallevr/core/utils/tag_parser.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../data/models/photo_metadata.dart';
 import '../theme/app_theme.dart';
@@ -193,12 +194,14 @@ class PhotoMetadataPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                world.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+              Text.rich(
+                parseResoniteTags(
+                  world.name,
+                  const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../../data/models/photo_metadata.dart';
+import '../../../../core/utils/tag_parser.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/cached_image.dart';
 
@@ -269,14 +270,14 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
 
     final worldName = widget.metadata?.world?.name;
     final playerCount = widget.metadata?.players.length ?? 0;
-
     return Positioned(
       top: 12,
       left: 12,
       right: 80,
       child: IgnorePointer(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: RepaintBoundary(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               dateStr,
@@ -300,15 +301,17 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                   ),
                   const SizedBox(width: 4),
                   Flexible(
-                    child: Text(
-                      worldName,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        shadows: const [
-                          Shadow(color: Colors.black45, blurRadius: 2),
-                        ],
+                    child: Text.rich(
+                      parseResoniteTags(
+                        worldName,
+                        TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          shadows: const [
+                            Shadow(color: Colors.black45, blurRadius: 2),
+                          ],
+                        ),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -340,6 +343,7 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
           ],
         ),
       ),
+    ),
     );
   }
 
