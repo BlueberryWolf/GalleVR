@@ -283,11 +283,17 @@ PhotoMetadata? _convertToGalleVrMetadata(
             if (id != null && id.isNotEmpty) {
               if (headPosition != null && headPosition.isNotEmpty) {
                 final scaleVal = headScale ?? '1.0';
-                final isInViewVal = (isInView == 'true' || isInView == '1') ? '1' : '0';
-                final cleaned = headPosition.replaceAll('[', '').replaceAll(']', '').trim();
-                final parts = cleaned.contains(';') ? cleaned.split(';') : cleaned.split(',');
+                final isInViewVal =
+                    (isInView == 'true' || isInView == '1') ? '1' : '0';
+                final cleaned =
+                    headPosition.replaceAll('[', '').replaceAll(']', '').trim();
+                final parts =
+                    cleaned.contains(';')
+                        ? cleaned.split(';')
+                        : cleaned.split(',');
                 if (parts.length == 3) {
-                  headPosition = '[${parts[0].trim()}; ${parts[1].trim()}; ${parts[2].trim()}; $scaleVal; $isInViewVal]';
+                  headPosition =
+                      '[${parts[0].trim()}; ${parts[1].trim()}; ${parts[2].trim()}; $scaleVal; $isInViewVal]';
                 }
               }
 
@@ -346,7 +352,10 @@ PhotoMetadata? _convertToGalleVrMetadata(
       final String? rot = resData['takenGlobalRotation'] as String?;
       final String? scale = resData['takenGlobalScale'] as String?;
       final String? fov = resData['cameraFov'] as String?;
-      final String? cameraManufacturer = resData['cameraManufacturer'] as String?;
+      final String? cameraManufacturer =
+          resData['cameraManufacturer'] as String?;
+      final bool isScreenshot =
+          cameraManufacturer == null || cameraManufacturer.isEmpty;
 
       return PhotoMetadata(
         takenDate: takenDate,
@@ -365,6 +374,7 @@ PhotoMetadata? _convertToGalleVrMetadata(
         cameraFov: fov,
         cameraManufacturer: cameraManufacturer,
         takenById: takenById,
+        isNonVrcx: isScreenshot,
       );
     }
 

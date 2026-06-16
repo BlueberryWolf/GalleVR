@@ -134,7 +134,8 @@ class PhotoProcessorService {
               return null;
             }
 
-            final parsedMetadata = await VrcxMetadataService().extractVrcxMetadata(sourcePath);
+            final parsedMetadata = await VrcxMetadataService()
+                .extractVrcxMetadata(sourcePath);
             final bool isResonite = parsedMetadata?.application == 'Resonite';
 
             if (!isResonite && !_isValidAspectRatio(width, height)) {
@@ -285,7 +286,8 @@ class PhotoProcessorService {
           final sourceStats = sourceFile.statSync();
           final creationTimeMs = sourceStats.modified.millisecondsSinceEpoch;
 
-          final parsedMetadata = await VrcxMetadataService().extractVrcxMetadata(sourcePath);
+          final parsedMetadata = await VrcxMetadataService()
+              .extractVrcxMetadata(sourcePath);
 
           final photoMetadata = PhotoMetadata(
             takenDate: creationTimeMs,
@@ -299,6 +301,11 @@ class PhotoProcessorService {
             takenGlobalRotation: parsedMetadata?.takenGlobalRotation,
             takenGlobalScale: parsedMetadata?.takenGlobalScale,
             cameraFov: parsedMetadata?.cameraFov,
+            cameraManufacturer: parsedMetadata?.cameraManufacturer,
+            takenById: parsedMetadata?.takenById,
+            isNonVrcx:
+                parsedMetadata?.isNonVrcx ??
+                (parsedMetadata?.world == null && metadata?.world == null),
           );
 
           final saveResult = await _photoMetadataRepository.savePhotoMetadata(

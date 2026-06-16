@@ -107,9 +107,9 @@ class PhotoMetadataRepository {
             });
       }
 
-      final cleanV3Done =
-          _prefs?.getBool('gallevr_metadata_clean_v3_done') ?? false;
-      if (!cleanV3Done) {
+      final cleanV5Done =
+          _prefs?.getBool('gallevr_metadata_clean_v5_done') ?? false;
+      if (!cleanV5Done) {
         AppDatabase().database
             .then((db) async {
               await db.transaction((txn) async {
@@ -120,16 +120,17 @@ class PhotoMetadataRepository {
                   'DELETE FROM photo_metadata WHERE gallery_url IS NULL',
                 );
               });
-              await _prefs?.setBool('gallevr_metadata_clean_v3_done', true);
+              await _prefs?.setBool('gallevr_metadata_clean_v5_done', true);
               developer.log(
-                'Cleared local metadata records for corrected XMP/VRCX migration',
+                'Cleared local metadata records for clean v5 migration to repopulate database with Resonite columns',
                 name: 'PhotoMetadataRepository',
               );
             })
             .catchError((e) {
               developer.log(
-                'Error running metadata clean v3 migration: $e',
+                'Error running metadata clean v5 migration: $e',
                 name: 'PhotoMetadataRepository',
+                error: e,
               );
             });
       }
@@ -274,6 +275,13 @@ class PhotoMetadataRepository {
       logChecked: (map['log_checked'] as int? ?? 0) == 1,
       world: world,
       players: players,
+      application: map['application'] as String?,
+      takenGlobalPosition: map['taken_global_position'] as String?,
+      takenGlobalRotation: map['taken_global_rotation'] as String?,
+      takenGlobalScale: map['taken_global_scale'] as String?,
+      cameraFov: map['camera_fov'] as String?,
+      cameraManufacturer: map['camera_manufacturer'] as String?,
+      takenById: map['taken_by_id'] as String?,
     );
   }
 
@@ -350,6 +358,14 @@ class PhotoMetadataRepository {
           metadata.world?.inviteOnly == true
               ? 1
               : (metadata.world?.inviteOnly == false ? 0 : null),
+
+      'application': metadata.application,
+      'taken_global_position': metadata.takenGlobalPosition,
+      'taken_global_rotation': metadata.takenGlobalRotation,
+      'taken_global_scale': metadata.takenGlobalScale,
+      'camera_fov': metadata.cameraFov,
+      'camera_manufacturer': metadata.cameraManufacturer,
+      'taken_by_id': metadata.takenById,
     };
   }
 
@@ -874,7 +890,6 @@ class PhotoMetadataRepository {
 
           if (existingMeta != null) {
             if (isRemote) {
-              // Trust local data but update with remote info
               metadata = metadata.copyWith(
                 localPath: existingMeta.localPath ?? metadata.localPath,
                 isNonVrcx: false,
@@ -887,6 +902,20 @@ class PhotoMetadataRepository {
                         ? existingMeta.players
                         : metadata.players,
                 logChecked: existingMeta.logChecked || metadata.logChecked,
+                application: existingMeta.application ?? metadata.application,
+                cameraManufacturer:
+                    existingMeta.cameraManufacturer ??
+                    metadata.cameraManufacturer,
+                takenById: existingMeta.takenById ?? metadata.takenById,
+                takenGlobalPosition:
+                    existingMeta.takenGlobalPosition ??
+                    metadata.takenGlobalPosition,
+                takenGlobalRotation:
+                    existingMeta.takenGlobalRotation ??
+                    metadata.takenGlobalRotation,
+                takenGlobalScale:
+                    existingMeta.takenGlobalScale ?? metadata.takenGlobalScale,
+                cameraFov: existingMeta.cameraFov ?? metadata.cameraFov,
               );
             } else {
               metadata = metadata.copyWith(
@@ -915,6 +944,20 @@ class PhotoMetadataRepository {
                         ? false
                         : metadata.isNonVrcx,
                 logChecked: existingMeta.logChecked || metadata.logChecked,
+                application: metadata.application ?? existingMeta.application,
+                cameraManufacturer:
+                    metadata.cameraManufacturer ??
+                    existingMeta.cameraManufacturer,
+                takenById: metadata.takenById ?? existingMeta.takenById,
+                takenGlobalPosition:
+                    metadata.takenGlobalPosition ??
+                    existingMeta.takenGlobalPosition,
+                takenGlobalRotation:
+                    metadata.takenGlobalRotation ??
+                    existingMeta.takenGlobalRotation,
+                takenGlobalScale:
+                    metadata.takenGlobalScale ?? existingMeta.takenGlobalScale,
+                cameraFov: metadata.cameraFov ?? existingMeta.cameraFov,
               );
             }
           }
@@ -1199,7 +1242,8 @@ class PhotoMetadataRepository {
       final List<Map<String, dynamic>> results = await db.query(
         'photo_metadata',
         columns: ['filename'],
-        where: 'is_non_vrcx = 1 AND gallery_url IS NULL',
+        where:
+            'gallery_url IS NULL AND (is_non_vrcx = 1 OR (application = \'Resonite\' AND (camera_manufacturer IS NULL OR camera_manufacturer = \'\')))',
       );
       return results.map((r) => r['filename'] as String).toSet();
     } catch (e) {

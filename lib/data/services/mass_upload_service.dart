@@ -60,6 +60,15 @@ class MassUploadService {
         );
       }
 
+      if (metadata.application == 'Resonite') {
+        if (metadata.cameraManufacturer == null ||
+            metadata.cameraManufacturer!.isEmpty) {
+          return MassUploadResult.error(
+            'Resonite screenshot detected (no CameraManufacturer metadata). Skipping upload.',
+          );
+        }
+      }
+
       final authData = await _vrchatService.loadAuthData();
       final badges =
           authData?.badges.map((b) => b.toLowerCase()).toList() ?? [];

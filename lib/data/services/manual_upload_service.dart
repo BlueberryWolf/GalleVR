@@ -60,7 +60,8 @@ class ManualUploadService {
       // Check authentication
       final authData = await _vrchatService.loadAuthData();
       if (authData == null) {
-        final error = 'No authentication data found. Please log in to upload photos';
+        final error =
+            'No authentication data found. Please log in to upload photos';
         developer.log(error, name: 'ManualUploadService');
         PhotoEventService().notifyError('upload', error, photoPath: photoPath);
         throw Exception(error);
@@ -76,7 +77,8 @@ class ManualUploadService {
       );
       final isVerified = await _vrchatService.checkVerificationStatus(authData);
       if (!isVerified) {
-        final error = 'Your account is not verified. Please verify your account in the Account tab';
+        final error =
+            'Your account is not verified. Please verify your account in the Account tab';
         developer.log(error, name: 'ManualUploadService');
         PhotoEventService().notifyError('upload', error, photoPath: photoPath);
         await _vrchatService.logout();
@@ -93,7 +95,8 @@ class ManualUploadService {
       );
       final needsToAcceptTOS = await _tosService.needsToAcceptTOS();
       if (needsToAcceptTOS) {
-        final error = 'You need to accept the Terms of Service before uploading photos.';
+        final error =
+            'You need to accept the Terms of Service before uploading photos.';
         developer.log(error, name: 'ManualUploadService');
         PhotoEventService().notifyError('upload', error, photoPath: photoPath);
         throw Exception(error);
@@ -103,22 +106,41 @@ class ManualUploadService {
       onProgress?.call(0.4);
 
       // Get existing metadata - it must already exist with valid world/player info
-      PhotoMetadata? photoMetadata = await _photoMetadataRepository.getPhotoMetadataForFile(photoPath);
-      
+      PhotoMetadata? photoMetadata = await _photoMetadataRepository
+          .getPhotoMetadataForFile(photoPath);
+
       if (photoMetadata == null) {
-        final error = 'No metadata found for this photo. Only photos with valid metadata can be uploaded.';
+        final error =
+            'No metadata found for this photo. Only photos with valid metadata can be uploaded.';
         developer.log(error, name: 'ManualUploadService');
         PhotoEventService().notifyError('upload', error, photoPath: photoPath);
         throw Exception(error);
       }
 
       // Check if photo has valid metadata (world or players)
-      final hasValidMetadata = photoMetadata.world != null || photoMetadata.players.isNotEmpty;
+      final hasValidMetadata =
+          photoMetadata.world != null || photoMetadata.players.isNotEmpty;
       if (!hasValidMetadata) {
-        final error = 'Photo must have valid metadata (world or player information) to be uploaded';
+        final error =
+            'Photo must have valid metadata (world or player information) to be uploaded';
         developer.log(error, name: 'ManualUploadService');
         PhotoEventService().notifyError('upload', error, photoPath: photoPath);
         throw Exception(error);
+      }
+
+      if (photoMetadata.application == 'Resonite') {
+        if (photoMetadata.cameraManufacturer == null ||
+            photoMetadata.cameraManufacturer!.isEmpty) {
+          final error =
+              'Resonite screenshot detected (no CameraManufacturer metadata). Skipping upload.';
+          developer.log(error, name: 'ManualUploadService');
+          PhotoEventService().notifyError(
+            'upload',
+            error,
+            photoPath: photoPath,
+          );
+          throw Exception(error);
+        }
       }
 
       developer.log(
@@ -135,12 +157,17 @@ class ManualUploadService {
         'Processing photo for manual upload...',
         photoPath: photoPath,
       );
-      
-      final badges = authData.badges.map((b) => b.toString().toLowerCase()).toList();
+
+      final badges =
+          authData.badges.map((b) => b.toString().toLowerCase()).toList();
       final webpPath = await _processPhotoToWebP(photoPath, badges);
       if (webpPath == null) {
         final error = 'Failed to process photo to WebP format';
-        PhotoEventService().notifyError('processing', error, photoPath: photoPath);
+        PhotoEventService().notifyError(
+          'processing',
+          error,
+          photoPath: photoPath,
+        );
         throw Exception(error);
       }
 
@@ -154,8 +181,12 @@ class ManualUploadService {
       );
 
       // Upload the WebP file
-      final galleryUrl = await _uploadWebPFile(webpPath, photoMetadata, authData);
-      
+      final galleryUrl = await _uploadWebPFile(
+        webpPath,
+        photoMetadata,
+        authData,
+      );
+
       if (galleryUrl != null) {
         onStatusUpdate?.call('Updating metadata...');
         onProgress?.call(0.9);
@@ -236,11 +267,17 @@ class ManualUploadService {
   }
 
   /// Process a photo to WebP format with compression
-  Future<String?> _processPhotoToWebP(String sourcePath, List<String> badges) async {
+  Future<String?> _processPhotoToWebP(
+    String sourcePath,
+    List<String> badges,
+  ) async {
     try {
       final file = File(sourcePath);
       if (!await file.exists()) {
-        developer.log('Source file does not exist: $sourcePath', name: 'ManualUploadService');
+        developer.log(
+          'Source file does not exist: $sourcePath',
+          name: 'ManualUploadService',
+        );
         return null;
       }
 
@@ -304,7 +341,11 @@ class ManualUploadService {
           final ratio = (width / height).toStringAsFixed(2);
           final error = 'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
           developer.log(error, name: 'ManualUploadService');
-          PhotoEventService().notifyError('processing', error, photoPath: sourcePath);
+          PhotoEventService().notifyError(
+            'processing',
+            error,
+            photoPath: sourcePath,
+          );
           throw Exception(error);
         }
 
@@ -357,7 +398,10 @@ class ManualUploadService {
       }, bytes);
 
       if (image == null) {
-        developer.log('Failed to decode image: $sourcePath', name: 'ManualUploadService');
+        developer.log(
+          'Failed to decode image: $sourcePath',
+          name: 'ManualUploadService',
+        );
         return null;
       }
 
@@ -366,7 +410,11 @@ class ManualUploadService {
         final ratio = (image.width / image.height).toStringAsFixed(2);
         final error = 'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
         developer.log(error, name: 'ManualUploadService');
-        PhotoEventService().notifyError('processing', error, photoPath: sourcePath);
+        PhotoEventService().notifyError(
+          'processing',
+          error,
+          photoPath: sourcePath,
+        );
         throw Exception(error);
       }
 
@@ -377,8 +425,7 @@ class ManualUploadService {
         name: 'ManualUploadService',
       );
 
-      final int processedPixels =
-          processedImage.width * processedImage.height;
+      final int processedPixels = processedImage.width * processedImage.height;
 
       int scaledMaxSizeBytes =
           (maxSizeBytes * (processedPixels / maxTierPixels)).round();
@@ -415,11 +462,18 @@ class ManualUploadService {
 
       // Save the WebP file
       await File(outputPath).writeAsBytes(webpBytes);
-      developer.log('Saved WebP file to: $outputPath', name: 'ManualUploadService');
+      developer.log(
+        'Saved WebP file to: $outputPath',
+        name: 'ManualUploadService',
+      );
 
       return outputPath;
     } catch (e) {
-      developer.log('Error processing photo to WebP: $e', name: 'ManualUploadService', error: e);
+      developer.log(
+        'Error processing photo to WebP: $e',
+        name: 'ManualUploadService',
+        error: e,
+      );
       return null;
     }
   }
@@ -433,7 +487,10 @@ class ManualUploadService {
     try {
       final file = File(webpPath);
       if (!await file.exists()) {
-        developer.log('WebP file does not exist: $webpPath', name: 'ManualUploadService');
+        developer.log(
+          'WebP file does not exist: $webpPath',
+          name: 'ManualUploadService',
+        );
         return null;
       }
 
@@ -461,7 +518,10 @@ class ManualUploadService {
 
       if (response.statusCode == 200) {
         final galleryUrl = response.body.trim();
-        developer.log('Manual upload successful, gallery URL: $galleryUrl', name: 'ManualUploadService');
+        developer.log(
+          'Manual upload successful, gallery URL: $galleryUrl',
+          name: 'ManualUploadService',
+        );
         return galleryUrl;
       } else {
         developer.log(
@@ -471,7 +531,11 @@ class ManualUploadService {
         return null;
       }
     } catch (e) {
-      developer.log('Network error during manual upload: $e', name: 'ManualUploadService', error: e);
+      developer.log(
+        'Network error during manual upload: $e',
+        name: 'ManualUploadService',
+        error: e,
+      );
       return null;
     }
   }
@@ -488,7 +552,10 @@ class ManualUploadService {
   }
 
   /// Resize image if it exceeds maxDimension while maintaining aspect ratio
-  Future<img.Image> _resizeImageIfNeeded(img.Image image, int maxDimension) async {
+  Future<img.Image> _resizeImageIfNeeded(
+    img.Image image,
+    int maxDimension,
+  ) async {
     if (image.width <= maxDimension && image.height <= maxDimension) {
       return image;
     }

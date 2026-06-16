@@ -211,9 +211,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
     required bool isResonite,
   }) async {
     final Set<String> knownNonVrcx =
-        isResonite
-            ? const <String>{}
-            : await _metadataRepository.getNonVrcxFilenames();
+        await _metadataRepository.getNonVrcxFilenames();
 
     final sortedPaths = await compute(
       _scanDirectoryIsolate,
@@ -255,11 +253,11 @@ class PhotosController extends ValueNotifier<PhotosState> {
     final List<String> badPaths = [];
     metadata.forEach((filePath, meta) {
       if (meta == null ||
-          (meta.isNonVrcx &&
-              meta.galleryUrl == null &&
-              meta.world == null &&
-              meta.players.isEmpty &&
-              meta.application != 'Resonite')) {
+          (meta.isNonVrcx && meta.galleryUrl == null) ||
+          (meta.application == 'Resonite' &&
+              (meta.cameraManufacturer == null ||
+                  meta.cameraManufacturer!.isEmpty) &&
+              meta.galleryUrl == null)) {
         badPaths.add(filePath);
       }
     });
@@ -365,7 +363,7 @@ Future<List<String>> _scanDirectoryIsolate(ScanParams params) async {
                 : (ext == '.png');
         if (isAllowed) {
           final filename = path.basename(entity.path);
-          if (params.isResonite || !params.knownNonVrcx.contains(filename)) {
+          if (!params.knownNonVrcx.contains(filename)) {
             photos.add(entity);
           }
         }

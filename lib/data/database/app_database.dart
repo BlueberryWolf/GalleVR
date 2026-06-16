@@ -30,7 +30,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -45,6 +45,40 @@ class AppDatabase {
           } catch (e) {
             developer.log(
               'Database upgrade error from v1 to v2: $e',
+              name: 'AppDatabase',
+            );
+          }
+        }
+        if (oldVersion < 3) {
+          try {
+            await db.execute(
+              'ALTER TABLE photo_metadata ADD COLUMN application TEXT',
+            );
+            await db.execute(
+              'ALTER TABLE photo_metadata ADD COLUMN taken_global_position TEXT',
+            );
+            await db.execute(
+              'ALTER TABLE photo_metadata ADD COLUMN taken_global_rotation TEXT',
+            );
+            await db.execute(
+              'ALTER TABLE photo_metadata ADD COLUMN taken_global_scale TEXT',
+            );
+            await db.execute(
+              'ALTER TABLE photo_metadata ADD COLUMN camera_fov TEXT',
+            );
+            await db.execute(
+              'ALTER TABLE photo_metadata ADD COLUMN camera_manufacturer TEXT',
+            );
+            await db.execute(
+              'ALTER TABLE photo_metadata ADD COLUMN taken_by_id TEXT',
+            );
+            developer.log(
+              'Successfully migrated database from v2 to v3: added Resonite and application columns',
+              name: 'AppDatabase',
+            );
+          } catch (e) {
+            developer.log(
+              'Database upgrade error from v2 to v3: $e',
               name: 'AppDatabase',
             );
           }
@@ -75,7 +109,15 @@ class AppDatabase {
         world_group_id TEXT,
         world_group_access_type TEXT,
         world_can_request_invite INTEGER,
-        world_invite_only INTEGER
+        world_invite_only INTEGER,
+
+        application TEXT,
+        taken_global_position TEXT,
+        taken_global_rotation TEXT,
+        taken_global_scale TEXT,
+        camera_fov TEXT,
+        camera_manufacturer TEXT,
+        taken_by_id TEXT
       )
     ''');
 

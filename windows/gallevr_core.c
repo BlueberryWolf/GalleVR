@@ -41,30 +41,48 @@ char* duplicate_string(const char* s) {
     if (d) strcpy(d, s);
     return d;
 }
-
 char* extract_xml_attribute(const char* xml, const char* attr_name) {
-    char search_pattern[128];
-    sprintf(search_pattern, "%s=\"", attr_name);
-    char* s = strstr(xml, search_pattern);
-    if (!s) {
-        if (strncmp(attr_name, "rse:", 4) != 0) {
-            sprintf(search_pattern, "rse:%s=\"", attr_name);
-            s = strstr(xml, search_pattern);
+    if (!xml || !attr_name) return NULL;
+    size_t attr_len = strlen(attr_name);
+    const char* ptr = xml;
+    while (1) {
+        const char* match = strstr(ptr, attr_name);
+        if (!match) break;
+        int valid_prefix = 0;
+        if (match == xml) {
+            valid_prefix = 1;
+        } else {
+            char prev = *(match - 1);
+            if (prev == ' ' || prev == '\t' || prev == '\r' || prev == '\n' || prev == ':') {
+                valid_prefix = 1;
+            }
         }
+        if (valid_prefix) {
+            const char* eq = match + attr_len;
+            while (*eq == ' ' || *eq == '\t') eq++;
+            if (*eq == '=') {
+                eq++;
+                while (*eq == ' ' || *eq == '\t') eq++;
+                char quote = *eq;
+                if (quote == '"' || quote == '\'') {
+                    const char* val_start = eq + 1;
+                    const char* val_end = strchr(val_start, quote);
+                    if (val_end) {
+                        size_t val_len = val_end - val_start;
+                        char* val = malloc(val_len + 1);
+                        if (val) {
+                            memcpy(val, val_start, val_len);
+                            val[val_len] = '\0';
+                            return val;
+                        }
+                    }
+                }
+            }
+        }
+        ptr = match + 1;
     }
-    if (!s) return NULL;
-    s += strlen(search_pattern);
-    char* e = strchr(s, '"');
-    if (!e) return NULL;
-    size_t len = e - s;
-    char* val = malloc(len + 1);
-    if (val) {
-        memcpy(val, s, len);
-        val[len] = '\0';
-    }
-    return val;
+    return NULL;
 }
-
 char* extract_sub_attribute(const char* xml, const char* tag_name, const char* attr_name) {
     char search_tag[128];
     sprintf(search_tag, "%s", tag_name);
