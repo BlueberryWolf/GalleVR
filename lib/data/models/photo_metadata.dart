@@ -42,6 +42,8 @@ class PhotoMetadata {
   final String? takenGlobalRotation;
   final String? takenGlobalScale;
   final String? cameraFov;
+  final String? cameraManufacturer;
+  final String? takenById;
 
   // Default constructor
   PhotoMetadata({
@@ -61,6 +63,8 @@ class PhotoMetadata {
     this.takenGlobalRotation,
     this.takenGlobalScale,
     this.cameraFov,
+    this.cameraManufacturer,
+    this.takenById,
   });
 
   // Create a PhotoMetadata from JSON
@@ -101,6 +105,8 @@ class PhotoMetadata {
       takenGlobalRotation: json['takenGlobalRotation'] as String?,
       takenGlobalScale: json['takenGlobalScale'] as String?,
       cameraFov: json['cameraFov'] as String?,
+      cameraManufacturer: json['cameraManufacturer'] as String?,
+      takenById: json['takenById'] as String?,
     );
   }
 
@@ -123,6 +129,8 @@ class PhotoMetadata {
       if (takenGlobalRotation != null) 'takenGlobalRotation': takenGlobalRotation,
       if (takenGlobalScale != null) 'takenGlobalScale': takenGlobalScale,
       if (cameraFov != null) 'cameraFov': cameraFov,
+      if (cameraManufacturer != null) 'cameraManufacturer': cameraManufacturer,
+      if (takenById != null) 'takenById': takenById,
     };
   }
 
@@ -144,6 +152,8 @@ class PhotoMetadata {
     String? takenGlobalRotation,
     String? takenGlobalScale,
     String? cameraFov,
+    String? cameraManufacturer,
+    String? takenById,
   }) {
     return PhotoMetadata(
       takenDate: takenDate ?? this.takenDate,
@@ -162,6 +172,8 @@ class PhotoMetadata {
       takenGlobalRotation: takenGlobalRotation ?? this.takenGlobalRotation,
       takenGlobalScale: takenGlobalScale ?? this.takenGlobalScale,
       cameraFov: cameraFov ?? this.cameraFov,
+      cameraManufacturer: cameraManufacturer ?? this.cameraManufacturer,
+      takenById: takenById ?? this.takenById,
     );
   }
 }

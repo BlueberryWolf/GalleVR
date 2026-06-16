@@ -119,6 +119,23 @@ class PhotoUploadService {
 
       final isResoniteAccount = uploadAuth.userId.startsWith('U-');
 
+      if (isResonitePhoto) {
+        final resoniteUserId = uploadAuth.userId;
+        if (photoMetadata.takenById != null && photoMetadata.takenById != resoniteUserId) {
+          final error = 'Photo taken by ${photoMetadata.takenById}, but logged in as $resoniteUserId. Skipping upload.';
+          developer.log(error, name: 'PhotoUploadService');
+          PhotoEventService().notifyError('upload', error, photoPath: photoPath);
+          return false;
+        }
+
+        if (photoMetadata.cameraManufacturer == null || photoMetadata.cameraManufacturer!.isEmpty) {
+          final error = 'Resonite screenshot detected (no CameraManufacturer metadata). Skipping upload.';
+          developer.log(error, name: 'PhotoUploadService');
+          PhotoEventService().notifyError('upload', error, photoPath: photoPath);
+          return false;
+        }
+      }
+
       if (isResonitePhoto && !isResoniteAccount) {
         final error =
             'Resonite photos can only be uploaded to Resonite accounts';

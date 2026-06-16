@@ -346,6 +346,7 @@ PhotoMetadata? _convertToGalleVrMetadata(
       final String? rot = resData['takenGlobalRotation'] as String?;
       final String? scale = resData['takenGlobalScale'] as String?;
       final String? fov = resData['cameraFov'] as String?;
+      final String? cameraManufacturer = resData['cameraManufacturer'] as String?;
 
       return PhotoMetadata(
         takenDate: takenDate,
@@ -362,6 +363,8 @@ PhotoMetadata? _convertToGalleVrMetadata(
         takenGlobalRotation: rot,
         takenGlobalScale: scale,
         cameraFov: fov,
+        cameraManufacturer: cameraManufacturer,
+        takenById: takenById,
       );
     }
 

@@ -350,6 +350,7 @@ EXPORT char* extract_vrcx_metadata(const char* file_path) {
         char* raw_rot = extract_xml_attribute(vrchat_xml, "TakenGlobalRotation");
         char* raw_scale = extract_xml_attribute(vrchat_xml, "TakenGlobalScale");
         char* raw_fov = extract_xml_attribute(vrchat_xml, "CameraFOV");
+        char* raw_cam_man = extract_xml_attribute(vrchat_xml, "CameraManufacturer");
         char* players_json = extract_players_json(vrchat_xml);
         char* raw_v1_json = extract_xml_attribute(vrchat_xml, "PhotoMetadataJson");
 
@@ -364,6 +365,7 @@ EXPORT char* extract_vrcx_metadata(const char* file_path) {
         char* rot = decode_xml_entities(raw_rot);
         char* scale = decode_xml_entities(raw_scale);
         char* fov = decode_xml_entities(raw_fov);
+        char* cam_man = decode_xml_entities(raw_cam_man);
         char* v1_json = decode_xml_entities(raw_v1_json);
 
         size_t result_len = 2560;
@@ -378,6 +380,7 @@ EXPORT char* extract_vrcx_metadata(const char* file_path) {
         if (rot) result_len += strlen(rot);
         if (scale) result_len += strlen(scale);
         if (fov) result_len += strlen(fov);
+        if (cam_man) result_len += strlen(cam_man);
         if (players_json) result_len += strlen(players_json);
         if (v1_json) result_len += strlen(v1_json);
 
@@ -396,6 +399,7 @@ EXPORT char* extract_vrcx_metadata(const char* file_path) {
                 "\"takenGlobalRotation\":\"%s\","
                 "\"takenGlobalScale\":\"%s\","
                 "\"cameraFov\":\"%s\","
+                "\"cameraManufacturer\":\"%s\","
                 "\"players\":%s,"
                 "\"v1Json\":%s"
                 "}}",
@@ -410,6 +414,7 @@ EXPORT char* extract_vrcx_metadata(const char* file_path) {
                 rot ? rot : "",
                 scale ? scale : "",
                 fov ? fov : "",
+                cam_man ? cam_man : "",
                 players_json ? players_json : "[]",
                 v1_json ? v1_json : "null"
             );
@@ -426,6 +431,7 @@ EXPORT char* extract_vrcx_metadata(const char* file_path) {
         if (raw_rot) free(raw_rot);
         if (raw_scale) free(raw_scale);
         if (raw_fov) free(raw_fov);
+        if (raw_cam_man) free(raw_cam_man);
         if (raw_v1_json) free(raw_v1_json);
 
         if (loc_name) free(loc_name);
