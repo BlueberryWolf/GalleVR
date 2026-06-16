@@ -275,9 +275,22 @@ PhotoMetadata? _convertToGalleVrMetadata(
           if (p is Map<String, dynamic>) {
             final id = p['id'] as String?;
             final displayName = p['displayName'] as String?;
-            final headPosition = p['headPosition'] as String?;
+            var headPosition = p['headPosition'] as String?;
             final headOrientation = p['headOrientation'] as String?;
+            final headScale = p['headScale'] as String?;
+            final isInView = p['isInView'] as String?;
+
             if (id != null && id.isNotEmpty) {
+              if (headPosition != null && headPosition.isNotEmpty) {
+                final scaleVal = headScale ?? '1.0';
+                final isInViewVal = (isInView == 'true' || isInView == '1') ? '1' : '0';
+                final cleaned = headPosition.replaceAll('[', '').replaceAll(']', '').trim();
+                final parts = cleaned.contains(';') ? cleaned.split(';') : cleaned.split(',');
+                if (parts.length == 3) {
+                  headPosition = '[${parts[0].trim()}; ${parts[1].trim()}; ${parts[2].trim()}; $scaleVal; $isInViewVal]';
+                }
+              }
+
               players.add(
                 Player(
                   id: id,

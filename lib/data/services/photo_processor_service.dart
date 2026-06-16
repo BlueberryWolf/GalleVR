@@ -295,6 +295,10 @@ class PhotoProcessorService {
             players: parsedMetadata?.players ?? metadata?.players ?? [],
             localPath: sourcePath,
             application: parsedMetadata?.application,
+            takenGlobalPosition: parsedMetadata?.takenGlobalPosition,
+            takenGlobalRotation: parsedMetadata?.takenGlobalRotation,
+            takenGlobalScale: parsedMetadata?.takenGlobalScale,
+            cameraFov: parsedMetadata?.cameraFov,
           );
 
           final saveResult = await _photoMetadataRepository.savePhotoMetadata(

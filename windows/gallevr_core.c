@@ -147,14 +147,18 @@ char* extract_players_json(const char* xml) {
         char* raw_name = extract_xml_attribute(item_content, "U-Name");
         char* raw_head_pos = extract_xml_attribute(item_content, "UI-HeadPosition");
         char* raw_head_ori = extract_xml_attribute(item_content, "UI-HeadOrientation");
+        char* raw_head_scale = extract_xml_attribute(item_content, "UI-HeadScale");
+        char* raw_is_in_view = extract_xml_attribute(item_content, "UI-IsInView");
         char* id = decode_xml_entities(raw_id);
         char* name = decode_xml_entities(raw_name);
         char* head_pos = decode_xml_entities(raw_head_pos);
         char* head_ori = decode_xml_entities(raw_head_ori);
+        char* head_scale = decode_xml_entities(raw_head_scale);
+        char* is_in_view = decode_xml_entities(raw_is_in_view);
         if (id && name) {
             char entry[512];
-            sprintf(entry, "%s{\"id\":\"%s\",\"displayName\":\"%s\",\"headPosition\":\"%s\",\"headOrientation\":\"%s\"}",
-                    first ? "" : ",", id, name, head_pos ? head_pos : "", head_ori ? head_ori : "");
+            sprintf(entry, "%s{\"id\":\"%s\",\"displayName\":\"%s\",\"headPosition\":\"%s\",\"headOrientation\":\"%s\",\"headScale\":\"%s\",\"isInView\":\"%s\"}",
+                    first ? "" : ",", id, name, head_pos ? head_pos : "", head_ori ? head_ori : "", head_scale ? head_scale : "1.0", is_in_view ? is_in_view : "true");
             first = 0;
             if (strlen(out) + strlen(entry) + 10 >= out_cap) {
                 out_cap *= 2;
@@ -164,10 +168,14 @@ char* extract_players_json(const char* xml) {
                     if (raw_name) free(raw_name);
                     if (raw_head_pos) free(raw_head_pos);
                     if (raw_head_ori) free(raw_head_ori);
+                    if (raw_head_scale) free(raw_head_scale);
+                    if (raw_is_in_view) free(raw_is_in_view);
                     if (id) free(id);
                     if (name) free(name);
                     if (head_pos) free(head_pos);
                     if (head_ori) free(head_ori);
+                    if (head_scale) free(head_scale);
+                    if (is_in_view) free(is_in_view);
                     free(item_content);
                     break;
                 }
@@ -179,10 +187,14 @@ char* extract_players_json(const char* xml) {
         if (raw_name) free(raw_name);
         if (raw_head_pos) free(raw_head_pos);
         if (raw_head_ori) free(raw_head_ori);
+        if (raw_head_scale) free(raw_head_scale);
+        if (raw_is_in_view) free(raw_is_in_view);
         if (id) free(id);
         if (name) free(name);
         if (head_pos) free(head_pos);
         if (head_ori) free(head_ori);
+        if (head_scale) free(head_scale);
+        if (is_in_view) free(is_in_view);
         free(item_content);
         ptr = item_end + 1;
     }
