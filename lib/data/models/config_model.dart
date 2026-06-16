@@ -12,6 +12,9 @@ class ConfigModel {
   // Directory where VRChat logs are stored
   final String logsDirectory;
 
+  // Directory where Resonite photos are stored
+  final String resonitePhotosDirectory;
+
   // Delay in seconds before compressing a photo
   final double compressionDelay;
 
@@ -36,6 +39,7 @@ class ConfigModel {
     this.soundVolume = 0.5,
     this.photosDirectory = '',
     this.logsDirectory = '',
+    this.resonitePhotosDirectory = '',
     this.compressionDelay = 0.5,
     this.uploadEnabled = true,
     this.minimizeToTray = true,
@@ -51,6 +55,7 @@ class ConfigModel {
       soundVolume: (json['soundVolume'] ?? 0.5).toDouble(),
       photosDirectory: json['photosDirectory'] ?? '',
       logsDirectory: json['logsDirectory'] ?? '',
+      resonitePhotosDirectory: json['resonitePhotosDirectory'] ?? '',
       compressionDelay: (json['compressionDelay'] ?? 0.5).toDouble(),
       uploadEnabled: json['uploadEnabled'] ?? true,
       minimizeToTray: json['minimizeToTray'] ?? true,
@@ -67,6 +72,7 @@ class ConfigModel {
       'soundVolume': soundVolume,
       'photosDirectory': photosDirectory,
       'logsDirectory': logsDirectory,
+      'resonitePhotosDirectory': resonitePhotosDirectory,
       'compressionDelay': compressionDelay,
       'uploadEnabled': uploadEnabled,
       'minimizeToTray': minimizeToTray,
@@ -82,6 +88,7 @@ class ConfigModel {
     double? soundVolume,
     String? photosDirectory,
     String? logsDirectory,
+    String? resonitePhotosDirectory,
     double? compressionDelay,
     bool? uploadEnabled,
     bool? minimizeToTray,
@@ -94,6 +101,7 @@ class ConfigModel {
       soundVolume: soundVolume ?? this.soundVolume,
       photosDirectory: photosDirectory ?? this.photosDirectory,
       logsDirectory: logsDirectory ?? this.logsDirectory,
+      resonitePhotosDirectory: resonitePhotosDirectory ?? this.resonitePhotosDirectory,
       compressionDelay: compressionDelay ?? this.compressionDelay,
       uploadEnabled: uploadEnabled ?? this.uploadEnabled,
       minimizeToTray: minimizeToTray ?? this.minimizeToTray,

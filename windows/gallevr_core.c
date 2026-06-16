@@ -34,103 +34,431 @@ char* extract_tag(const char* xml, const char* tag) {
     return val;
 }
 
-EXPORT char* extract_vrcx_metadata(const char* file_path) {
-    FILE* file = fopen(file_path, "rb");
-    if (!file) return NULL;
+char* duplicate_string(const char* s) {
+    if (!s) return NULL;
+    size_t len = strlen(s);
+    char* d = malloc(len + 1);
+    if (d) strcpy(d, s);
+    return d;
+}
 
-    // skip png signature
-    if (fseek(file, 8, SEEK_SET) != 0) {
-        fclose(file);
-        return NULL;
+char* extract_xml_attribute(const char* xml, const char* attr_name) {
+    char search_pattern[128];
+    sprintf(search_pattern, "%s=\"", attr_name);
+    char* s = strstr(xml, search_pattern);
+    if (!s) {
+        if (strncmp(attr_name, "rse:", 4) != 0) {
+            sprintf(search_pattern, "rse:%s=\"", attr_name);
+            s = strstr(xml, search_pattern);
+        }
     }
+    if (!s) return NULL;
+    s += strlen(search_pattern);
+    char* e = strchr(s, '"');
+    if (!e) return NULL;
+    size_t len = e - s;
+    char* val = malloc(len + 1);
+    if (val) {
+        memcpy(val, s, len);
+        val[len] = '\0';
+    }
+    return val;
+}
 
-    uint32_t len_be;
-    char type[5] = {0};
-    char* vrchat_xml = NULL;
+char* extract_sub_attribute(const char* xml, const char* tag_name, const char* attr_name) {
+    char search_tag[128];
+    sprintf(search_tag, "%s", tag_name);
+    char* tag_start = strstr(xml, search_tag);
+    if (!tag_start) {
+        sprintf(search_tag, "rse:%s", tag_name);
+        tag_start = strstr(xml, search_tag);
+    }
+    if (!tag_start) return NULL;
+    char* tag_end = strchr(tag_start, '>');
+    if (!tag_end) return NULL;
+    size_t tag_len = tag_end - tag_start;
+    char* tag_content = malloc(tag_len + 1);
+    if (!tag_content) return NULL;
+    memcpy(tag_content, tag_start, tag_len);
+    tag_content[tag_len] = '\0';
+    char* val = extract_xml_attribute(tag_content, attr_name);
+    free(tag_content);
+    return val;
+}
 
-    // png chunk format: [length][type][data][crc]
-    while (fread(&len_be, 4, 1, file) == 1) {
-        uint32_t chunk_length = BSWAP32(len_be);
-        if (fread(type, 4, 1, file) != 1) break;
-
-        // VRCX metadata is stored in iTXt chunks
-        if (strcmp(type, "iTXt") == 0 || strcmp(type, "tEXt") == 0) {
-            char* chunk_data = malloc(chunk_length + 1);
-            if (!chunk_data) break;
-            
-            if (fread(chunk_data, 1, chunk_length, file) != chunk_length) {
-                free(chunk_data);
-                break;
+char* decode_xml_entities(const char* src) {
+    if (!src) return NULL;
+    size_t len = strlen(src);
+    char* dest = malloc(len + 1);
+    if (!dest) return NULL;
+    size_t i = 0, j = 0;
+    while (i < len) {
+        if (src[i] == '&') {
+            if (strncmp(src + i, "&quot;", 6) == 0) {
+                dest[j++] = '"';
+                i += 6;
+            } else if (strncmp(src + i, "&amp;", 5) == 0) {
+                dest[j++] = '&';
+                i += 5;
+            } else if (strncmp(src + i, "&lt;", 4) == 0) {
+                dest[j++] = '<';
+                i += 4;
+            } else if (strncmp(src + i, "&gt;", 4) == 0) {
+                dest[j++] = '>';
+                i += 4;
+            } else if (strncmp(src + i, "&apos;", 6) == 0) {
+                dest[j++] = '\'';
+                i += 6;
+            } else {
+                dest[j++] = src[i++];
             }
-            chunk_data[chunk_length] = '\0';
+        } else {
+            dest[j++] = src[i++];
+        }
+    }
+    dest[j] = '\0';
+    return dest;
+}
 
-            const char* needle = "{\"application\":\"VRCX\"";
-            char* json_start = NULL;
-
-            // find start of JSON in chunk
-            for (uint32_t i = 0; i <= (chunk_length > 21 ? chunk_length - 21 : 0); i++) {
-                if (chunk_data[i] == '{' && memcmp(chunk_data + i, needle, 21) == 0) {
-                    json_start = chunk_data + i;
+char* extract_players_json(const char* xml) {
+    char* start = strstr(xml, "<rse:UserInfos>");
+    if (!start) start = strstr(xml, "UserInfos");
+    if (!start) return duplicate_string("[]");
+    char* end = strstr(start, "</rse:UserInfos>");
+    if (!end) end = strstr(start, "UserInfos>");
+    if (!end) return duplicate_string("[]");
+    char* ptr = start;
+    size_t out_cap = 1024;
+    char* out = malloc(out_cap);
+    if (!out) return duplicate_string("[]");
+    strcpy(out, "[");
+    int first = 1;
+    while (ptr < end) {
+        char* item = strstr(ptr, "UserInfo");
+        if (!item || item >= end) break;
+        char* item_end = strchr(item, '>');
+        if (!item_end || item_end >= end) break;
+        size_t len = item_end - item;
+        char* item_content = malloc(len + 1);
+        if (!item_content) break;
+        memcpy(item_content, item, len);
+        item_content[len] = '\0';
+        char* raw_id = extract_xml_attribute(item_content, "U-Id");
+        char* raw_name = extract_xml_attribute(item_content, "U-Name");
+        char* raw_head_pos = extract_xml_attribute(item_content, "UI-HeadPosition");
+        char* raw_head_ori = extract_xml_attribute(item_content, "UI-HeadOrientation");
+        char* id = decode_xml_entities(raw_id);
+        char* name = decode_xml_entities(raw_name);
+        char* head_pos = decode_xml_entities(raw_head_pos);
+        char* head_ori = decode_xml_entities(raw_head_ori);
+        if (id && name) {
+            char entry[512];
+            sprintf(entry, "%s{\"id\":\"%s\",\"displayName\":\"%s\",\"headPosition\":\"%s\",\"headOrientation\":\"%s\"}",
+                    first ? "" : ",", id, name, head_pos ? head_pos : "", head_ori ? head_ori : "");
+            first = 0;
+            if (strlen(out) + strlen(entry) + 10 >= out_cap) {
+                out_cap *= 2;
+                char* new_out = realloc(out, out_cap);
+                if (!new_out) {
+                    if (raw_id) free(raw_id);
+                    if (raw_name) free(raw_name);
+                    if (raw_head_pos) free(raw_head_pos);
+                    if (raw_head_ori) free(raw_head_ori);
+                    if (id) free(id);
+                    if (name) free(name);
+                    if (head_pos) free(head_pos);
+                    if (head_ori) free(head_ori);
+                    free(item_content);
                     break;
                 }
+                out = new_out;
             }
+            strcat(out, entry);
+        }
+        if (raw_id) free(raw_id);
+        if (raw_name) free(raw_name);
+        if (raw_head_pos) free(raw_head_pos);
+        if (raw_head_ori) free(raw_head_ori);
+        if (id) free(id);
+        if (name) free(name);
+        if (head_pos) free(head_pos);
+        if (head_ori) free(head_ori);
+        free(item_content);
+        ptr = item_end + 1;
+    }
+    strcat(out, "]");
+    return out;
+}
 
-            if (json_start) {
-                // calculate length from start of JSON to end of chunk
-                size_t json_len = chunk_length - (json_start - chunk_data);
-                char* result = malloc(json_len + 1);
-                if (result) {
-                    memcpy(result, json_start, json_len);
-                    result[json_len] = '\0';
+EXPORT char* extract_vrcx_metadata(const char* file_path) {
+    FILE* file = fopen(file_path, "rb");
+    char* vrcx_json = NULL;
+    char* vrchat_xml = NULL;
+
+    if (file) {
+        // check png signature
+        unsigned char sig[8];
+        if (fread(sig, 1, 8, file) == 8 && sig[0] == 0x89 && sig[1] == 0x50 && sig[2] == 0x4E && sig[3] == 0x47) {
+            uint32_t len_be;
+            char type[5] = {0};
+
+            // png chunk format: [length][type][data][crc]
+            while (fread(&len_be, 4, 1, file) == 1) {
+                uint32_t chunk_length = BSWAP32(len_be);
+                if (fread(type, 4, 1, file) != 1) break;
+
+                // VRCX metadata is stored in iTXt chunks
+                if (strcmp(type, "iTXt") == 0 || strcmp(type, "tEXt") == 0) {
+                    char* chunk_data = malloc(chunk_length + 1);
+                    if (!chunk_data) break;
+                    
+                    if (fread(chunk_data, 1, chunk_length, file) != chunk_length) {
+                        free(chunk_data);
+                        break;
+                    }
+                    chunk_data[chunk_length] = '\0';
+
+                    const char* needle = "{\"application\":\"VRCX\"";
+                    char* json_start = NULL;
+
+                    // find start of JSON in chunk
+                    for (uint32_t i = 0; i <= (chunk_length > 21 ? chunk_length - 21 : 0); i++) {
+                        if (chunk_data[i] == '{' && memcmp(chunk_data + i, needle, 21) == 0) {
+                            json_start = chunk_data + i;
+                            break;
+                        }
+                    }
+
+                    if (json_start && !vrcx_json) {
+                        // calculate length from start of JSON to end of chunk
+                        size_t json_len = chunk_length - (json_start - chunk_data);
+                        vrcx_json = malloc(json_len + 1);
+                        if (vrcx_json) {
+                            memcpy(vrcx_json, json_start, json_len);
+                            vrcx_json[json_len] = '\0';
+                        }
+                    }
+
+                    if (!vrchat_xml) {
+                        char* xml_ptr = chunk_data;
+                        while (xml_ptr < chunk_data + chunk_length && *xml_ptr != '<') {
+                            xml_ptr++;
+                        }
+                        if (xml_ptr < chunk_data + chunk_length && (
+                            strstr(xml_ptr, "<xmp:CreatorTool>VRChat</xmp:CreatorTool>") || 
+                            strstr(xml_ptr, "<vrc:WorldID>") ||
+                            strstr(xml_ptr, "http://ns.baru.dev/resonite-ss-ext/")
+                        )) {
+                            size_t xml_len = (chunk_data + chunk_length) - xml_ptr;
+                            vrchat_xml = malloc(xml_len + 1);
+                            if (vrchat_xml) {
+                                memcpy(vrchat_xml, xml_ptr, xml_len);
+                                vrchat_xml[xml_len] = '\0';
+                            }
+                        }
+                    }
+
+                    free(chunk_data);
+                    fseek(file, 4, SEEK_CUR);
+                } 
+                else if (strcmp(type, "IDAT") == 0 || strcmp(type, "IEND") == 0) {
+                    // stop at pixel data
+                    break; 
+                } 
+                else {
+                    // jump over other chunks
+                    fseek(file, chunk_length + 4, SEEK_CUR);
                 }
-                free(chunk_data);
-                if (vrchat_xml) free(vrchat_xml);
-                fclose(file);
-                return result;
             }
+        }
+        fclose(file);
+    }
 
-            if (!vrchat_xml) {
-                char* xml_ptr = chunk_data;
-                while (xml_ptr < chunk_data + chunk_length && *xml_ptr != '<') {
-                    xml_ptr++;
-                }
-                if (xml_ptr < chunk_data + chunk_length && (strstr(xml_ptr, "<xmp:CreatorTool>VRChat</xmp:CreatorTool>") || strstr(xml_ptr, "<vrc:WorldID>"))) {
-                    size_t xml_len = (chunk_data + chunk_length) - xml_ptr;
-                    vrchat_xml = malloc(xml_len + 1);
-                    if (vrchat_xml) {
-                        memcpy(vrchat_xml, xml_ptr, xml_len);
-                        vrchat_xml[xml_len] = '\0';
+    if (!vrcx_json && !vrchat_xml) {
+        // Fallback for non-PNG or other formats
+        FILE* fallback_file = fopen(file_path, "rb");
+        if (fallback_file) {
+            fseek(fallback_file, 0, SEEK_END);
+            size_t file_size = ftell(fallback_file);
+            fseek(fallback_file, 0, SEEK_SET);
+            size_t read_size = file_size > 2 * 1024 * 1024 ? 2 * 1024 * 1024 : file_size;
+            char* buf = malloc(read_size + 1);
+            if (buf) {
+                size_t bytes_read = fread(buf, 1, read_size, fallback_file);
+                buf[bytes_read] = '\0';
+                
+                char* ns_ptr = strstr(buf, "http://ns.baru.dev/resonite-ss-ext/");
+                if (ns_ptr) {
+                    char* xml_start = ns_ptr;
+                    while (xml_start > buf && *xml_start != '<') {
+                        xml_start--;
+                    }
+                    char* xml_end = strstr(ns_ptr, "</rdf:Description>");
+                    if (!xml_end) xml_end = strstr(ns_ptr, "/>");
+                    
+                    if (xml_end) {
+                        if (*xml_end == '<') {
+                            xml_end += 18;
+                        } else {
+                            xml_end += 2;
+                        }
+                        size_t xml_len = xml_end - xml_start;
+                        vrchat_xml = malloc(xml_len + 1);
+                        if (vrchat_xml) {
+                            memcpy(vrchat_xml, xml_start, xml_len);
+                            vrchat_xml[xml_len] = '\0';
+                        }
                     }
                 }
+                free(buf);
             }
-
-            free(chunk_data);
-            fseek(file, 4, SEEK_CUR); // skip CRC
-        } 
-        else if (strcmp(type, "IDAT") == 0 || strcmp(type, "IEND") == 0) {
-            // stop at pixel data
-            break; 
-        } 
-        else {
-            // jump over other chunks
-            fseek(file, chunk_length + 4, SEEK_CUR);
+            fclose(fallback_file);
         }
     }
 
-    fclose(file);
+    if (!vrcx_json && !vrchat_xml) {
+        return NULL;
+    }
 
-    if (vrchat_xml) {
-        char* world_id = extract_tag(vrchat_xml, "vrc:WorldID");
-        char* world_name = extract_tag(vrchat_xml, "vrc:WorldDisplayName");
-        char* author = extract_tag(vrchat_xml, "xmp:Author");
-        char* create_date = extract_tag(vrchat_xml, "xmp:CreateDate");
+    char* result = NULL;
+    int is_resonite = 0;
+    if (vrchat_xml && strstr(vrchat_xml, "http://ns.baru.dev/resonite-ss-ext/")) {
+        is_resonite = 1;
+    }
 
-        char* result = malloc(1024 + (world_id ? strlen(world_id) : 0) + (world_name ? strlen(world_name) : 0) + (author ? strlen(author) : 0));
+    if (is_resonite) {
+        char* raw_loc_name = extract_xml_attribute(vrchat_xml, "LocationName");
+        char* raw_loc_url = extract_xml_attribute(vrchat_xml, "LocationURL");
+        char* raw_time_taken = extract_xml_attribute(vrchat_xml, "TimeTaken");
+        char* raw_host_id = extract_sub_attribute(vrchat_xml, "LocationHost", "U-Id");
+        char* raw_host_name = extract_sub_attribute(vrchat_xml, "LocationHost", "U-Name");
+        char* raw_taken_by_id = extract_sub_attribute(vrchat_xml, "TakenBy", "U-Id");
+        char* raw_taken_by_name = extract_sub_attribute(vrchat_xml, "TakenBy", "U-Name");
+        char* raw_pos = extract_xml_attribute(vrchat_xml, "TakenGlobalPosition");
+        char* raw_rot = extract_xml_attribute(vrchat_xml, "TakenGlobalRotation");
+        char* raw_scale = extract_xml_attribute(vrchat_xml, "TakenGlobalScale");
+        char* raw_fov = extract_xml_attribute(vrchat_xml, "CameraFOV");
+        char* players_json = extract_players_json(vrchat_xml);
+        char* raw_v1_json = extract_xml_attribute(vrchat_xml, "PhotoMetadataJson");
+
+        char* loc_name = decode_xml_entities(raw_loc_name);
+        char* loc_url = decode_xml_entities(raw_loc_url);
+        char* time_taken = decode_xml_entities(raw_time_taken);
+        char* host_id = decode_xml_entities(raw_host_id);
+        char* host_name = decode_xml_entities(raw_host_name);
+        char* taken_by_id = decode_xml_entities(raw_taken_by_id);
+        char* taken_by_name = decode_xml_entities(raw_taken_by_name);
+        char* pos = decode_xml_entities(raw_pos);
+        char* rot = decode_xml_entities(raw_rot);
+        char* scale = decode_xml_entities(raw_scale);
+        char* fov = decode_xml_entities(raw_fov);
+        char* v1_json = decode_xml_entities(raw_v1_json);
+
+        size_t result_len = 2560;
+        if (loc_name) result_len += strlen(loc_name);
+        if (loc_url) result_len += strlen(loc_url);
+        if (time_taken) result_len += strlen(time_taken);
+        if (host_id) result_len += strlen(host_id);
+        if (host_name) result_len += strlen(host_name);
+        if (taken_by_id) result_len += strlen(taken_by_id);
+        if (taken_by_name) result_len += strlen(taken_by_name);
+        if (pos) result_len += strlen(pos);
+        if (rot) result_len += strlen(rot);
+        if (scale) result_len += strlen(scale);
+        if (fov) result_len += strlen(fov);
+        if (players_json) result_len += strlen(players_json);
+        if (v1_json) result_len += strlen(v1_json);
+
+        result = malloc(result_len);
         if (result) {
-            sprintf(result, 
-                "{\"application\":\"VRChat\",\"version\":\"1.0\","
-                "\"world\":{\"id\":\"%s\",\"name\":\"%s\"},"
-                "\"authorName\":\"%s\",\"createDate\":\"%s\"}",
+            sprintf(result,
+                "{\"application\":\"Resonite\",\"resonite\":{"
+                "\"locationName\":\"%s\","
+                "\"locationUrl\":\"%s\","
+                "\"timeTaken\":\"%s\","
+                "\"hostId\":\"%s\","
+                "\"hostName\":\"%s\","
+                "\"takenById\":\"%s\","
+                "\"takenByName\":\"%s\","
+                "\"takenGlobalPosition\":\"%s\","
+                "\"takenGlobalRotation\":\"%s\","
+                "\"takenGlobalScale\":\"%s\","
+                "\"cameraFov\":\"%s\","
+                "\"players\":%s,"
+                "\"v1Json\":%s"
+                "}}",
+                loc_name ? loc_name : "",
+                loc_url ? loc_url : "",
+                time_taken ? time_taken : "",
+                host_id ? host_id : "",
+                host_name ? host_name : "",
+                taken_by_id ? taken_by_id : "",
+                taken_by_name ? taken_by_name : "",
+                pos ? pos : "",
+                rot ? rot : "",
+                scale ? scale : "",
+                fov ? fov : "",
+                players_json ? players_json : "[]",
+                v1_json ? v1_json : "null"
+            );
+        }
+
+        if (raw_loc_name) free(raw_loc_name);
+        if (raw_loc_url) free(raw_loc_url);
+        if (raw_time_taken) free(raw_time_taken);
+        if (raw_host_id) free(raw_host_id);
+        if (raw_host_name) free(raw_host_name);
+        if (raw_taken_by_id) free(raw_taken_by_id);
+        if (raw_taken_by_name) free(raw_taken_by_name);
+        if (raw_pos) free(raw_pos);
+        if (raw_rot) free(raw_rot);
+        if (raw_scale) free(raw_scale);
+        if (raw_fov) free(raw_fov);
+        if (raw_v1_json) free(raw_v1_json);
+
+        if (loc_name) free(loc_name);
+        if (loc_url) free(loc_url);
+        if (time_taken) free(time_taken);
+        if (host_id) free(host_id);
+        if (host_name) free(host_name);
+        if (taken_by_id) free(taken_by_id);
+        if (taken_by_name) free(taken_by_name);
+        if (pos) free(pos);
+        if (rot) free(rot);
+        if (scale) free(scale);
+        if (fov) free(fov);
+        if (v1_json) free(v1_json);
+        if (players_json) free(players_json);
+    } else {
+        char* world_id = NULL;
+        char* world_name = NULL;
+        char* author = NULL;
+        char* create_date = NULL;
+
+        if (vrchat_xml) {
+            world_id = extract_tag(vrchat_xml, "vrc:WorldID");
+            world_name = extract_tag(vrchat_xml, "vrc:WorldDisplayName");
+            author = extract_tag(vrchat_xml, "xmp:Author");
+            create_date = extract_tag(vrchat_xml, "xmp:CreateDate");
+        }
+
+        size_t result_len = 1024;
+        if (vrcx_json) result_len += strlen(vrcx_json);
+        if (world_id) result_len += strlen(world_id);
+        if (world_name) result_len += strlen(world_name);
+        if (author) result_len += strlen(author);
+        if (create_date) result_len += strlen(create_date);
+
+        result = malloc(result_len);
+        if (result) {
+            sprintf(result,
+                "{\"vrcx\":%s,\"xmp\":{"
+                "\"worldId\":\"%s\","
+                "\"worldName\":\"%s\","
+                "\"author\":\"%s\","
+                "\"createDate\":\"%s\""
+                "}}",
+                vrcx_json ? vrcx_json : "null",
                 world_id ? world_id : "",
                 world_name ? world_name : "",
                 author ? author : "",
@@ -142,11 +470,12 @@ EXPORT char* extract_vrcx_metadata(const char* file_path) {
         if (world_name) free(world_name);
         if (author) free(author);
         if (create_date) free(create_date);
-        free(vrchat_xml);
-        return result;
+        if (vrcx_json) free(vrcx_json);
     }
 
-    return NULL;
+    if (vrchat_xml) free(vrchat_xml);
+
+    return result;
 }
 
 EXPORT void free_metadata(char* ptr) {

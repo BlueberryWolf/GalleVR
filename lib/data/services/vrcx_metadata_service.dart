@@ -6,6 +6,7 @@ import 'package:gallevr/data/models/photo_metadata.dart';
 import 'package:gallevr/core/native/gallevr_native.dart';
 import 'package:gallevr/core/isolate/isolate_worker_pool.dart';
 import 'package:path/path.dart' as path;
+import 'package:gallevr/data/services/vrchat_service.dart';
 
 /// Service for extracting and converting VRCX metadata from image files
 class VrcxMetadataService {
@@ -14,8 +15,9 @@ class VrcxMetadataService {
   // Persistent caches to avoid repeated processing
   static final Set<String> _processedFiles = <String>{};
   static final Set<String> _nonVrcxFiles = <String>{};
-  static final Map<String, PhotoMetadata> _metadataCache = <String, PhotoMetadata>{};
-  
+  static final Map<String, PhotoMetadata> _metadataCache =
+      <String, PhotoMetadata>{};
+
   // File modification time cache to detect changes
   static final Map<String, int> _fileModTimeCache = <String, int>{};
 
@@ -28,10 +30,12 @@ class VrcxMetadataService {
   }
 
   /// Batch process multiple files for better performance
-  Future<Map<String, PhotoMetadata?>> extractMetadataForFiles(List<String> imagePaths) async {
+  Future<Map<String, PhotoMetadata?>> extractMetadataForFiles(
+    List<String> imagePaths,
+  ) async {
     final result = <String, PhotoMetadata?>{};
     final toProcess = <String>[];
-    
+
     // First pass: check caches and file modifications
     for (final imagePath in imagePaths) {
       final cachedResult = _getCachedResult(imagePath);
@@ -41,28 +45,27 @@ class VrcxMetadataService {
         toProcess.add(imagePath);
       }
     }
-    
+
     // Second pass: process remaining files
     if (toProcess.isNotEmpty) {
-      final futures = toProcess.map((imagePath) => 
-        extractVrcxMetadata(imagePath).then((metadata) => 
-          MapEntry(imagePath, metadata)
-        )
+      final futures = toProcess.map(
+        (imagePath) => extractVrcxMetadata(
+          imagePath,
+        ).then((metadata) => MapEntry(imagePath, metadata)),
       );
-      
+
       final processed = await Future.wait(futures);
       for (final entry in processed) {
         result[entry.key] = entry.value;
       }
     }
-    
+
     return result;
   }
 
   /// Metadata extraction with better caching
   Future<PhotoMetadata?> extractVrcxMetadata(String imagePath) async {
     try {
-      // Check if file has been modified since last processing
       final file = File(imagePath);
       if (!await file.exists()) {
         return null;
@@ -70,33 +73,72 @@ class VrcxMetadataService {
 
       final stats = await file.stat();
       final modTime = stats.modified.millisecondsSinceEpoch;
-      
+
       final cached = _getCached(imagePath, modTime);
       if (cached != null) return cached.isEmpty ? null : cached.first;
 
-      final result = await IsolateWorkerPool().execute<String, PhotoMetadata?>(
-        VrcxMetadataService.extractVrcxMetadataSync, 
-        imagePath,
-      );
+      final authData = await VRChatService().loadAuthData();
+      final authParams =
+          authData != null
+              ? {'userId': authData.userId, 'displayName': authData.displayName}
+              : null;
+
+      final result = await IsolateWorkerPool()
+          .execute<Map<String, dynamic>, PhotoMetadata?>(
+            VrcxMetadataService.extractVrcxMetadataSync,
+            {'imagePath': imagePath, 'authParams': authParams},
+          );
+
+      if (result != null && result.application == 'PENDING_AUTH') {
+        return null;
+      }
 
       _updateCache(imagePath, modTime, result);
       return result;
     } catch (e) {
-      developer.log('Error extracting VRCX metadata: $e', name: _logName, error: e);
+      developer.log(
+        'Error extracting VRCX metadata: $e',
+        name: _logName,
+        error: e,
+      );
       return null;
     }
   }
 
-  static PhotoMetadata? extractVrcxMetadataSync(String imagePath) {
+  static PhotoMetadata? extractVrcxMetadataSync(Map<String, dynamic> params) {
     try {
-      if (!imagePath.toLowerCase().endsWith('.png')) return null;
+      final imagePath = params['imagePath'] as String;
+      final authParams = params['authParams'] as Map<String, dynamic>?;
+      final ext = imagePath.toLowerCase();
+      if (!ext.endsWith('.png') &&
+          !ext.endsWith('.jpg') &&
+          !ext.endsWith('.jpeg') &&
+          !ext.endsWith('.webp'))
+        return null;
       final vrcxJson = GalleVrNative().extractVrcxMetadata(imagePath);
       if (vrcxJson == null) return null;
 
-      final vrcxMetadata = _parseVrcxMetadata(vrcxJson);
-      if (vrcxMetadata == null) return null;
+      final parsed = _parseVrcxMetadata(vrcxJson);
+      if (parsed == null) return null;
 
-      return _convertToGalleVrMetadata(vrcxMetadata, imagePath);
+      final metadata = _convertToGalleVrMetadata(parsed, imagePath, authParams);
+      if (metadata == null && authParams == null) {
+        final xmpData = parsed['xmp'] as Map<String, dynamic>?;
+        final hasXmp =
+            xmpData != null &&
+            xmpData['worldId'] != null &&
+            (xmpData['worldId'] as String).trim().isNotEmpty;
+        if (hasXmp) {
+          return PhotoMetadata(
+            takenDate:
+                File(imagePath).statSync().modified.millisecondsSinceEpoch,
+            filename: path.basename(imagePath),
+            localPath: imagePath,
+            application: 'PENDING_AUTH',
+          );
+        }
+      }
+      return metadata;
     } catch (e) {
       return null;
     }
@@ -114,7 +156,11 @@ class VrcxMetadataService {
     return null;
   }
 
-  static void _updateCache(String imagePath, int modTime, PhotoMetadata? result) {
+  static void _updateCache(
+    String imagePath,
+    int modTime,
+    PhotoMetadata? result,
+  ) {
     _fileModTimeCache[imagePath] = modTime;
     if (result != null) {
       _processedFiles.add(imagePath);
@@ -138,14 +184,12 @@ class VrcxMetadataService {
   }
 }
 
-///  JSON parsing with better error handling
 Map<String, dynamic>? _parseVrcxMetadata(String jsonString) {
   try {
-    // Find JSON boundaries more efficiently
     int startIndex = -1;
     int endIndex = -1;
     int braceCount = 0;
-    
+
     for (int i = 0; i < jsonString.length; i++) {
       final char = jsonString[i];
       if (char == '{') {
@@ -159,118 +203,269 @@ Map<String, dynamic>? _parseVrcxMetadata(String jsonString) {
         }
       }
     }
-    
+
     if (startIndex == -1 || endIndex == -1) return null;
-    
+
     final cleanedJson = jsonString.substring(startIndex, endIndex + 1);
     final json = jsonDecode(cleanedJson);
-    
-    // Quick validation
-    if (json is Map<String, dynamic> && 
-        (json['application'] == 'VRCX' || json['application'] == 'VRChat') && 
-        json['version'] != null) {
+
+    if (json is Map<String, dynamic> &&
+        (json.containsKey('vrcx') ||
+            json.containsKey('xmp') ||
+            json.containsKey('resonite'))) {
       return json;
     }
-    
+
     return null;
   } catch (e) {
     return null;
   }
 }
 
-///  metadata conversion with reduced object creation
-PhotoMetadata _convertToGalleVrMetadata(
-  Map<String, dynamic> vrcxMetadata,
+PhotoMetadata? _convertToGalleVrMetadata(
+  Map<String, dynamic> parsedJson,
   String imagePath,
+  Map<String, dynamic>? authParams,
 ) {
   try {
-    // Get file stats once
     final file = File(imagePath);
     final stats = file.statSync();
     final creationTimeMs = stats.modified.millisecondsSinceEpoch;
     final filename = path.basename(imagePath);
 
-    final isVrcObject = vrcxMetadata['application'] == 'VRChat';
+    if (parsedJson['application'] == 'Resonite' &&
+        parsedJson['resonite'] is Map<String, dynamic>) {
+      final resData = parsedJson['resonite'] as Map<String, dynamic>;
+      Map<String, dynamic>? v1Data;
+      if (resData['v1Json'] != null) {
+        try {
+          v1Data =
+              jsonDecode(resData['v1Json'] as String) as Map<String, dynamic>;
+        } catch (_) {}
+      }
 
-    // Extract world information efficiently
-    WorldInfo? worldInfo;
-    final worldData = vrcxMetadata['world'];
-    if (worldData is Map<String, dynamic>) {
-      final worldId = worldData['id'] as String?;
-      final instanceIdStr = worldData['instanceId'] as String?;
-      
-      String? accessType;
-      String? region;
-      String? ownerId;
-      bool? canRequestInvite;
-      
-      // Parse instance details if available
-      if (instanceIdStr != null) {
-        final parts = instanceIdStr.split('~');
-        
-        if (parts.length > 1) {
-          final accessPart = parts[1];
-          if (accessPart.startsWith('private(')) {
-            accessType = 'private';
-            final ownerMatch = RegExp(r'private\((usr_[^)]+)\)').firstMatch(accessPart);
-            ownerId = ownerMatch?.group(1);
-          } else {
-            accessType = accessPart;
-          }
-        }
-        
-        if (parts.length > 2 && parts[2] == 'canRequestInvite') {
-          canRequestInvite = true;
-        }
-        
-        if (parts.length > 3) {
-          final regionMatch = RegExp(r'region\(([^)]+)\)').firstMatch(parts[3]);
-          region = regionMatch?.group(1);
+      final String? locationName =
+          resData['locationName'] as String? ??
+          v1Data?['LocationName'] as String?;
+      final String? locationUrl =
+          resData['locationUrl'] as String? ??
+          v1Data?['LocationURL'] as String?;
+
+      final String? timeTakenStr =
+          resData['timeTaken'] as String? ?? v1Data?['TimeTaken'] as String?;
+      int takenDate = creationTimeMs;
+      if (timeTakenStr != null && timeTakenStr.isNotEmpty) {
+        final parsedDate = DateTime.tryParse(timeTakenStr);
+        if (parsedDate != null) {
+          takenDate = parsedDate.millisecondsSinceEpoch;
         }
       }
 
-      worldInfo = WorldInfo(
-        name: worldData['name'] as String? ?? '',
-        id: worldId ?? '',
-        instanceId: instanceIdStr,
-        accessType: accessType,
-        region: region,
-        ownerId: ownerId,
-        canRequestInvite: canRequestInvite,
+      final String? takenById =
+          resData['takenById'] as String? ??
+          (v1Data?['TakenBy'] as Map<String, dynamic>?)?['Id'] as String?;
+      final String? takenByName =
+          resData['takenByName'] as String? ??
+          (v1Data?['TakenBy'] as Map<String, dynamic>?)?['Name'] as String?;
+
+      final players = <Player>[];
+      final v2Players = resData['players'];
+      if (v2Players is List) {
+        for (final p in v2Players) {
+          if (p is Map<String, dynamic>) {
+            final id = p['id'] as String?;
+            final displayName = p['displayName'] as String?;
+            final headPosition = p['headPosition'] as String?;
+            final headOrientation = p['headOrientation'] as String?;
+            if (id != null && id.isNotEmpty) {
+              players.add(
+                Player(
+                  id: id,
+                  name: displayName ?? id,
+                  headPosition: headPosition,
+                  headOrientation: headOrientation,
+                ),
+              );
+            }
+          }
+        }
+      }
+
+      final v1UserInfos = v1Data?['UserInfos'];
+      if (v1UserInfos is List) {
+        for (final info in v1UserInfos) {
+          if (info is Map<String, dynamic>) {
+            final user = info['User'] as Map<String, dynamic>?;
+            if (user != null) {
+              final id = user['Id'] as String?;
+              final name = user['Name'] as String?;
+              final headPos = info['HeadPosition'] as String?;
+              final headOri = info['HeadOrientation'] as String?;
+              if (id != null && id.isNotEmpty) {
+                if (!players.any((p) => p.id == id)) {
+                  players.add(
+                    Player(
+                      id: id,
+                      name: name ?? id,
+                      headPosition: headPos,
+                      headOrientation: headOri,
+                    ),
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (authParams != null) {
+        final selfUserId = authParams['userId'] as String;
+        final selfDisplayName =
+            authParams['displayName'] as String? ?? selfUserId;
+        if (takenById == selfUserId) {
+          if (!players.any((p) => p.id == selfUserId)) {
+            players.add(Player(id: selfUserId, name: selfDisplayName));
+          }
+        }
+      }
+
+      final String? pos = resData['takenGlobalPosition'] as String?;
+      final String? rot = resData['takenGlobalRotation'] as String?;
+      final String? scale = resData['takenGlobalScale'] as String?;
+      final String? fov = resData['cameraFov'] as String?;
+
+      return PhotoMetadata(
+        takenDate: takenDate,
+        filename: filename,
+        views: 0,
+        world:
+            locationName != null
+                ? WorldInfo(id: locationUrl ?? '', name: locationName)
+                : null,
+        players: players,
+        localPath: imagePath,
+        application: 'Resonite',
+        takenGlobalPosition: pos,
+        takenGlobalRotation: rot,
+        takenGlobalScale: scale,
+        cameraFov: fov,
       );
     }
 
-    // Extract players efficiently
+    final vrcxData = parsedJson['vrcx'] as Map<String, dynamic>?;
+    final xmpData = parsedJson['xmp'] as Map<String, dynamic>?;
+
+    // Try to extract world from VRCX
+    WorldInfo? vrcxWorld;
+    if (vrcxData != null && vrcxData['world'] is Map<String, dynamic>) {
+      final worldData = vrcxData['world'] as Map<String, dynamic>;
+      final id = worldData['id'] as String?;
+      final name = worldData['name'] as String?;
+      if (id != null &&
+          id.trim().isNotEmpty &&
+          name != null &&
+          name.trim().isNotEmpty) {
+        vrcxWorld = WorldInfo(
+          id: id,
+          name: name,
+          instanceId: worldData['instanceId'] as String?,
+        );
+      }
+    }
+
+    // Try to extract world from XMP
+    WorldInfo? xmpWorld;
+    if (xmpData != null) {
+      final id = xmpData['worldId'] as String?;
+      final name = xmpData['worldName'] as String?;
+      if (id != null &&
+          id.trim().isNotEmpty &&
+          name != null &&
+          name.trim().isNotEmpty) {
+        xmpWorld = WorldInfo(id: id, name: name);
+      }
+    }
+
+    if (vrcxWorld == null && xmpWorld == null) {
+      return null;
+    }
+
+    final worldInfo = vrcxWorld ?? xmpWorld;
+    final application = vrcxWorld != null ? 'VRCX' : 'VRChat';
+
+    String? authorName;
+    String? authorId;
+    if (vrcxWorld != null) {
+      final authorData = vrcxData?['author'];
+      if (authorData is Map<String, dynamic>) {
+        authorId = authorData['id'] as String?;
+        authorName = authorData['displayName'] as String?;
+      }
+    } else {
+      authorName = xmpData?['author'] as String?;
+      authorId = authParams?['userId'] as String?;
+    }
+
+    if (vrcxWorld == null) {
+      bool authorMatches = false;
+      if (authorName != null && authParams != null) {
+        final cleanAuthor = authorName.trim().toLowerCase();
+        final userIdStr = authParams['userId']?.toString();
+        final cleanUserId = userIdStr?.trim().toLowerCase();
+        final displayNameStr = authParams['displayName']?.toString();
+        final cleanDisplayName = displayNameStr?.trim().toLowerCase();
+        if (cleanAuthor == cleanUserId || cleanAuthor == cleanDisplayName) {
+          authorMatches = true;
+        }
+      }
+      if (!authorMatches) {
+        return null;
+      }
+    }
+
     final players = <Player>[];
-    final playersData = vrcxMetadata['players'];
-    if (playersData is List) {
-      for (final playerData in playersData) {
-        if (playerData is Map<String, dynamic>) {
-          final id = playerData['id'] as String?;
-          final displayName = playerData['displayName'] as String?;
-          if (id != null && displayName != null) {
-            players.add(Player(id: id, name: displayName));
+    if (vrcxData != null) {
+      final playersData = vrcxData['players'];
+      if (playersData is List) {
+        for (final p in playersData) {
+          if (p is Map<String, dynamic>) {
+            final id = p['id'] as String?;
+            final name = p['displayName'] as String?;
+            if (id != null &&
+                id.isNotEmpty &&
+                name != null &&
+                name.isNotEmpty) {
+              players.add(Player(id: id, name: name));
+            }
           }
         }
       }
     }
 
-    // Add author if not already included
-    final authorData = vrcxMetadata['author'];
-    if (authorData is Map<String, dynamic>) {
-      final authorId = authorData['id'] as String?;
-      final authorName = authorData['displayName'] as String?;
-      
-      if (authorId != null && authorName != null) {
-        final authorExists = players.any((player) => player.id == authorId);
-        if (!authorExists) {
-          players.add(Player(id: authorId, name: authorName));
+    if (authParams != null && authorName != null) {
+      final cleanAuthorName = authorName.trim().toLowerCase();
+      final cleanAuthorId = authorId?.trim().toLowerCase();
+
+      final userIdStr = authParams['userId']?.toString();
+      final cleanUserId = userIdStr?.trim().toLowerCase();
+
+      final displayNameStr = authParams['displayName']?.toString();
+      final cleanDisplayName = displayNameStr?.trim().toLowerCase();
+
+      final matches =
+          (cleanUserId != null &&
+              (cleanAuthorId == cleanUserId ||
+                  cleanAuthorName == cleanUserId)) ||
+          (cleanDisplayName != null && cleanAuthorName == cleanDisplayName);
+
+      if (matches) {
+        final selfUserId = authParams['userId'] as String;
+        final selfDisplayName =
+            authParams['displayName'] as String? ?? selfUserId;
+        final alreadyExists = players.any((p) => p.id == selfUserId);
+        if (!alreadyExists) {
+          players.add(Player(id: selfUserId, name: selfDisplayName));
         }
-      }
-    } else if (isVrcObject) {
-      final authorName = vrcxMetadata['authorName'] as String?;
-      if (authorName != null && authorName.isNotEmpty) {
-        players.add(Player(id: '', name: authorName));
       }
     }
 
@@ -281,14 +476,9 @@ PhotoMetadata _convertToGalleVrMetadata(
       world: worldInfo,
       players: players,
       localPath: imagePath,
-      application: vrcxMetadata['application'] as String?,
+      application: application,
     );
   } catch (e) {
-    // Return minimal valid metadata on error
-    return PhotoMetadata(
-      takenDate: DateTime.now().millisecondsSinceEpoch,
-      filename: path.basename(imagePath),
-      localPath: imagePath,
-    );
+    return null;
   }
 }

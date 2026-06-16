@@ -75,6 +75,34 @@ class WindowsPlatformService implements PlatformService {
   }
 
   @override
+  Future<String> getResonitePhotosDirectory() async {
+    try {
+      final String userProfile = Platform.environment['USERPROFILE'] ?? '';
+      if (userProfile.isEmpty) {
+        throw Exception('Could not determine user profile directory');
+      }
+
+      final String resonitePath = path.join(userProfile, 'Pictures', 'Resonite');
+      final Directory resoniteDir = Directory(resonitePath);
+      if (!await resoniteDir.exists()) {
+        await resoniteDir.create(recursive: true);
+      }
+
+      developer.log(
+        'Using Resonite photos directory: $resonitePath',
+        name: 'WindowsPlatformService',
+      );
+      return resonitePath;
+    } catch (e) {
+      developer.log(
+        'Error getting Resonite photos directory: $e',
+        name: 'WindowsPlatformService',
+      );
+      return '';
+    }
+  }
+
+  @override
   Future<String> getLogsDirectory() async {
     try {
       final String appData = Platform.environment['APPDATA'] ?? '';

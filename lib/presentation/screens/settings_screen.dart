@@ -49,6 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Stream subscription for update status
   late StreamSubscription<bool>? _updateSubscription;
+  StreamSubscription<AuthData?>? _authSubscription;
 
   bool _isSmallScreen(BuildContext context) {
     return MediaQuery.of(context).size.width < 600;
@@ -77,6 +78,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         setState(() {
           _config = updatedConfig;
+        });
+      }
+    });
+
+    // Listen for auth changes from other parts of the app
+    _authSubscription = AppServiceManager().authDataStream.listen((
+      updatedAuth,
+    ) {
+      if (mounted) {
+        setState(() {
+          _authData = updatedAuth;
         });
       }
     });
@@ -168,6 +180,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _scrollController.dispose();
     _updateSubscription?.cancel();
+    _authSubscription?.cancel();
     super.dispose();
   }
 
@@ -490,6 +503,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final padding =
         isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
     final spacing = isSmallScreen ? 16.0 : 20.0;
+    final isResonite = _authData?.userId.startsWith('U-') == true;
 
     return RepaintBoundary(
       child: AppCard(
@@ -516,27 +530,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
             SizedBox(height: spacing),
-            _buildDirectoryPicker(
-              label: 'Photos Directory',
-              value: _config!.photosDirectory,
-              isSmallScreen: isSmallScreen,
-              onChanged: (value) {
-                if (value != null) {
-                  _saveConfig(_config!.copyWith(photosDirectory: value));
-                }
-              },
-            ),
-            SizedBox(height: spacing),
-            _buildDirectoryPicker(
-              label: 'Logs Directory',
-              value: _config!.logsDirectory,
-              isSmallScreen: isSmallScreen,
-              onChanged: (value) {
-                if (value != null) {
-                  _saveConfig(_config!.copyWith(logsDirectory: value));
-                }
-              },
-            ),
+            if (isResonite)
+              _buildDirectoryPicker(
+                label: 'Resonite Photos Directory',
+                value: _config!.resonitePhotosDirectory,
+                isSmallScreen: isSmallScreen,
+                onChanged: (value) {
+                  if (value != null) {
+                    _saveConfig(
+                      _config!.copyWith(resonitePhotosDirectory: value),
+                    );
+                  }
+                },
+              )
+            else ...[
+              _buildDirectoryPicker(
+                label: 'Photos Directory',
+                value: _config!.photosDirectory,
+                isSmallScreen: isSmallScreen,
+                onChanged: (value) {
+                  if (value != null) {
+                    _saveConfig(_config!.copyWith(photosDirectory: value));
+                  }
+                },
+              ),
+              SizedBox(height: spacing),
+              _buildDirectoryPicker(
+                label: 'Logs Directory',
+                value: _config!.logsDirectory,
+                isSmallScreen: isSmallScreen,
+                onChanged: (value) {
+                  if (value != null) {
+                    _saveConfig(_config!.copyWith(logsDirectory: value));
+                  }
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -736,7 +765,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: _config!.uploadEnabled,
               onChanged: (value) async {
                 if (value) {
-                  if (Platform.isWindows) {
+                  final isResonite = _authData?.userId.startsWith('U-') == true;
+                  if (!isResonite && Platform.isWindows) {
                     try {
                       final isLoggingEnabled =
                           await _vrchatRegistryService.isFullLoggingEnabled();
@@ -1346,7 +1376,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: _buildCustomSwitchRow(
                 dense: isSmallScreen,
                 title: 'Auto Updates',
-                subtitle: 'Automatically download and install updates in the background',
+                subtitle:
+                    'Automatically download and install updates in the background',
                 activeColor: Theme.of(context).colorScheme.primary,
                 value: _config!.autoUpdateEnabled,
                 onChanged: (value) {

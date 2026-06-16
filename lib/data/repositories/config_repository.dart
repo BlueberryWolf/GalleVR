@@ -52,10 +52,12 @@ class ConfigRepository {
   Future<ConfigModel> _createDefaultConfig() async {
     final photosDir = await _platformService.getPhotosDirectory();
     final logsDir = await _platformService.getLogsDirectory();
+    final resonitePhotosDir = await _platformService.getResonitePhotosDirectory();
 
     return ConfigModel(
       photosDirectory: photosDir,
       logsDirectory: logsDir,
+      resonitePhotosDirectory: resonitePhotosDir,
       uploadEnabled: true,
     );
   }

@@ -34,8 +34,14 @@ class PhotoMetadata {
   // Whether this photo has been checked against logs for metadata recovery
   final bool logChecked;
 
-  // Application that created the metadata (e.g. 'VRCX', 'VRChat')
+  // Application that created the metadata (e.g. 'VRCX', 'VRChat', 'Resonite')
   final String? application;
+
+  // Resonite spatial tracking details
+  final String? takenGlobalPosition;
+  final String? takenGlobalRotation;
+  final String? takenGlobalScale;
+  final String? cameraFov;
 
   // Default constructor
   PhotoMetadata({
@@ -51,6 +57,10 @@ class PhotoMetadata {
     this.isEdited = false,
     this.logChecked = false,
     this.application,
+    this.takenGlobalPosition,
+    this.takenGlobalRotation,
+    this.takenGlobalScale,
+    this.cameraFov,
   });
 
   // Create a PhotoMetadata from JSON
@@ -87,6 +97,10 @@ class PhotoMetadata {
       isEdited: json['isEdited'] as bool? ?? false,
       logChecked: json['logChecked'] as bool? ?? false,
       application: json['application'] as String?,
+      takenGlobalPosition: json['takenGlobalPosition'] as String?,
+      takenGlobalRotation: json['takenGlobalRotation'] as String?,
+      takenGlobalScale: json['takenGlobalScale'] as String?,
+      cameraFov: json['cameraFov'] as String?,
     );
   }
 
@@ -105,6 +119,10 @@ class PhotoMetadata {
       'isEdited': isEdited,
       'logChecked': logChecked,
       if (application != null) 'application': application,
+      if (takenGlobalPosition != null) 'takenGlobalPosition': takenGlobalPosition,
+      if (takenGlobalRotation != null) 'takenGlobalRotation': takenGlobalRotation,
+      if (takenGlobalScale != null) 'takenGlobalScale': takenGlobalScale,
+      if (cameraFov != null) 'cameraFov': cameraFov,
     };
   }
 
@@ -122,6 +140,10 @@ class PhotoMetadata {
     bool? isEdited,
     bool? logChecked,
     String? application,
+    String? takenGlobalPosition,
+    String? takenGlobalRotation,
+    String? takenGlobalScale,
+    String? cameraFov,
   }) {
     return PhotoMetadata(
       takenDate: takenDate ?? this.takenDate,
@@ -136,6 +158,10 @@ class PhotoMetadata {
       isEdited: isEdited ?? this.isEdited,
       logChecked: logChecked ?? this.logChecked,
       application: application ?? this.application,
+      takenGlobalPosition: takenGlobalPosition ?? this.takenGlobalPosition,
+      takenGlobalRotation: takenGlobalRotation ?? this.takenGlobalRotation,
+      takenGlobalScale: takenGlobalScale ?? this.takenGlobalScale,
+      cameraFov: cameraFov ?? this.cameraFov,
     );
   }
 }

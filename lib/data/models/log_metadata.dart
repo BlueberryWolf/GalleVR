@@ -2,28 +2,28 @@
 class WorldInfo {
   // World name
   final String name;
-  
+
   // World ID
   final String id;
-  
+
   // Instance ID
   final String? instanceId;
-  
+
   // Access type (public, friends+, etc.)
   final String? accessType;
-  
+
   // Region
   final String? region;
-  
+
   // Owner ID
   final String? ownerId;
-  
+
   // Group ID
   final String? groupId;
-  
+
   // Group access type
   final String? groupAccessType;
-  
+
   // Whether users can request invites
   final bool? canRequestInvite;
 
@@ -81,14 +81,22 @@ class WorldInfo {
 class Player {
   // Player ID
   final String id;
-  
+
   // Player display name
   final String name;
+
+  // Player head position (for Resonite spatial tagging)
+  final String? headPosition;
+
+  // Player head orientation (for Resonite spatial tagging)
+  final String? headOrientation;
 
   // Default constructor
   Player({
     required this.id,
     required this.name,
+    this.headPosition,
+    this.headOrientation,
   });
 
   // Create a Player from JSON
@@ -96,6 +104,8 @@ class Player {
     return Player(
       id: json['id'] as String? ?? 'unknown_id',
       name: json['name'] as String? ?? 'Unknown Player',
+      headPosition: json['headPosition'] as String?,
+      headOrientation: json['headOrientation'] as String?,
     );
   }
 
@@ -104,6 +114,8 @@ class Player {
     return {
       'id': id,
       'name': name,
+      if (headPosition != null) 'headPosition': headPosition,
+      if (headOrientation != null) 'headOrientation': headOrientation,
     };
   }
 }
@@ -112,25 +124,25 @@ class Player {
 class LogMetadata {
   // World information
   final WorldInfo? world;
-  
+
   // List of players in the world
   final List<Player> players;
 
   // Default constructor
-  LogMetadata({
-    this.world,
-    this.players = const [],
-  });
+  LogMetadata({this.world, this.players = const []});
 
   // Create a LogMetadata from JSON
   factory LogMetadata.fromJson(Map<String, dynamic> json) {
     return LogMetadata(
-      world: json['world'] != null 
-          ? WorldInfo.fromJson(json['world'] as Map<String, dynamic>) 
-          : null,
-      players: (json['players'] as List<dynamic>?)
-          ?.map((e) => Player.fromJson(e as Map<String, dynamic>))
-          .toList() ?? [],
+      world:
+          json['world'] != null
+              ? WorldInfo.fromJson(json['world'] as Map<String, dynamic>)
+              : null,
+      players:
+          (json['players'] as List<dynamic>?)
+              ?.map((e) => Player.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
   }
 

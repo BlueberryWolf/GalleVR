@@ -62,6 +62,11 @@ class AndroidPlatformService implements PlatformService {
   }
 
   @override
+  Future<String> getResonitePhotosDirectory() async {
+    return '';
+  }
+
+  @override
   Future<String> getLogsDirectory() async {
     try {
       final Directory? externalDir = await getExternalStorageDirectory();

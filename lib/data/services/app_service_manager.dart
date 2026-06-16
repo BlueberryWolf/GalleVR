@@ -246,7 +246,10 @@ class AppServiceManager {
       }
 
       // Start watching for photos
-      if (_config != null && _config!.photosDirectory.isNotEmpty) {
+      final isResonite = _authData?.userId.startsWith('U-') == true;
+      if (_config != null &&
+          ((isResonite && _config!.resonitePhotosDirectory.isNotEmpty) ||
+           (!isResonite && _config!.photosDirectory.isNotEmpty))) {
         await _startPhotoWatcher();
       }
     } catch (e) {
@@ -290,7 +293,8 @@ class AppServiceManager {
         'Background processing photo: $photoPath',
         name: 'AppServiceManager',
       );
-      final metadata = await _logParserService.getLatestLogMetadata(_config!);
+      final isResonite = _authData?.userId.startsWith('U-') == true;
+      final metadata = isResonite ? null : await _logParserService.getLatestLogMetadata(_config!);
       final outputPath = await _photoProcessorService.processPhoto(
         photoPath,
         _config!,
@@ -321,6 +325,8 @@ class AppServiceManager {
         _config?.photosDirectory != config.photosDirectory;
     final bool logsDirectoryChanged =
         _config?.logsDirectory != config.logsDirectory;
+    final bool resonitePhotosDirectoryChanged =
+        _config?.resonitePhotosDirectory != config.resonitePhotosDirectory;
     final bool minimizeToTrayChanged =
         _config?.minimizeToTray != config.minimizeToTray;
     final bool startWithWindowsChanged =
@@ -346,14 +352,17 @@ class AppServiceManager {
       }
     }
 
+    final isResonite = _authData?.userId.startsWith('U-') == true;
+    final bool dirChanged = isResonite ? resonitePhotosDirectoryChanged : (photosDirectoryChanged || logsDirectoryChanged);
+
     // Restart photo watcher if important filesystem paths changed
-    if (photosDirectoryChanged || logsDirectoryChanged) {
+    if (dirChanged) {
       await _photoProcessingSubscription?.cancel();
       _photoProcessingSubscription = null;
       await photoWatcherService.stopWatching();
 
-      if (config.photosDirectory.isNotEmpty &&
-          config.logsDirectory.isNotEmpty) {
+      if ((isResonite && config.resonitePhotosDirectory.isNotEmpty) ||
+          (!isResonite && config.photosDirectory.isNotEmpty && config.logsDirectory.isNotEmpty)) {
         await _startPhotoWatcher();
       }
     }

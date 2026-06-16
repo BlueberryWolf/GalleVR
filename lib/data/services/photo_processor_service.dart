@@ -13,6 +13,7 @@ import '../repositories/photo_metadata_repository.dart';
 import 'photo_event_service.dart';
 import 'photo_upload_service.dart';
 import 'vrchat_service.dart';
+import 'vrcx_metadata_service.dart';
 
 class PhotoProcessorService {
   final PhotoUploadService _photoUploadService;
@@ -102,6 +103,17 @@ class PhotoProcessorService {
                 final bd = ByteData.sublistView(headerBytes);
                 width = bd.getInt32(16, Endian.big);
                 height = bd.getInt32(20, Endian.big);
+              } else {
+                try {
+                  final bytes = await file.readAsBytes();
+                  final decoded = await _decodeImage(bytes);
+                  if (decoded != null) {
+                    width = decoded.width;
+                    height = decoded.height;
+                  }
+                } catch (e) {
+                  developer.log('Failed to decode image for dimensions: $e');
+                }
               }
             } catch (e) {
               developer.log(
@@ -122,7 +134,10 @@ class PhotoProcessorService {
               return null;
             }
 
-            if (!_isValidAspectRatio(width, height)) {
+            final parsedMetadata = await VrcxMetadataService().extractVrcxMetadata(sourcePath);
+            final bool isResonite = parsedMetadata?.application == 'Resonite';
+
+            if (!isResonite && !_isValidAspectRatio(width, height)) {
               final ratio = (width / height).toStringAsFixed(2);
               final error =
                   'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
@@ -270,13 +285,16 @@ class PhotoProcessorService {
           final sourceStats = sourceFile.statSync();
           final creationTimeMs = sourceStats.modified.millisecondsSinceEpoch;
 
+          final parsedMetadata = await VrcxMetadataService().extractVrcxMetadata(sourcePath);
+
           final photoMetadata = PhotoMetadata(
             takenDate: creationTimeMs,
             filename: path.basename(sourcePath),
             views: 0,
-            world: metadata?.world,
-            players: metadata?.players ?? [],
+            world: parsedMetadata?.world ?? metadata?.world,
+            players: parsedMetadata?.players ?? metadata?.players ?? [],
             localPath: sourcePath,
+            application: parsedMetadata?.application,
           );
 
           final saveResult = await _photoMetadataRepository.savePhotoMetadata(

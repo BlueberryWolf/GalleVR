@@ -96,6 +96,22 @@ class PhotoUploadService {
       PhotoMetadata photoMetadata =
           metadata ?? _createPhotoMetadata(photoPath, logMetadata);
 
+      final isResoniteAccount = authData.userId.startsWith('U-');
+      final isResonitePhoto = photoMetadata.application == 'Resonite';
+
+      if (isResonitePhoto && !isResoniteAccount) {
+        final error = 'Resonite photos can only be uploaded to Resonite accounts';
+        developer.log(error, name: 'PhotoUploadService');
+        PhotoEventService().notifyError('upload', error, photoPath: photoPath);
+        return false;
+      }
+      if (!isResonitePhoto && isResoniteAccount) {
+        final error = 'VRChat photos cannot be uploaded to Resonite accounts';
+        developer.log(error, name: 'PhotoUploadService');
+        PhotoEventService().notifyError('upload', error, photoPath: photoPath);
+        return false;
+      }
+
       if (photoMetadata.application == 'VRChat') {
         photoMetadata = photoMetadata.copyWith(
           players: [

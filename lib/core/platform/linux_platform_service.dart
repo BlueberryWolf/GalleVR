@@ -25,6 +25,20 @@ class LinuxPlatformService implements PlatformService {
   }
 
   @override
+  Future<String> getResonitePhotosDirectory() async {
+    final home = Platform.environment['HOME'] ?? '';
+    if (home.isNotEmpty) {
+      final resonitePath = path.join(home, 'Pictures', 'Resonite');
+      final dir = Directory(resonitePath);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      return resonitePath;
+    }
+    return '';
+  }
+
+  @override
   Future<String> getLogsDirectory() async {
     final vrcPath = await _findVRChatCompatDataPath();
     if (vrcPath != null) {

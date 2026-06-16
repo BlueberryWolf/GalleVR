@@ -107,6 +107,33 @@ class PhotoMetadataRepository {
             });
       }
 
+      final cleanV3Done =
+          _prefs?.getBool('gallevr_metadata_clean_v3_done') ?? false;
+      if (!cleanV3Done) {
+        AppDatabase().database
+            .then((db) async {
+              await db.transaction((txn) async {
+                await txn.execute(
+                  'DELETE FROM photo_players WHERE photo_id IN (SELECT id FROM photo_metadata WHERE gallery_url IS NULL)',
+                );
+                await txn.execute(
+                  'DELETE FROM photo_metadata WHERE gallery_url IS NULL',
+                );
+              });
+              await _prefs?.setBool('gallevr_metadata_clean_v3_done', true);
+              developer.log(
+                'Cleared local metadata records for corrected XMP/VRCX migration',
+                name: 'PhotoMetadataRepository',
+              );
+            })
+            .catchError((e) {
+              developer.log(
+                'Error running metadata clean v3 migration: $e',
+                name: 'PhotoMetadataRepository',
+              );
+            });
+      }
+
       syncWithBackend();
       runRetroactiveLogScanner();
 
@@ -790,14 +817,6 @@ class PhotoMetadataRepository {
                   }
                   return p;
                 }).toList();
-            if (updatedPlayers.isEmpty) {
-              updatedPlayers.add(
-                Player(
-                  id: authData.userId,
-                  name: authData.displayName ?? authData.userId,
-                ),
-              );
-            }
             metadata = metadata.copyWith(players: updatedPlayers);
           }
           PhotoMetadata? existingMeta;
@@ -944,10 +963,16 @@ class PhotoMetadataRepository {
   Future<Map<String, PhotoMetadata?>> _batchProcessMetadataBackground(
     List<String> filePaths,
   ) async {
+    final authData = await VRChatService().loadAuthData();
+    final authParams =
+        authData != null
+            ? {'userId': authData.userId, 'displayName': authData.displayName}
+            : null;
+
     final results = await IsolateWorkerPool()
-        .execute<List<String>, Map<String, PhotoMetadata?>>(
+        .execute<Map<String, dynamic>, Map<String, PhotoMetadata?>>(
           _batchExtractMetadataTask,
-          filePaths,
+          {'filePaths': filePaths, 'authParams': authParams},
         );
 
     final toSave = results.values.whereType<PhotoMetadata>().toList();
@@ -1474,12 +1499,22 @@ class PhotoMetadataRepository {
   }
 }
 
-Map<String, PhotoMetadata?> _batchExtractMetadataTask(List<String> filePaths) {
+Map<String, PhotoMetadata?> _batchExtractMetadataTask(
+  Map<String, dynamic> params,
+) {
+  final filePaths = List<String>.from(params['filePaths'] as List);
+  final authParams = params['authParams'] as Map<String, dynamic>?;
   final results = <String, PhotoMetadata?>{};
   for (final filePath in filePaths) {
     try {
-      final metadata = VrcxMetadataService.extractVrcxMetadataSync(filePath);
+      final metadata = VrcxMetadataService.extractVrcxMetadataSync({
+        'imagePath': filePath,
+        'authParams': authParams,
+      });
       if (metadata != null) {
+        if (metadata.application == 'PENDING_AUTH') {
+          continue;
+        }
         results[filePath] = metadata.copyWith(logChecked: true);
       } else {
         results[filePath] = PhotoMetadata(

@@ -12,6 +12,7 @@ import '../repositories/config_repository.dart';
 import 'app_service_manager.dart';
 import 'photo_event_service.dart';
 import 'photo_watcher_task_handler.dart';
+import 'vrchat_service.dart';
 
 class PhotoWatcherService {
   final PlatformService _platformService;
@@ -186,99 +187,138 @@ class PhotoWatcherService {
     await _logFileWatcher?.stopWatching();
     _logFileWatcher = null;
 
-    final logsDir = config.logsDirectory;
-    if (logsDir.isEmpty) {
-      final error = 'Logs directory is not set';
-      developer.log(error, name: 'PhotoWatcherService');
-      PhotoEventService().notifyError('watcher', error);
-      throw Exception(error);
-    }
+    final authData = await VRChatService().loadAuthData();
+    final bool isResonite = authData?.userId.startsWith('U-') == true;
 
-    final directory = Directory(logsDir);
-    try {
-      if (!await directory.exists()) {
-        final error = 'Logs directory does not exist: $logsDir';
+    if (isResonite) {
+      final resoniteDir = config.resonitePhotosDirectory;
+      if (resoniteDir.isEmpty) {
+        final error = 'Resonite photos directory is not set';
         developer.log(error, name: 'PhotoWatcherService');
         PhotoEventService().notifyError('watcher', error);
         throw Exception(error);
       }
-    } catch (e) {
-      final error = 'Failed to access logs directory: $e';
-      developer.log(error, name: 'PhotoWatcherService');
-      PhotoEventService().notifyError('watcher', error);
-      throw Exception(error);
-    }
 
-    _useForegroundService = Platform.isAndroid;
-
-    if (_useForegroundService) {
-      developer.log(
-        'Using foreground service for photo watching',
-        name: 'PhotoWatcherService',
-      );
-      final success = await _startForegroundService(config);
-      if (!success) {
-        final error = 'Failed to start foreground service';
+      final directory = Directory(resoniteDir);
+      try {
+        if (!await directory.exists()) {
+          final error = 'Resonite photos directory does not exist: $resoniteDir';
+          developer.log(error, name: 'PhotoWatcherService');
+          PhotoEventService().notifyError('watcher', error);
+          throw Exception(error);
+        }
+      } catch (e) {
+        final error = 'Failed to access Resonite photos directory: $e';
         developer.log(error, name: 'PhotoWatcherService');
         PhotoEventService().notifyError('watcher', error);
-      } else {
-        developer.log(
-          'Foreground service started successfully',
-          name: 'PhotoWatcherService',
-        );
+        throw Exception(error);
       }
-    } else {
+
+      _watcherSubscription = directory
+          .watch(events: FileSystemEvent.create, recursive: true)
+          .listen((event) {
+            _handleResonitePhoto(event.path, config);
+          });
+
       developer.log(
-        'Using in-app log watcher for photo watching',
+        'Resonite photo watcher started successfully (recursive)',
         name: 'PhotoWatcherService',
       );
+    } else {
+      final logsDir = config.logsDirectory;
+      if (logsDir.isEmpty) {
+        final error = 'Logs directory is not set';
+        developer.log(error, name: 'PhotoWatcherService');
+        PhotoEventService().notifyError('watcher', error);
+        throw Exception(error);
+      }
 
+      final directory = Directory(logsDir);
       try {
-        _logFileWatcher = LogFileWatcher(logsDir);
-        await _logFileWatcher!.startWatching();
+        if (!await directory.exists()) {
+          final error = 'Logs directory does not exist: $logsDir';
+          developer.log(error, name: 'PhotoWatcherService');
+          PhotoEventService().notifyError('watcher', error);
+          throw Exception(error);
+        }
+      } catch (e) {
+        final error = 'Failed to access logs directory: $e';
+        developer.log(error, name: 'PhotoWatcherService');
+        PhotoEventService().notifyError('watcher', error);
+        throw Exception(error);
+      }
 
-        _logWatcherSubscription = _logFileWatcher!.screenshotStream.listen(
-          (screenshotPath) => _handleScreenshotFromLog(screenshotPath, config),
-          onError: (e) {
-            final error = 'Error in log file watcher: $e';
-            developer.log(error, name: 'PhotoWatcherService');
-            PhotoEventService().notifyError('watcher', error);
-          },
+      _useForegroundService = Platform.isAndroid;
+
+      if (_useForegroundService) {
+        developer.log(
+          'Using foreground service for photo watching',
+          name: 'PhotoWatcherService',
         );
-
-        try {
-          final photosDir = Directory(config.photosDirectory);
-          if (await photosDir.exists()) {
-            _watcherSubscription = photosDir
-                .watch(events: FileSystemEvent.create, recursive: true)
-                .listen((event) {
-                  developer.log(
-                    'Native Photos trigger detected: ${event.path}, signaling immediate log check',
-                    name: 'PhotoWatcherService',
-                  );
-                  _logFileWatcher?.checkForUpdates();
-                });
-            developer.log(
-              'Native OS Photo Trigger active (recursive)',
-              name: 'PhotoWatcherService',
-            );
-          }
-        } catch (e) {
+        final success = await _startForegroundService(config);
+        if (!success) {
+          final error = 'Failed to start foreground service';
+          developer.log(error, name: 'PhotoWatcherService');
+          PhotoEventService().notifyError('watcher', error);
+        } else {
           developer.log(
-            'Native Photo Trigger initialization bypassed ($e), relying solely on polling mode',
+            'Foreground service started successfully',
             name: 'PhotoWatcherService',
           );
         }
-
+      } else {
         developer.log(
-          'Log file watcher started successfully',
+          'Using in-app log watcher for photo watching',
           name: 'PhotoWatcherService',
         );
-      } catch (e) {
-        final error = 'Failed to start log file watcher: $e';
-        developer.log(error, name: 'PhotoWatcherService');
-        PhotoEventService().notifyError('watcher', error);
-        throw Exception(error);
+
+        try {
+          _logFileWatcher = LogFileWatcher(logsDir);
+          await _logFileWatcher!.startWatching();
+
+          _logWatcherSubscription = _logFileWatcher!.screenshotStream.listen(
+            (screenshotPath) => _handleScreenshotFromLog(screenshotPath, config),
+            onError: (e) {
+              final error = 'Error in log file watcher: $e';
+              developer.log(error, name: 'PhotoWatcherService');
+              PhotoEventService().notifyError('watcher', error);
+            },
+          );
+
+          try {
+            final photosDir = Directory(config.photosDirectory);
+            if (await photosDir.exists()) {
+              _watcherSubscription = photosDir
+                  .watch(events: FileSystemEvent.create, recursive: true)
+                  .listen((event) {
+                    developer.log(
+                      'Native Photos trigger detected: ${event.path}, signaling immediate log check',
+                      name: 'PhotoWatcherService',
+                    );
+                    _logFileWatcher?.checkForUpdates();
+                  });
+              developer.log(
+                'Native OS Photo Trigger active (recursive)',
+                name: 'PhotoWatcherService',
+              );
+            }
+          } catch (e) {
+            developer.log(
+              'Native Photo Trigger initialization bypassed ($e), relying solely on polling mode',
+              name: 'PhotoWatcherService',
+            );
+          }
+
+          developer.log(
+            'Log file watcher started successfully',
+            name: 'PhotoWatcherService',
+          );
+        } catch (e) {
+          final error = 'Failed to start log file watcher: $e';
+          developer.log(error, name: 'PhotoWatcherService');
+          PhotoEventService().notifyError('watcher', error);
+          throw Exception(error);
+        }
       }
     }
   }
@@ -428,6 +468,44 @@ class PhotoWatcherService {
     );
 
     _photoStreamController.add(finalPath);
+  }
+
+  Future<void> _handleResonitePhoto(String photoPath, ConfigModel config) async {
+    final file = File(photoPath);
+    final ext = photoPath.toLowerCase();
+    if (!ext.endsWith('.png') && !ext.endsWith('.jpg') && !ext.endsWith('.jpeg') && !ext.endsWith('.webp')) return;
+
+    bool ready = false;
+    int lastSize = -1;
+    for (int i = 0; i < 25; i++) {
+      if (await file.exists()) {
+        try {
+          final length = await file.length();
+          if (length > 0 && length == lastSize) {
+            ready = true;
+            break;
+          }
+          lastSize = length;
+        } catch (_) {}
+      }
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
+    if (!ready) return;
+
+    if (_handledPhotos.contains(photoPath)) return;
+    _handledPhotos.add(photoPath);
+
+    developer.log(
+      'New Resonite screenshot detected: $photoPath',
+      name: 'PhotoWatcherService',
+    );
+    PhotoEventService().notifyError(
+      'info',
+      'New Resonite screenshot detected: ${path.basename(photoPath)}',
+    );
+
+    _photoStreamController.add(photoPath);
   }
 
   Future<void> dispose() async {

@@ -7,6 +7,9 @@ abstract class PlatformService {
   
   // Get the VRChat photos directory
   Future<String> getPhotosDirectory();
+
+  // Get the Resonite photos directory
+  Future<String> getResonitePhotosDirectory();
   
   // Get the VRChat logs directory
   Future<String> getLogsDirectory();

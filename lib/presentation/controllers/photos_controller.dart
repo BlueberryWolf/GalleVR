@@ -62,6 +62,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
   StreamSubscription? _photoAddedSub;
   StreamSubscription? _photoUploadedSub;
   StreamSubscription<ConfigModel>? _configSub;
+  StreamSubscription? _authSub;
 
   int _currentPage = 0;
   static const int _pageSize = 24;
@@ -80,6 +81,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
     _photoAddedSub?.cancel();
     _photoUploadedSub?.cancel();
     _configSub?.cancel();
+    _authSub?.cancel();
     super.dispose();
   }
 
@@ -90,6 +92,9 @@ class PhotosController extends ValueNotifier<PhotosState> {
     );
     _configSub = AppServiceManager().configStream.listen((updatedConfig) {
       _config = updatedConfig;
+      refresh();
+    });
+    _authSub = AppServiceManager().authDataStream.listen((_) {
       refresh();
     });
   }
@@ -106,7 +111,14 @@ class PhotosController extends ValueNotifier<PhotosState> {
 
   Future<void> refresh({bool forceSync = false}) async {
     final loadId = ++_currentLoadId;
-    if (_config == null || _config!.photosDirectory.isEmpty) {
+    final authData = AppServiceManager().authData;
+    final isResonite = authData?.userId.startsWith('U-') == true;
+    final photosDir =
+        isResonite
+            ? _config?.resonitePhotosDirectory
+            : _config?.photosDirectory;
+
+    if (_config == null || photosDir == null || photosDir.isEmpty) {
       value = value.copyWith(
         isLoading: false,
         allPhotos: [],
@@ -124,7 +136,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
         await _metadataRepository.syncWithBackend();
       }
 
-      final directory = Directory(_config!.photosDirectory);
+      final directory = Directory(photosDir);
       if (!await directory.exists()) {
         value = value.copyWith(
           isLoading: false,
@@ -134,7 +146,10 @@ class PhotosController extends ValueNotifier<PhotosState> {
         return;
       }
 
-      final photos = await _scanDirectoryAsync(directory);
+      final photos = await _scanDirectoryAsync(
+        directory,
+        isResonite: isResonite,
+      );
 
       if (loadId != _currentLoadId) return;
 
@@ -155,14 +170,17 @@ class PhotosController extends ValueNotifier<PhotosState> {
   }
 
   Future<List<FileSystemEntity>> _scanDirectoryAsync(
-    Directory directory,
-  ) async {
+    Directory directory, {
+    required bool isResonite,
+  }) async {
     final Set<String> knownNonVrcx =
-        await _metadataRepository.getNonVrcxFilenames();
+        isResonite
+            ? const <String>{}
+            : await _metadataRepository.getNonVrcxFilenames();
 
     final sortedPaths = await compute(
       _scanDirectoryIsolate,
-      ScanParams(directory.path, knownNonVrcx),
+      ScanParams(directory.path, knownNonVrcx, isResonite: isResonite),
     );
 
     return sortedPaths.map((p) => File(p)).toList();
@@ -203,7 +221,8 @@ class PhotosController extends ValueNotifier<PhotosState> {
           (meta.isNonVrcx &&
               meta.galleryUrl == null &&
               meta.world == null &&
-              meta.players.isEmpty)) {
+              meta.players.isEmpty &&
+              meta.application != 'Resonite')) {
         badPaths.add(filePath);
       }
     });
@@ -283,8 +302,9 @@ class PhotosController extends ValueNotifier<PhotosState> {
 class ScanParams {
   final String directoryPath;
   final Set<String> knownNonVrcx;
+  final bool isResonite;
 
-  ScanParams(this.directoryPath, this.knownNonVrcx);
+  ScanParams(this.directoryPath, this.knownNonVrcx, {this.isResonite = false});
 }
 
 Future<List<String>> _scanDirectoryIsolate(ScanParams params) async {
@@ -297,11 +317,20 @@ Future<List<String>> _scanDirectoryIsolate(ScanParams params) async {
       recursive: true,
       followLinks: false,
     )) {
-      if (entity is File &&
-          path.extension(entity.path).toLowerCase() == '.png') {
-        final filename = path.basename(entity.path);
-        if (!params.knownNonVrcx.contains(filename)) {
-          photos.add(entity);
+      if (entity is File) {
+        final ext = path.extension(entity.path).toLowerCase();
+        final isAllowed =
+            params.isResonite
+                ? (ext == '.png' ||
+                    ext == '.jpg' ||
+                    ext == '.jpeg' ||
+                    ext == '.webp')
+                : (ext == '.png');
+        if (isAllowed) {
+          final filename = path.basename(entity.path);
+          if (params.isResonite || !params.knownNonVrcx.contains(filename)) {
+            photos.add(entity);
+          }
         }
       }
     }
