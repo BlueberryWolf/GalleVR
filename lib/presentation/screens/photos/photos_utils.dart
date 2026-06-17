@@ -125,15 +125,38 @@ Future<void> openUrl(
     final processedUrl = shortenGalleryUrl(url);
     final uri = Uri.parse(processedUrl);
     bool launched = false;
-    if (await canLaunchUrl(uri)) {
-      launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    if (Platform.isLinux) {
+      try {
+        if (File('/.flatpak-info').existsSync()) {
+          final res = await Process.run(
+            'flatpak-spawn',
+            ['--host', 'xdg-open', processedUrl],
+          );
+          launched = res.exitCode == 0;
+        } else {
+          final env = Map<String, String>.from(Platform.environment);
+          env.remove('LD_LIBRARY_PATH');
+          env.remove('LD_PRELOAD');
+          final res = await Process.run(
+            'xdg-open',
+            [processedUrl],
+            environment: env,
+          );
+          launched = res.exitCode == 0;
+        }
+      } catch (e) {
+        developer.log('Linux custom launcher failed: $e', name: loggerName);
+      }
+    }
+
+    if (!launched) {
+      if (await canLaunchUrl(uri)) {
+        launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
     }
     if (!launched) {
       launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-    if (!launched && Platform.isLinux) {
-      final res = await Process.run('xdg-open', [processedUrl]);
-      launched = res.exitCode == 0;
     }
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open URL')));
@@ -141,7 +164,10 @@ Future<void> openUrl(
   } catch (e) {
     if (Platform.isLinux) {
       try {
-        await Process.run('xdg-open', [url]);
+        final env = Map<String, String>.from(Platform.environment);
+        env.remove('LD_LIBRARY_PATH');
+        env.remove('LD_PRELOAD');
+        await Process.run('xdg-open', [url], environment: env);
         return;
       } catch (_) {}
     }

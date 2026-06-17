@@ -1,5 +1,5 @@
 import 'dart:developer' as developer;
-import 'dart:io' show Platform, Process;
+import 'dart:io' show Platform, Process, File;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,6 +12,7 @@ import '../../data/repositories/config_repository.dart';
 import '../widgets/blurrable_qr_code.dart';
 import '../widgets/app_card.dart';
 import 'verification_screen.dart';
+import 'photos/photos_utils.dart';
 
 // Screen for VRChat account management
 class AccountScreen extends StatefulWidget {
@@ -614,41 +615,6 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Future<void> _launchGallery() async {
-    final url = Uri.parse(_galleryUrl);
-    try {
-      bool launched = false;
-      if (await canLaunchUrl(url)) {
-        launched = await launchUrl(url, mode: LaunchMode.externalApplication);
-      }
-      if (!launched) {
-        launched = await launchUrl(url, mode: LaunchMode.externalApplication);
-      }
-      if (!launched && Platform.isLinux) {
-        final res = await Process.run('xdg-open', [url.toString()]);
-        launched = res.exitCode == 0;
-      }
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open gallery link')),
-        );
-      }
-    } catch (e) {
-      developer.log(
-        'Error launching gallery url: $e',
-        name: 'AccountScreen',
-        error: e,
-      );
-      if (Platform.isLinux) {
-        try {
-          await Process.run('xdg-open', [url.toString()]);
-          return;
-        } catch (_) {}
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open gallery link: $e')),
-        );
-      }
-    }
+    await openUrl(_galleryUrl, context, loggerName: 'AccountScreen');
   }
 }
