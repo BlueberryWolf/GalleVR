@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.blueberrywolf.gallevr</id>
+  <name>GalleVR</name>
+  <summary>A home for your VR photos</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <description>
+    <p>
+      GalleVR is a social platform for your VRChat and Resonite photos. It automatically organizes your memories by world and friends, so you can find any photo instantly. Free, unlimited, and private by default.
+    </p>
+    <p>
+      GalleVR helps you organize, search, and share your VRChat screenshots and VR photos.
+    </p>
+  </description>
+
+  <url type="homepage">https://gallevr.app</url>
+  <url type="bugtracker">https://github.com/BlueberryWolf/GalleVR/issues</url>
+
+  <launchable type="desktop-id">com.blueberrywolf.gallevr.desktop</launchable>
+
+  <provides>
+    <binary>gallevr</binary>
+  </provides>
+
+  <categories>
+    <category>Graphics</category>
+    <category>Photography</category>
+    <category>Network</category>
+  </categories>
+
+  <keywords>
+    <keyword>VRChat</keyword>
+    <keyword>Resonite</keyword>
+    <keyword>VR</keyword>
+    <keyword>gallery</keyword>
+    <keyword>photos</keyword>
+  </keywords>
+
+  <releases>
+    <release version="@@VERSION@@" date="2026-06-16"/>
+  </releases>
+
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-chat">mild</content_attribute>
+    <content_attribute id="social-info">mild</content_attribute>
+  </content_rating>
+</component>

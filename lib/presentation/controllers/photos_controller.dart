@@ -250,8 +250,15 @@ class PhotosController extends ValueNotifier<PhotosState> {
     final paths = batch.map((e) => e.path).toList();
     final metadata = await _metadataRepository.getMetadataForFiles(paths);
 
+    final resoniteDir = _config?.resonitePhotosDirectory;
     final List<String> badPaths = [];
     metadata.forEach((filePath, meta) {
+      final isResonitePath = resoniteDir != null &&
+          resoniteDir.isNotEmpty &&
+          path.isWithin(resoniteDir, filePath);
+      if (isResonitePath) {
+        return;
+      }
       if (meta == null ||
           (meta.isNonVrcx && meta.galleryUrl == null) ||
           (meta.application == 'Resonite' &&
@@ -363,7 +370,7 @@ Future<List<String>> _scanDirectoryIsolate(ScanParams params) async {
                 : (ext == '.png');
         if (isAllowed) {
           final filename = path.basename(entity.path);
-          if (!params.knownNonVrcx.contains(filename)) {
+          if (params.isResonite || !params.knownNonVrcx.contains(filename)) {
             photos.add(entity);
           }
         }

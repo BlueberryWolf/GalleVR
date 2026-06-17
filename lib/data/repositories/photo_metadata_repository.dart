@@ -1012,10 +1012,16 @@ class PhotoMetadataRepository {
             ? {'userId': authData.userId, 'displayName': authData.displayName}
             : null;
 
+    final resoniteDir = AppServiceManager().config?.resonitePhotosDirectory;
+
     final results = await IsolateWorkerPool()
         .execute<Map<String, dynamic>, Map<String, PhotoMetadata?>>(
           _batchExtractMetadataTask,
-          {'filePaths': filePaths, 'authParams': authParams},
+          {
+            'filePaths': filePaths,
+            'authParams': authParams,
+            'resoniteDir': resoniteDir,
+          },
         );
 
     final toSave = results.values.whereType<PhotoMetadata>().toList();
@@ -1548,6 +1554,7 @@ Map<String, PhotoMetadata?> _batchExtractMetadataTask(
 ) {
   final filePaths = List<String>.from(params['filePaths'] as List);
   final authParams = params['authParams'] as Map<String, dynamic>?;
+  final resoniteDir = params['resoniteDir'] as String?;
   final results = <String, PhotoMetadata?>{};
   for (final filePath in filePaths) {
     try {
@@ -1561,12 +1568,16 @@ Map<String, PhotoMetadata?> _batchExtractMetadataTask(
         }
         results[filePath] = metadata.copyWith(logChecked: true);
       } else {
+        final isResonitePath = resoniteDir != null &&
+            resoniteDir.isNotEmpty &&
+            path.isWithin(resoniteDir, filePath);
         results[filePath] = PhotoMetadata(
           takenDate: File(filePath).statSync().modified.millisecondsSinceEpoch,
           filename: path.basename(filePath),
           localPath: filePath,
-          isNonVrcx: true,
-          logChecked: false,
+          isNonVrcx: isResonitePath ? false : true,
+          application: isResonitePath ? 'Resonite' : null,
+          logChecked: isResonitePath ? true : false,
         );
       }
     } catch (e) {

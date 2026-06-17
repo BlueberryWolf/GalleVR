@@ -131,10 +131,20 @@ Future<void> openUrl(
     if (!launched) {
       launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
+    if (!launched && Platform.isLinux) {
+      final res = await Process.run('xdg-open', [processedUrl]);
+      launched = res.exitCode == 0;
+    }
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open URL')));
     }
   } catch (e) {
+    if (Platform.isLinux) {
+      try {
+        await Process.run('xdg-open', [url]);
+        return;
+      } catch (_) {}
+    }
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error opening URL: $e')));
     }

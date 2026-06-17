@@ -86,10 +86,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Listen for auth changes from other parts of the app
     _authSubscription = AppServiceManager().authDataStream.listen((
       updatedAuth,
-    ) {
+    ) async {
+      final authDataSec = await _vrchatService.loadAuthDataSecondary();
       if (mounted) {
         setState(() {
           _authData = updatedAuth;
+          _authDataSec = authDataSec;
         });
       }
     });
@@ -519,7 +521,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (showVRC) {
       widgets.add(
         _buildDirectoryPicker(
-          label: 'Photos Directory',
+          label: 'VRChat Photos Directory',
           value: _config!.photosDirectory,
           isSmallScreen: isSmallScreen,
           onChanged: (value) {
@@ -532,7 +534,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       widgets.add(SizedBox(height: spacing));
       widgets.add(
         _buildDirectoryPicker(
-          label: 'Logs Directory',
+          label: 'VRChat Logs Directory',
           value: _config!.logsDirectory,
           isSmallScreen: isSmallScreen,
           onChanged: (value) {

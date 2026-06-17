@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/config_model.dart';
 import '../models/photo_metadata.dart';
+import '../models/verification_models.dart';
 import '../repositories/photo_metadata_repository.dart';
 import '../../core/audio/sound_service.dart';
 import '../../core/webp/webp_encoder_service.dart';
@@ -57,36 +58,77 @@ class ManualUploadService {
       onStatusUpdate?.call('Checking authentication...');
       onProgress?.call(0.1);
 
-      // Check authentication
-      final authData = await _vrchatService.loadAuthData();
-      if (authData == null) {
+      onStatusUpdate?.call('Loading photo metadata...');
+      onProgress?.call(0.1);
+
+      // Get existing metadata - it must already exist with valid world/player info
+      PhotoMetadata? photoMetadata = await _photoMetadataRepository
+          .getPhotoMetadataForFile(photoPath);
+
+      if (photoMetadata == null) {
         final error =
-            'No authentication data found. Please log in to upload photos';
+            'No metadata found for this photo. Only photos with valid metadata can be uploaded.';
+        developer.log(error, name: 'ManualUploadService');
+        PhotoEventService().notifyError('upload', error, photoPath: photoPath);
+        throw Exception(error);
+      }
+
+      final isResonitePhoto = (photoMetadata.application == 'Resonite') ||
+          (config.resonitePhotosDirectory.isNotEmpty &&
+              path.isWithin(config.resonitePhotosDirectory, photoPath));
+
+      if (isResonitePhoto && photoMetadata.application != 'Resonite') {
+        photoMetadata = photoMetadata.copyWith(application: 'Resonite');
+      }
+
+      // Check authentication
+      final primaryAuth = await _vrchatService.loadAuthData();
+      final secondaryAuth = await _vrchatService.loadAuthDataSecondary();
+
+      AuthData? uploadAuth;
+      if (isResonitePhoto) {
+        if (primaryAuth != null && primaryAuth.userId.startsWith('U-')) {
+          uploadAuth = primaryAuth;
+        } else if (secondaryAuth != null &&
+            secondaryAuth.userId.startsWith('U-')) {
+          uploadAuth = secondaryAuth;
+        }
+      } else {
+        if (primaryAuth != null && !primaryAuth.userId.startsWith('U-')) {
+          uploadAuth = primaryAuth;
+        } else if (secondaryAuth != null &&
+            !secondaryAuth.userId.startsWith('U-')) {
+          uploadAuth = secondaryAuth;
+        }
+      }
+
+      if (uploadAuth == null) {
+        final error =
+            'No authentication data found for ${isResonitePhoto ? "Resonite" : "VRChat"}. Please log in.';
         developer.log(error, name: 'ManualUploadService');
         PhotoEventService().notifyError('upload', error, photoPath: photoPath);
         throw Exception(error);
       }
 
       onStatusUpdate?.call('Verifying account...');
-      onProgress?.call(0.2);
+      onProgress?.call(0.25);
 
       // Check verification status
       developer.log(
-        'Checking verification status before manual upload',
+        'Checking verification status before manual upload for ${uploadAuth.userId}',
         name: 'ManualUploadService',
       );
-      final isVerified = await _vrchatService.checkVerificationStatus(authData);
+      final isVerified = await _vrchatService.checkVerificationStatus(uploadAuth);
       if (!isVerified) {
         final error =
-            'Your account is not verified. Please verify your account in the Account tab';
+            'Your account ${uploadAuth.displayName} is not verified. Please verify your account in the Account tab';
         developer.log(error, name: 'ManualUploadService');
         PhotoEventService().notifyError('upload', error, photoPath: photoPath);
-        await _vrchatService.logout();
         throw Exception(error);
       }
 
       onStatusUpdate?.call('Checking Terms of Service...');
-      onProgress?.call(0.3);
+      onProgress?.call(0.35);
 
       // Check if user needs to accept TOS
       developer.log(
@@ -102,24 +144,10 @@ class ManualUploadService {
         throw Exception(error);
       }
 
-      onStatusUpdate?.call('Loading photo metadata...');
-      onProgress?.call(0.4);
-
-      // Get existing metadata - it must already exist with valid world/player info
-      PhotoMetadata? photoMetadata = await _photoMetadataRepository
-          .getPhotoMetadataForFile(photoPath);
-
-      if (photoMetadata == null) {
-        final error =
-            'No metadata found for this photo. Only photos with valid metadata can be uploaded.';
-        developer.log(error, name: 'ManualUploadService');
-        PhotoEventService().notifyError('upload', error, photoPath: photoPath);
-        throw Exception(error);
-      }
-
-      // Check if photo has valid metadata (world or players)
-      final hasValidMetadata =
-          photoMetadata.world != null || photoMetadata.players.isNotEmpty;
+      // Check if photo has valid metadata (world or players for VRChat, or isResonitePhoto)
+      final hasValidMetadata = isResonitePhoto ||
+          photoMetadata.world != null ||
+          photoMetadata.players.isNotEmpty;
       if (!hasValidMetadata) {
         final error =
             'Photo must have valid metadata (world or player information) to be uploaded';
@@ -128,7 +156,7 @@ class ManualUploadService {
         throw Exception(error);
       }
 
-      if (photoMetadata.application == 'Resonite') {
+      if (isResonitePhoto || photoMetadata.application == 'Resonite') {
         if (photoMetadata.cameraManufacturer == null ||
             photoMetadata.cameraManufacturer!.isEmpty) {
           final error =
@@ -159,7 +187,7 @@ class ManualUploadService {
       );
 
       final badges =
-          authData.badges.map((b) => b.toString().toLowerCase()).toList();
+          uploadAuth.badges.map((b) => b.toString().toLowerCase()).toList();
       final webpPath = await _processPhotoToWebP(photoPath, badges);
       if (webpPath == null) {
         final error = 'Failed to process photo to WebP format';
@@ -172,7 +200,7 @@ class ManualUploadService {
       }
 
       onStatusUpdate?.call('Uploading photo...');
-      onProgress?.call(0.7);
+      onProgress?.call(0.75);
 
       PhotoEventService().notifyError(
         'info',
@@ -184,7 +212,7 @@ class ManualUploadService {
       final galleryUrl = await _uploadWebPFile(
         webpPath,
         photoMetadata,
-        authData,
+        uploadAuth,
       );
 
       if (galleryUrl != null) {

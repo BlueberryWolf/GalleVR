@@ -59,7 +59,14 @@ class PhotoUploadService {
       PhotoMetadata photoMetadata =
           metadata ?? _createPhotoMetadata(photoPath, logMetadata);
 
-      final isResonitePhoto = photoMetadata.application == 'Resonite';
+      final isResonitePhoto = photoMetadata.application == 'Resonite' ||
+          (config.resonitePhotosDirectory.isNotEmpty &&
+              path.isWithin(config.resonitePhotosDirectory, photoPath));
+
+      if (isResonitePhoto && photoMetadata.application != 'Resonite') {
+        photoMetadata = photoMetadata.copyWith(application: 'Resonite');
+      }
+
       final primaryAuth = await _vrchatService.loadAuthData();
       final secondaryAuth = await _vrchatService.loadAuthDataSecondary();
 
@@ -128,6 +135,7 @@ class PhotoUploadService {
           return false;
         }
 
+        // Preserve restriction: non-metadata Resonite photos are not allowed to be uploaded
         if (photoMetadata.cameraManufacturer == null || photoMetadata.cameraManufacturer!.isEmpty) {
           final error = 'Resonite screenshot detected (no CameraManufacturer metadata). Skipping upload.';
           developer.log(error, name: 'PhotoUploadService');
