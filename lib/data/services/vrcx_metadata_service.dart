@@ -115,10 +115,19 @@ class VrcxMetadataService {
           !ext.endsWith('.jpeg') &&
           !ext.endsWith('.webp'))
         return null;
-      final vrcxJson = GalleVrNative().extractVrcxMetadata(imagePath);
-      if (vrcxJson == null) return null;
+      final isPng = ext.endsWith('.png');
+      String? jsonStr;
+      if (isPng) {
+        jsonStr = GalleVrNative().extractVrcMetadata(imagePath, ext);
+        if (jsonStr == null) {
+          jsonStr = GalleVrNative().extractResoniteMetadata(imagePath, ext);
+        }
+      } else {
+        jsonStr = GalleVrNative().extractResoniteMetadata(imagePath, ext);
+      }
+      if (jsonStr == null) return null;
 
-      final parsed = _parseVrcxMetadata(vrcxJson);
+      final parsed = _parseVrcxMetadata(jsonStr);
       if (parsed == null) return null;
 
       final metadata = _convertToGalleVrMetadata(parsed, imagePath, authParams);
