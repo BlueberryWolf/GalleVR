@@ -190,15 +190,44 @@ class PhotosController extends ValueNotifier<PhotosState> {
       _currentPage = 0;
       final initialBatch = sortedPhotos.take(_pageSize).toList();
 
-      value = value.copyWith(
-        allPhotos: sortedPhotos,
-        displayedPhotos: initialBatch,
+      final paths = initialBatch.map((e) => e.path).toList();
+      final metadata = await _metadataRepository.getMetadataForFiles(paths);
+
+      final List<String> badPaths = [];
+      metadata.forEach((filePath, meta) {
+        if (meta == null ||
+            (meta.isNonVrcx && meta.galleryUrl == null) ||
+            (meta.application == 'Resonite' &&
+                (meta.cameraManufacturer == null ||
+                    meta.cameraManufacturer!.isEmpty) &&
+                meta.galleryUrl == null)) {
+          badPaths.add(filePath);
+        }
+      });
+
+      final newMetadataMap = Map<String, PhotoMetadata?>.from(
+        value.metadataMap,
       );
+      newMetadataMap.addAll(metadata);
 
-      // Always reload metadata for the first batch to update sync status/metadata on refresh
-      await _loadMetadataForBatch(initialBatch);
+      final List<FileSystemEntity> filteredAll = List.from(sortedPhotos);
+      final List<FileSystemEntity> filteredDisplayed = List.from(initialBatch);
 
-      value = value.copyWith(isLoading: false, isLoadingMore: false);
+      if (badPaths.isNotEmpty) {
+        final Set<String> badSet = badPaths.toSet();
+        filteredAll.removeWhere((e) => badSet.contains(e.path));
+        filteredDisplayed.removeWhere((e) => badSet.contains(e.path));
+      }
+
+      if (loadId != _currentLoadId) return;
+
+      value = value.copyWith(
+        allPhotos: filteredAll,
+        displayedPhotos: filteredDisplayed,
+        metadataMap: newMetadataMap,
+        isLoading: false,
+        isLoadingMore: false,
+      );
     } catch (e) {
       if (loadId == _currentLoadId) {
         value = value.copyWith(isLoading: false, error: e.toString());
