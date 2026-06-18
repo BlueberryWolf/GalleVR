@@ -472,8 +472,8 @@ EXPORT char* extract_resonite_metadata(const char* file_path, const char* ext) {
             int is_webp = 0;
             size_t path_len = strlen(file_path);
             if (path_len >= 5) {
-                const char* ext = file_path + path_len - 5;
-                if (_stricmp(ext, ".webp") == 0) {
+                const char* ext_check = file_path + path_len - 5;
+                if (_stricmp(ext_check, ".webp") == 0) {
                     is_webp = 1;
                 }
             }
