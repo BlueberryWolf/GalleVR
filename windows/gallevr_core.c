@@ -14,6 +14,7 @@
     #define EXPORT __attribute__((visibility("default"))) __attribute__((used))
     #include <arpa/inet.h>
     #define BSWAP32(x) ntohl(x)
+    #define _stricmp strcasecmp
 #endif
 
 char* extract_tag(const char* xml, const char* tag) {
