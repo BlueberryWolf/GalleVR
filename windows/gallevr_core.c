@@ -310,37 +310,110 @@ EXPORT char* extract_vrcx_metadata(const char* file_path) {
         if (fallback_file) {
             fseek(fallback_file, 0, SEEK_END);
             size_t file_size = ftell(fallback_file);
-            fseek(fallback_file, 0, SEEK_SET);
-            size_t read_size = file_size > 2 * 1024 * 1024 ? 2 * 1024 * 1024 : file_size;
-            char* buf = malloc(read_size + 1);
-            if (buf) {
-                size_t bytes_read = fread(buf, 1, read_size, fallback_file);
-                buf[bytes_read] = '\0';
-                
-                char* ns_ptr = strstr(buf, "http://ns.baru.dev/resonite-ss-ext/");
-                if (ns_ptr) {
-                    char* xml_start = ns_ptr;
-                    while (xml_start > buf && *xml_start != '<') {
-                        xml_start--;
-                    }
-                    char* xml_end = strstr(ns_ptr, "</rdf:Description>");
-                    if (!xml_end) xml_end = strstr(ns_ptr, "/>");
-                    
-                    if (xml_end) {
-                        if (*xml_end == '<') {
-                            xml_end += 18;
-                        } else {
-                            xml_end += 2;
-                        }
-                        size_t xml_len = xml_end - xml_start;
-                        vrchat_xml = malloc(xml_len + 1);
-                        if (vrchat_xml) {
-                            memcpy(vrchat_xml, xml_start, xml_len);
-                            vrchat_xml[xml_len] = '\0';
-                        }
-                    }
+            
+            // Check if WebP file by extension to check tail first
+            int is_webp = 0;
+            size_t path_len = strlen(file_path);
+            if (path_len >= 5) {
+                const char* ext = file_path + path_len - 5;
+                if (_stricmp(ext, ".webp") == 0) {
+                    is_webp = 1;
                 }
-                free(buf);
+            }
+            
+            char* buf = NULL;
+            if (is_webp) {
+                // Try reading the end of the file first
+                size_t tail_size = file_size > 65536 ? 65536 : file_size;
+                fseek(fallback_file, (long)(file_size - tail_size), SEEK_SET);
+                buf = malloc(tail_size + 1);
+                if (buf) {
+                    size_t bytes_read = fread(buf, 1, tail_size, fallback_file);
+                    buf[bytes_read] = '\0';
+                    
+                    char* ns_ptr = NULL;
+                    const char* needle = "http://ns.baru.dev/resonite-ss-ext/";
+                    size_t needle_len = strlen(needle);
+                    if (bytes_read >= needle_len) {
+                        for (size_t i = 0; i <= bytes_read - needle_len; i++) {
+                            if (memcmp(buf + i, needle, needle_len) == 0) {
+                                ns_ptr = buf + i;
+                                break;
+                            }
+                        }
+                    }
+                    if (ns_ptr) {
+                        char* xml_start = ns_ptr;
+                        while (xml_start > buf && *xml_start != '<') {
+                            xml_start--;
+                        }
+                        char* xml_end = strstr(ns_ptr, "</rdf:Description>");
+                        if (!xml_end) xml_end = strstr(ns_ptr, "/>");
+                        
+                        if (xml_end) {
+                            if (*xml_end == '<') {
+                                xml_end += 18;
+                            } else {
+                                xml_end += 2;
+                            }
+                            size_t xml_len = xml_end - xml_start;
+                            vrchat_xml = malloc(xml_len + 1);
+                            if (vrchat_xml) {
+                                memcpy(vrchat_xml, xml_start, xml_len);
+                                vrchat_xml[xml_len] = '\0';
+                            }
+                        }
+                    }
+                    free(buf);
+                    buf = NULL;
+                }
+            }
+            
+            // Fallback to reading the first 2MB if not found in the tail
+            if (!vrchat_xml) {
+                fseek(fallback_file, 0, SEEK_SET);
+                size_t head_size = file_size > 2 * 1024 * 1024 ? 2 * 1024 * 1024 : file_size;
+                buf = malloc(head_size + 1);
+                if (buf) {
+                    size_t bytes_read = fread(buf, 1, head_size, fallback_file);
+                    buf[bytes_read] = '\0';
+                    
+                    char* ns_ptr = NULL;
+                    const char* needle = "http://ns.baru.dev/resonite-ss-ext/";
+                    size_t needle_len = strlen(needle);
+                    if (bytes_read >= needle_len) {
+                        for (size_t i = 0; i <= bytes_read - needle_len; i++) {
+                            if (memcmp(buf + i, needle, needle_len) == 0) {
+                                ns_ptr = buf + i;
+                                break;
+                            }
+                        }
+                    }
+                    if (ns_ptr) {
+                        char* xml_start = ns_ptr;
+                        while (xml_start > buf && *xml_start != '<') {
+                            xml_start--;
+                        }
+                        char* xml_end = strstr(ns_ptr, "</rdf:Description>");
+                        if (!xml_end) xml_end = strstr(ns_ptr, "/>");
+                        
+                        if (xml_end) {
+                            if (*xml_end == '<') {
+                                xml_end += 18;
+                            } else {
+                                xml_end += 2;
+                            }
+                            size_t xml_len = xml_end - xml_start;
+                            vrchat_xml = malloc(xml_len + 1);
+                            if (vrchat_xml) {
+                                memcpy(vrchat_xml, xml_start, xml_len);
+                                vrchat_xml[xml_len] = '\0';
+                            }
+                        }
+                    }
+                    free(buf);
+                    buf = NULL;
+                }
             }
             fclose(fallback_file);
         }

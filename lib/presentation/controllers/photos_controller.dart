@@ -253,18 +253,8 @@ class PhotosController extends ValueNotifier<PhotosState> {
     final resoniteDir = _config?.resonitePhotosDirectory;
     final List<String> badPaths = [];
     metadata.forEach((filePath, meta) {
-      final isResonitePath = resoniteDir != null &&
-          resoniteDir.isNotEmpty &&
-          path.isWithin(resoniteDir, filePath);
-      if (isResonitePath) {
-        return;
-      }
       if (meta == null ||
-          (meta.isNonVrcx && meta.galleryUrl == null) ||
-          (meta.application == 'Resonite' &&
-              (meta.cameraManufacturer == null ||
-                  meta.cameraManufacturer!.isEmpty) &&
-              meta.galleryUrl == null)) {
+          (meta.world == null && meta.players.isEmpty && meta.galleryUrl == null)) {
         badPaths.add(filePath);
       }
     });
