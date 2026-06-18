@@ -130,6 +130,7 @@ jobs:
           mkdir -p build/linux/x64/release/deb/usr/bin
           mkdir -p build/linux/x64/release/deb/usr/share/applications
           mkdir -p build/linux/x64/release/deb/usr/share/icons/hicolor/128x128/apps
+          mkdir -p build/linux/x64/release/deb/usr/share/metainfo
           mkdir -p build/linux/x64/release/deb/opt/gallevr
           
           # Copy bundle to /opt/gallevr
@@ -140,7 +141,6 @@ jobs:
           for lib in libayatana-appindicator3.so.1 libayatana-indicator3.so.7 libayatana-ido3-0.4.so.0 libdbusmenu-gtk3.so.4 libdbusmenu-glib.so.4 libnm.so.0; do
             FILE=$(ldconfig -p | grep "$lib" | head -n 1 | awk '{print $4}')
             if [ -z "$FILE" ]; then
-              # Fallback to searching in standard locations if ldconfig misses it
               FILE=$(find /usr/lib -name "$lib" | head -n 1)
             fi
             if [ -n "$FILE" ]; then
@@ -151,8 +151,9 @@ jobs:
           # Symlink binary to /usr/bin
           ln -s /opt/gallevr/GalleVR build/linux/x64/release/deb/usr/bin/gallevr
           
-          # Copy desktop file and icon
-          sed "s/@@VERSION@@/${{ env.VERSION }}/g" linux/runner/gallevr.desktop > build/linux/x64/release/deb/usr/share/applications/gallevr.desktop
+          # Desktop file, icon, and metainfo
+          sed "s/@@VERSION@@/${{ env.VERSION }}/g" linux/runner/gallevr.desktop > build/linux/x64/release/deb/usr/share/applications/com.blueberrywolf.gallevr.desktop
+          cp linux/runner/com.blueberrywolf.gallevr.metainfo.xml build/linux/x64/release/deb/usr/share/metainfo/com.blueberrywolf.gallevr.metainfo.xml
           
       - name: Prepare icons for packaging
         run: |
@@ -164,6 +165,8 @@ jobs:
           convert assets/images/app_icon.png -resize 512x512 AppDir/com.blueberrywolf.gallevr.png
           # Icon for Flatpak (include in bundle for next job)
           convert assets/images/app_icon.png -resize 128x128 build/linux/x64/release/bundle/app_icon_flatpak.png
+          # Metainfo for Flatpak job
+          cp linux/runner/com.blueberrywolf.gallevr.metainfo.xml build/linux/x64/release/bundle/
 
       - name: Create DEBIAN/control
         run: |
@@ -173,9 +176,9 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: amd64
-          Depends: libgtk-3-0, libayatana-appindicator3-1, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0
+          Depends: libgtk-3-0, libayatana-appindicator3-1, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, xdg-utils
           Maintainer: BlueberryWolf
-          Description: A social platform for your VRChat photos." > build/linux/x64/release/deb/DEBIAN/control
+          Description: A social gallery for your VRChat and Resonite photos." > build/linux/x64/release/deb/DEBIAN/control
           
       - name: Build .deb
         run: dpkg-deb --build build/linux/x64/release/deb GalleVR.deb
@@ -262,8 +265,9 @@ jobs:
         run: |
           VERSION=$(grep "^version: " pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
           sed -i "s/@@VERSION@@/${VERSION}/g" linux/runner/gallevr.desktop
-          # Copy icon to the same directory as the manifest
+          # Copy icon and metainfo to the manifest directory
           cp build/linux/x64/release/bundle/app_icon_flatpak.png linux/runner/com.blueberrywolf.gallevr.png
+          cp build/linux/x64/release/bundle/com.blueberrywolf.gallevr.metainfo.xml linux/runner/com.blueberrywolf.gallevr.metainfo.xml
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6

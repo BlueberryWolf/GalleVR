@@ -7,6 +7,7 @@ import '../../data/services/app_service_manager.dart';
 import '../../data/services/log_parser_service.dart';
 import '../../data/services/photo_processor_service.dart';
 import '../../data/services/photo_event_service.dart';
+import '../../data/services/vrchat_service.dart';
 import '../../data/models/config_model.dart';
 import '../../data/models/verification_models.dart';
 import '../widgets/app_card.dart';
@@ -29,9 +30,26 @@ class _MonitorScreenState extends State<MonitorScreen>
 
   ConfigModel? _config;
   AuthData? _authData;
+  AuthData? _authDataSec;
   bool _isWatching = false;
   bool _isLoading = true;
   bool _rebuildScheduled = false;
+
+  bool get _hasVRC =>
+      (_authData != null && !_authData!.userId.startsWith('U-')) ||
+      (_authDataSec != null && !_authDataSec!.userId.startsWith('U-'));
+
+  bool get _hasResonite =>
+      (_authData != null && _authData!.userId.startsWith('U-')) ||
+      (_authDataSec != null && _authDataSec!.userId.startsWith('U-'));
+
+  bool get _shouldWatch {
+    final cfg = _config;
+    if (cfg == null) return false;
+    return (_hasVRC && cfg.photosDirectory.isNotEmpty) ||
+        (_hasResonite && cfg.resonitePhotosDirectory.isNotEmpty) ||
+        (!_hasVRC && !_hasResonite && cfg.photosDirectory.isNotEmpty);
+  }
 
   final List<_ProcessingEvent> _events = [];
   StreamSubscription<String>? _photoSubscription;
@@ -113,6 +131,7 @@ class _MonitorScreenState extends State<MonitorScreen>
       final configChanged =
           _config?.photosDirectory != updatedConfig.photosDirectory ||
           _config?.logsDirectory != updatedConfig.logsDirectory ||
+          _config?.resonitePhotosDirectory != updatedConfig.resonitePhotosDirectory ||
           _config?.uploadEnabled != updatedConfig.uploadEnabled;
 
       if (configChanged) {
@@ -128,60 +147,41 @@ class _MonitorScreenState extends State<MonitorScreen>
   }
 
   void _listenForAuthChanges() {
-    _authSubscription = _appServiceManager.authDataStream.listen((authData) {
+    _authSubscription = _appServiceManager.authDataStream.listen((authData) async {
+      final authDataSec = await VRChatService().loadAuthDataSecondary();
       if (mounted) {
         setState(() {
           _authData = authData;
+          _authDataSec = authDataSec;
         });
       }
+      _updateWatcherStatus();
     });
   }
 
   void _updateWatcherStatus() {
-    if (_config != null) {
-      if (_config!.photosDirectory.isNotEmpty && !_isWatching) {
-        _startWatching();
-      } else if (_config!.photosDirectory.isEmpty && _isWatching) {
-        _stopWatching();
-      }
+    if (_shouldWatch && !_isWatching) {
+      _startWatching();
+    } else if (!_shouldWatch && _isWatching) {
+      _stopWatching();
     }
   }
 
   Future<void> _loadConfig() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+    setState(() => _isLoading = true);
     try {
-      final config = _appServiceManager.config;
-
-      if (config != null) {
-        setState(() {
-          _config = config;
-          _authData = _appServiceManager.authData;
-          _isLoading = false;
-        });
-
-        if (config.photosDirectory.isNotEmpty) {
-          _startWatching();
-        }
-      } else {
-        await _appServiceManager.initialize();
-        setState(() {
-          _config = _appServiceManager.config;
-          _authData = _appServiceManager.authData;
-          _isLoading = false;
-        });
-
-        if (_config != null && _config!.photosDirectory.isNotEmpty) {
-          _startWatching();
-        }
-      }
-    } catch (e) {
-      developer.log('Error loading config: $e', name: 'MonitorScreen');
+      final authDataSec = await VRChatService().loadAuthDataSecondary();
+      final config = _appServiceManager.config ?? await _appServiceManager.initialize().then((_) => _appServiceManager.config);
       setState(() {
+        _config = config ?? _appServiceManager.config;
+        _authData = _appServiceManager.authData;
+        _authDataSec = authDataSec;
         _isLoading = false;
       });
+      _updateWatcherStatus();
+    } catch (e) {
+      developer.log('Error loading config: $e', name: 'MonitorScreen');
+      setState(() => _isLoading = false);
     }
   }
 
@@ -202,12 +202,24 @@ class _MonitorScreenState extends State<MonitorScreen>
         );
       });
 
+      final hasVrcDir = _config!.photosDirectory.isNotEmpty;
+      final hasResoniteDir = _config!.resonitePhotosDirectory.isNotEmpty;
+
+      String watchMsg;
+      if (_hasResonite && hasResoniteDir && _hasVRC && hasVrcDir) {
+        watchMsg = 'Started watching VRChat logs and Resonite folder for new screenshots';
+      } else if (_hasResonite && hasResoniteDir) {
+        watchMsg = 'Started watching Resonite folder for new screenshots';
+      } else {
+        watchMsg = 'Started watching VRChat logs for new screenshots';
+      }
+
       setState(() {
         _isWatching = true;
         _addEvent(
           _ProcessingEvent(
             type: _EventType.info,
-            message: 'Started watching VRChat logs for new screenshots',
+            message: watchMsg,
             timestamp: DateTime.now(),
           ),
         );
@@ -302,10 +314,28 @@ class _MonitorScreenState extends State<MonitorScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isConfigMissing =
-        _config == null ||
-        _config!.photosDirectory.isEmpty ||
-        _config!.logsDirectory.isEmpty;
+    bool isConfigMissing;
+    String missingMessage;
+
+    if (_hasResonite && !_hasVRC) {
+      isConfigMissing = _config == null || _config!.resonitePhotosDirectory.isEmpty;
+      missingMessage = 'Please ensure Resonite Photos directory is set in the application settings.';
+    } else if (_hasVRC && !_hasResonite) {
+      isConfigMissing = _config == null ||
+          _config!.photosDirectory.isEmpty ||
+          _config!.logsDirectory.isEmpty;
+      missingMessage = 'Please ensure both VRChat Photos and Logs directories are set in the application settings.';
+    } else if (_hasResonite && _hasVRC) {
+      isConfigMissing = _config == null ||
+          (_config!.resonitePhotosDirectory.isEmpty &&
+              (_config!.photosDirectory.isEmpty || _config!.logsDirectory.isEmpty));
+      missingMessage = 'Please ensure VRChat directories (Photos & Logs) or Resonite directory is set in the application settings.';
+    } else {
+      isConfigMissing = _config == null ||
+          _config!.photosDirectory.isEmpty ||
+          _config!.logsDirectory.isEmpty;
+      missingMessage = 'Please ensure both VRChat Photos and Logs directories are set in the application settings.';
+    }
 
     if (isConfigMissing) {
       return Center(
@@ -336,7 +366,7 @@ class _MonitorScreenState extends State<MonitorScreen>
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 48),
               child: Text(
-                'Please ensure both Photos and Logs directories are set in the application settings.',
+                missingMessage,
                 style: Theme.of(
                   context,
                 ).textTheme.bodyMedium?.copyWith(color: Colors.white38),
@@ -358,6 +388,9 @@ class _MonitorScreenState extends State<MonitorScreen>
         _isWatching ? const Color(0xFF4ade80) : const Color(0xFFf87171);
     final hasPhotosDir = _config != null && _config!.photosDirectory.isNotEmpty;
     final hasLogsDir = _config != null && _config!.logsDirectory.isNotEmpty;
+    final hasResoniteDir = _config != null && _config!.resonitePhotosDirectory.isNotEmpty;
+    final showVRC = _hasVRC || !_hasResonite;
+    final showResonite = _hasResonite;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -430,19 +463,30 @@ class _MonitorScreenState extends State<MonitorScreen>
               ],
             ),
             const SizedBox(height: 24),
-            _buildDirectoryStatusRow(
-              Icons.photo_library_rounded,
-              'VRChat Photos Path',
-              _config?.photosDirectory ?? 'Not set',
-              hasPhotosDir,
-            ),
-            const SizedBox(height: 16),
-            _buildDirectoryStatusRow(
-              Icons.article_rounded,
-              'VRChat Logs Path',
-              _config?.logsDirectory ?? 'Not set',
-              hasLogsDir,
-            ),
+            if (showVRC) ...[
+              _buildDirectoryStatusRow(
+                Icons.photo_library_rounded,
+                'VRChat Photos Path',
+                _config?.photosDirectory ?? 'Not set',
+                hasPhotosDir,
+              ),
+              const SizedBox(height: 16),
+              _buildDirectoryStatusRow(
+                Icons.article_rounded,
+                'VRChat Logs Path',
+                _config?.logsDirectory ?? 'Not set',
+                hasLogsDir,
+              ),
+            ],
+            if (showResonite) ...[
+              if (showVRC) const SizedBox(height: 16),
+              _buildDirectoryStatusRow(
+                Icons.photo_library_rounded,
+                'Resonite Photos Path',
+                _config?.resonitePhotosDirectory ?? 'Not set',
+                hasResoniteDir,
+              ),
+            ],
             const SizedBox(height: 24),
             Row(
               children: [

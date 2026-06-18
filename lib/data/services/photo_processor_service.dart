@@ -136,7 +136,9 @@ class PhotoProcessorService {
 
             final parsedMetadata = await VrcxMetadataService()
                 .extractVrcxMetadata(sourcePath);
-            final bool isResonite = parsedMetadata?.application == 'Resonite';
+            final bool isResonite = (parsedMetadata?.application == 'Resonite') ||
+                (config.resonitePhotosDirectory.isNotEmpty &&
+                    path.isWithin(config.resonitePhotosDirectory, sourcePath));
 
             if (!isResonite && !_isValidAspectRatio(width, height)) {
               final ratio = (width / height).toStringAsFixed(2);
@@ -289,6 +291,10 @@ class PhotoProcessorService {
           final parsedMetadata = await VrcxMetadataService()
               .extractVrcxMetadata(sourcePath);
 
+          final bool isResonite = (parsedMetadata?.application == 'Resonite') ||
+              (config.resonitePhotosDirectory.isNotEmpty &&
+                  path.isWithin(config.resonitePhotosDirectory, sourcePath));
+
           final photoMetadata = PhotoMetadata(
             takenDate: creationTimeMs,
             filename: path.basename(sourcePath),
@@ -296,16 +302,15 @@ class PhotoProcessorService {
             world: parsedMetadata?.world ?? metadata?.world,
             players: parsedMetadata?.players ?? metadata?.players ?? [],
             localPath: sourcePath,
-            application: parsedMetadata?.application,
+            application: isResonite ? 'Resonite' : parsedMetadata?.application,
             takenGlobalPosition: parsedMetadata?.takenGlobalPosition,
             takenGlobalRotation: parsedMetadata?.takenGlobalRotation,
             takenGlobalScale: parsedMetadata?.takenGlobalScale,
             cameraFov: parsedMetadata?.cameraFov,
             cameraManufacturer: parsedMetadata?.cameraManufacturer,
             takenById: parsedMetadata?.takenById,
-            isNonVrcx:
-                parsedMetadata?.isNonVrcx ??
-                (parsedMetadata?.world == null && metadata?.world == null),
+            isNonVrcx: isResonite ? false : (parsedMetadata?.isNonVrcx ??
+                (parsedMetadata?.world == null && metadata?.world == null)),
           );
 
           final saveResult = await _photoMetadataRepository.savePhotoMetadata(

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path/path.dart' as path;
 
 import '../models/config_model.dart';
 import '../repositories/config_repository.dart';
@@ -126,6 +127,7 @@ class AppServiceManager {
     if (_authData == newData) return;
     _authData = newData;
     _authDataStreamController.add(newData);
+    refreshWatcher();
   }
 
   // Track if a TOS modal is currently being shown
@@ -206,6 +208,22 @@ class AppServiceManager {
     }
   }
 
+  Future<void> refreshAuth() async {
+    final loadedAuth = await _vrchatService.loadAuthData();
+    _setAuthData(loadedAuth);
+  }
+
+  Future<void> refreshWatcher() async {
+    if (_config == null) return;
+    await _photoProcessingSubscription?.cancel();
+    _photoProcessingSubscription = null;
+    await photoWatcherService.stopWatching();
+
+    if (await _shouldStartWatcher(_config!)) {
+      await _startPhotoWatcher();
+    }
+  }
+
   // Initialize
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -270,10 +288,7 @@ class AppServiceManager {
       }
 
       // Start watching for photos
-      final isResonite = _authData?.userId.startsWith('U-') == true;
-      if (_config != null &&
-          ((isResonite && _config!.resonitePhotosDirectory.isNotEmpty) ||
-           (!isResonite && _config!.photosDirectory.isNotEmpty))) {
+      if (_config != null && await _shouldStartWatcher(_config!)) {
         await _startPhotoWatcher();
       }
     } catch (e) {
@@ -282,6 +297,11 @@ class AppServiceManager {
         name: 'AppServiceManager',
       );
     }
+  }
+
+  Future<bool> _shouldStartWatcher(ConfigModel config) async {
+    return config.resonitePhotosDirectory.isNotEmpty ||
+        (config.photosDirectory.isNotEmpty && config.logsDirectory.isNotEmpty);
   }
 
   // Start the photo watcher service and wire up the permanent processing subscription
@@ -317,7 +337,8 @@ class AppServiceManager {
         'Background processing photo: $photoPath',
         name: 'AppServiceManager',
       );
-      final isResonite = _authData?.userId.startsWith('U-') == true;
+      final isResonite = (_config!.resonitePhotosDirectory.isNotEmpty &&
+              path.isWithin(_config!.resonitePhotosDirectory, photoPath));
       final metadata = isResonite ? null : await _logParserService.getLatestLogMetadata(_config!);
       final outputPath = await _photoProcessorService.processPhoto(
         photoPath,
@@ -379,7 +400,9 @@ class AppServiceManager {
         linuxService.updateMinimizeToTray(config.minimizeToTray);
       }
     }
-    final bool dirChanged = isResonite ? resonitePhotosDirectoryChanged : (photosDirectoryChanged || logsDirectoryChanged);
+    final bool dirChanged = photosDirectoryChanged ||
+        logsDirectoryChanged ||
+        resonitePhotosDirectoryChanged;
 
     // Restart photo watcher if important filesystem paths changed
     if (dirChanged) {
@@ -387,8 +410,7 @@ class AppServiceManager {
       _photoProcessingSubscription = null;
       await photoWatcherService.stopWatching();
 
-      if ((isResonite && config.resonitePhotosDirectory.isNotEmpty) ||
-          (!isResonite && config.photosDirectory.isNotEmpty && config.logsDirectory.isNotEmpty)) {
+      if (await _shouldStartWatcher(config)) {
         await _startPhotoWatcher();
       }
     }

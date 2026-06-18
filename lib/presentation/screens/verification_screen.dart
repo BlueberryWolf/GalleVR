@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../data/models/verification_models.dart';
 import '../../data/services/vrchat_service.dart';
 import '../../data/services/tos_service.dart';
+import '../../data/services/app_service_manager.dart';
 import '../theme/app_theme.dart';
 import '../widgets/blurrable_qr_code.dart';
 import '../widgets/app_card.dart';
@@ -305,6 +306,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
     } else {
       await _vrchatService.saveAuthData(finalAuth);
     }
+    await AppServiceManager().refreshAuth();
     await _vrchatService.setAgeVerified(true);
 
     if (mounted) {
