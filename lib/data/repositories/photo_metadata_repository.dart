@@ -241,6 +241,24 @@ class PhotoMetadataRepository {
     Map<String, dynamic> map, [
     List<Player> players = const [],
   ]) {
+    final jsonStr = map['metadata_json'] as String?;
+    if (jsonStr != null && jsonStr.isNotEmpty) {
+      try {
+        final decoded = json.decode(jsonStr) as Map<String, dynamic>;
+        final restored = PhotoMetadata.fromJson(decoded).copyWith(
+          localPath: map['local_path'] as String?,
+          galleryUrl: map['gallery_url'] as String?,
+          views: map['views'] as int? ?? 0,
+          isNonVrcx: (map['is_non_vrcx'] as int? ?? 0) == 1,
+          isEdited: (map['is_edited'] as int? ?? 0) == 1,
+          logChecked: (map['log_checked'] as int? ?? 0) == 1,
+        );
+        return restored;
+      } catch (e) {
+        developer.log('Failed to parse metadata_json: $e', name: 'PhotoMetadataRepository');
+      }
+    }
+
     final hasWorld = map['world_id'] != null || map['world_name'] != null;
     final world =
         hasWorld
@@ -366,6 +384,7 @@ class PhotoMetadataRepository {
       'camera_fov': metadata.cameraFov,
       'camera_manufacturer': metadata.cameraManufacturer,
       'taken_by_id': metadata.takenById,
+      'metadata_json': json.encode(metadata.toJson()),
     };
   }
 
@@ -889,77 +908,7 @@ class PhotoMetadataRepository {
               existingId ?? '${metadata.filename}_${metadata.takenDate}';
 
           if (existingMeta != null) {
-            if (isRemote) {
-              metadata = metadata.copyWith(
-                localPath: existingMeta.localPath ?? metadata.localPath,
-                isNonVrcx: false,
-                isEdited: existingMeta.isEdited || metadata.isEdited,
-                takenDate:
-                    existingMeta.takenDate, // Prefer local file stats/metadata
-                world: existingMeta.world ?? metadata.world,
-                players:
-                    existingMeta.players.isNotEmpty
-                        ? existingMeta.players
-                        : metadata.players,
-                logChecked: existingMeta.logChecked || metadata.logChecked,
-                application: existingMeta.application ?? metadata.application,
-                cameraManufacturer:
-                    existingMeta.cameraManufacturer ??
-                    metadata.cameraManufacturer,
-                takenById: existingMeta.takenById ?? metadata.takenById,
-                takenGlobalPosition:
-                    existingMeta.takenGlobalPosition ??
-                    metadata.takenGlobalPosition,
-                takenGlobalRotation:
-                    existingMeta.takenGlobalRotation ??
-                    metadata.takenGlobalRotation,
-                takenGlobalScale:
-                    existingMeta.takenGlobalScale ?? metadata.takenGlobalScale,
-                cameraFov: existingMeta.cameraFov ?? metadata.cameraFov,
-              );
-            } else {
-              metadata = metadata.copyWith(
-                galleryUrl:
-                    (metadata.galleryUrl != null &&
-                            metadata.galleryUrl!.isNotEmpty)
-                        ? metadata.galleryUrl
-                        : existingMeta.galleryUrl,
-                views:
-                    existingMeta.views > metadata.views
-                        ? existingMeta.views
-                        : metadata.views,
-                world: metadata.world ?? existingMeta.world,
-                players:
-                    metadata.players.isNotEmpty
-                        ? metadata.players
-                        : existingMeta.players,
-                isEdited: existingMeta.isEdited || metadata.isEdited,
-                isNonVrcx:
-                    (existingMeta.galleryUrl != null ||
-                            existingMeta.world != null ||
-                            existingMeta.players.isNotEmpty ||
-                            metadata.galleryUrl != null ||
-                            metadata.world != null ||
-                            metadata.players.isNotEmpty)
-                        ? false
-                        : metadata.isNonVrcx,
-                logChecked: existingMeta.logChecked || metadata.logChecked,
-                application: metadata.application ?? existingMeta.application,
-                cameraManufacturer:
-                    metadata.cameraManufacturer ??
-                    existingMeta.cameraManufacturer,
-                takenById: metadata.takenById ?? existingMeta.takenById,
-                takenGlobalPosition:
-                    metadata.takenGlobalPosition ??
-                    existingMeta.takenGlobalPosition,
-                takenGlobalRotation:
-                    metadata.takenGlobalRotation ??
-                    existingMeta.takenGlobalRotation,
-                takenGlobalScale:
-                    metadata.takenGlobalScale ?? existingMeta.takenGlobalScale,
-                cameraFov: metadata.cameraFov ?? existingMeta.cameraFov,
-              );
-            }
+            metadata = metadata.merge(existingMeta, isRemote: isRemote);
           }
 
           batch.insert(

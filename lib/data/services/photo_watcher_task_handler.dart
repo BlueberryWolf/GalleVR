@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import '../../core/platform/platform_service.dart';
 import '../../core/platform/platform_service_factory.dart';
 import '../../core/utils/log_file_watcher.dart';
+import '../../core/utils/screenshot_utils.dart';
 import '../models/config_model.dart';
 import '../repositories/config_repository.dart';
 
@@ -39,18 +40,6 @@ class PhotoWatcherTaskHandler extends TaskHandler {
   // Log file watcher and subscription for monitoring VRChat logs
   LogFileWatcher? _logFileWatcher;
   StreamSubscription<String>? _logWatcherSubscription;
-
-  // Regex pattern to match VRChat screenshot filenames
-  // Pattern: VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT.png
-  static final RegExp _vrchatScreenshotPattern = RegExp(
-    r'^VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}_\d+x\d+\.png$',
-  );
-
-  /// Checks if a filename matches the VRChat screenshot pattern
-  bool _isVRChatScreenshot(String filePath) {
-    final filename = path.basename(filePath);
-    return _vrchatScreenshotPattern.hasMatch(filename);
-  }
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -214,30 +203,7 @@ class PhotoWatcherTaskHandler extends TaskHandler {
 
   // Handle screenshot detected from log file
   void _handleScreenshotFromLog(String screenshotPath, ConfigModel config) {
-    String finalPath = screenshotPath;
-
-    if ((Platform.isLinux) && finalPath.contains(r'\')) {
-      developer.log(
-        'Detected Windows-style path on non-Windows platform: $finalPath',
-        name: 'PhotoWatcherTaskHandler',
-      );
-
-      final photosDirName = path.basename(config.photosDirectory);
-      const pathSeparator = r'\';
-
-      final vrchatFolderIndex = finalPath.toLowerCase().lastIndexOf(photosDirName.toLowerCase() + pathSeparator);
-
-      if (vrchatFolderIndex != -1) {
-        final relativePath = finalPath.substring(vrchatFolderIndex + photosDirName.length + 1);
-        final platformRelativePath = relativePath.replaceAll(r'\', path.separator);
-        finalPath = path.join(config.photosDirectory, platformRelativePath);
-
-        developer.log(
-          'Converted Windows path to: $finalPath',
-          name: 'PhotoWatcherTaskHandler',
-        );
-      }
-    }
+    String finalPath = ScreenshotUtils.translatePlatformPath(screenshotPath, config.photosDirectory);
 
     // Verify the file exists and is a VRChat screenshot
     final file = File(finalPath);
@@ -252,7 +218,7 @@ class PhotoWatcherTaskHandler extends TaskHandler {
       return;
     }
 
-    if (!_isVRChatScreenshot(finalPath)) {
+    if (!ScreenshotUtils.isVRChatScreenshot(finalPath)) {
       developer.log(
         'Ignoring non-VRChat screenshot: $finalPath',
         name: 'PhotoWatcherTaskHandler',
@@ -273,11 +239,11 @@ class PhotoWatcherTaskHandler extends TaskHandler {
       try {
         final updatedConfig = config.copyWith(photosDirectory: screenshotDir);
         _config = updatedConfig;
-        _configRepository.saveConfig(updatedConfig).then((_) {
-          FlutterForegroundTask.sendDataToMain({
-            'action': 'configAligned',
-            'photosDirectory': screenshotDir,
-          });
+        
+        // Delegate configuration alignment and saving to the main isolate to avoid concurrent writes
+        FlutterForegroundTask.sendDataToMain({
+          'action': 'configAligned',
+          'photosDirectory': screenshotDir,
         });
       } catch (e) {
         developer.log(

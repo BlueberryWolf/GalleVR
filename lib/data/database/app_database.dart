@@ -30,7 +30,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -83,6 +83,22 @@ class AppDatabase {
             );
           }
         }
+        if (oldVersion < 4) {
+          try {
+            await db.execute(
+              'ALTER TABLE photo_metadata ADD COLUMN metadata_json TEXT',
+            );
+            developer.log(
+              'Successfully migrated database from v3 to v4: added metadata_json',
+              name: 'AppDatabase',
+            );
+          } catch (e) {
+            developer.log(
+              'Database upgrade error from v3 to v4: $e',
+              name: 'AppDatabase',
+            );
+          }
+        }
       },
     );
   }
@@ -110,14 +126,15 @@ class AppDatabase {
         world_group_access_type TEXT,
         world_can_request_invite INTEGER,
         world_invite_only INTEGER,
-
+ 
         application TEXT,
         taken_global_position TEXT,
         taken_global_rotation TEXT,
         taken_global_scale TEXT,
         camera_fov TEXT,
         camera_manufacturer TEXT,
-        taken_by_id TEXT
+        taken_by_id TEXT,
+        metadata_json TEXT
       )
     ''');
 

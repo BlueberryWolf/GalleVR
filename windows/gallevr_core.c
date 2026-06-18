@@ -393,10 +393,6 @@ EXPORT char* extract_vrc_metadata(const char* file_path, const char* ext) {
         fclose(file);
     }
 
-    if (!vrcx_json && !vrchat_xml) {
-        return NULL;
-    }
-
     char* world_id = NULL;
     char* world_name = NULL;
     char* author = NULL;
@@ -407,6 +403,16 @@ EXPORT char* extract_vrc_metadata(const char* file_path, const char* ext) {
         world_name = extract_tag(vrchat_xml, "vrc:WorldDisplayName");
         author = extract_tag(vrchat_xml, "xmp:Author");
         create_date = extract_tag(vrchat_xml, "xmp:CreateDate");
+    }
+
+    if (!vrcx_json && !world_id) {
+        if (world_id) free(world_id);
+        if (world_name) free(world_name);
+        if (author) free(author);
+        if (create_date) free(create_date);
+        if (vrcx_json) free(vrcx_json);
+        if (vrchat_xml) free(vrchat_xml);
+        return NULL;
     }
 
     size_t result_len = 1024;
