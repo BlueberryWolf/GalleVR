@@ -1,0 +1,20 @@
+name: permission_handler_windows
+description: Stubbed permission plugin for Flutter on Windows to avoid Geolocator/Bluetooth initialization.
+version: 0.2.1
+homepage: https://github.com/baseflow/flutter-permission-handler
+
+flutter:
+  plugin:
+    implements: permission_handler
+    platforms:
+      windows:
+        pluginClass: PermissionHandlerWindowsPlugin
+
+dependencies:
+  flutter:
+    sdk: flutter
+  permission_handler_platform_interface: ^4.1.0
+
+environment:
+  sdk: ">=2.12.0 <4.0.0"
+  flutter: ">=2.0.0"

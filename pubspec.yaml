@@ -76,7 +76,10 @@ dependency_overrides:
     path: packages/system_tray
   audioplayers_linux:
     path: packages/audioplayers_linux
+  permission_handler_windows:
+    path: packages/permission_handler_windows
   uuid: ^4.5.1
+
 
 flutter_launcher_icons:
   android: true
