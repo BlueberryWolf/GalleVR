@@ -43,393 +43,230 @@ class PhotoProcessorService {
       name: 'PhotoProcessorService',
     );
     try {
-      try {
-        final tempDir = await getTemporaryDirectory();
-        final outputDir = Directory(
-          path.join(
-            tempDir.path,
-            'GalleVR-Temp',
-            DateTime.now().toIso8601String().split('T')[0],
-          ),
+      final file = File(sourcePath);
+      if (!await file.exists()) {
+        final error = 'Source file does not exist: $sourcePath';
+        developer.log(error, name: 'PhotoProcessorService');
+        PhotoEventService().notifyError('processing', error);
+        return null;
+      }
+
+      final authData = await _vrchatService.loadAuthData();
+      final secondaryAuth = await _vrchatService.loadAuthDataSecondary();
+
+      final parsedMetadata = await VrcxMetadataService().extractVrcxMetadata(sourcePath);
+      final bool isResonite = (parsedMetadata?.application == 'Resonite') ||
+          (config.resonitePhotosDirectory.isNotEmpty &&
+              path.isWithin(config.resonitePhotosDirectory, sourcePath));
+
+      final uploadAuth = isResonite
+          ? (authData?.userId.startsWith('U-') == true ? authData : secondaryAuth)
+          : (authData?.userId.startsWith('U-') == false ? authData : secondaryAuth);
+
+      final badges = uploadAuth?.badges.map((b) => b.toLowerCase()).toList() ?? [];
+
+      final webpPath = await compressPhotoToWebP(
+        sourcePath,
+        badges,
+        isResonite: isResonite,
+      );
+
+      if (webpPath == null) {
+        return null;
+      }
+
+      final sourceStats = file.statSync();
+      final creationTimeMs = sourceStats.modified.millisecondsSinceEpoch;
+
+      final photoMetadata = PhotoMetadata(
+        takenDate: creationTimeMs,
+        filename: filename,
+        views: 0,
+        world: parsedMetadata?.world ?? metadata?.world,
+        players: parsedMetadata?.players ?? metadata?.players ?? [],
+        localPath: sourcePath,
+        application: isResonite ? 'Resonite' : parsedMetadata?.application,
+        takenGlobalPosition: parsedMetadata?.takenGlobalPosition,
+        takenGlobalRotation: parsedMetadata?.takenGlobalRotation,
+        takenGlobalScale: parsedMetadata?.takenGlobalScale,
+        cameraFov: parsedMetadata?.cameraFov,
+        cameraManufacturer: parsedMetadata?.cameraManufacturer,
+        takenById: parsedMetadata?.takenById,
+        isNonVrcx: isResonite ? false : (parsedMetadata?.isNonVrcx ??
+            (parsedMetadata?.world == null && metadata?.world == null)),
+      );
+
+      final saveResult = await _photoMetadataRepository.savePhotoMetadata(
+        photoMetadata,
+      );
+      developer.log(
+        'Metadata saved: $saveResult for ${photoMetadata.filename}',
+        name: 'PhotoProcessorService',
+      );
+
+      String metadataDetails = 'Metadata saved locally';
+      if (photoMetadata.world != null) {
+        metadataDetails +=
+            ' (World: ${photoMetadata.world!.name}, Players: ${photoMetadata.players.length})';
+      }
+      PhotoEventService().notifyError(
+        'info',
+        metadataDetails,
+        photoPath: sourcePath,
+      );
+
+      if (config.uploadEnabled) {
+        developer.log(
+          'Starting asynchronous upload for photo: ${path.basename(webpPath)}',
+          name: 'PhotoProcessorService',
+        );
+        PhotoEventService().notifyError(
+          'info',
+          'Starting upload process...',
+          photoPath: sourcePath,
         );
 
-        if (!await outputDir.exists()) {
-          developer.log(
-            'Creating output directory: ${outputDir.path}',
-            name: 'PhotoProcessorService',
-          );
-          await outputDir.create(recursive: true);
-        }
-
-        final fileName = path.basenameWithoutExtension(sourcePath);
-        final outputPath = path.join(outputDir.path, '$fileName.webp');
-
-        try {
-          final file = File(sourcePath);
-          if (!await file.exists()) {
-            final error = 'Source file does not exist: $sourcePath';
-            developer.log(error, name: 'PhotoProcessorService');
-            PhotoEventService().notifyError('processing', error);
-            return null;
-          }
-
-          final authData = await _vrchatService.loadAuthData();
-          final badges =
-              authData?.badges.map((b) => b.toLowerCase()).toList() ?? [];
-
-          final tier = _getTierSettings(badges);
-          final int maxDimension = tier['maxDimension']!;
-          final int webpQuality = tier['webpQuality']!;
-          final int maxSizeBytes = tier['maxSizeBytes']!;
-
-          if (Platform.isWindows || Platform.isLinux || Platform.isAndroid) {
-            developer.log(
-              'Using fast-path direct cwebp/native encoding on $sourcePath',
-              name: 'PhotoProcessorService',
-            );
-            int width = 0;
-            int height = 0;
-
-            try {
-              final raf = await file.open(mode: FileMode.read);
-              final headerBytes = await raf.read(24);
-              await raf.close();
-
-              if (headerBytes.length >= 24 &&
-                  headerBytes[0] == 0x89 &&
-                  headerBytes[1] == 0x50 &&
-                  headerBytes[2] == 0x4E &&
-                  headerBytes[3] == 0x47) {
-                final bd = ByteData.sublistView(headerBytes);
-                width = bd.getInt32(16, Endian.big);
-                height = bd.getInt32(20, Endian.big);
-              } else {
-                try {
-                  final bytes = await file.readAsBytes();
-                  final decoded = await _decodeImage(bytes);
-                  if (decoded != null) {
-                    width = decoded.width;
-                    height = decoded.height;
-                  }
-                } catch (e) {
-                  developer.log('Failed to decode image for dimensions: $e');
-                }
-              }
-            } catch (e) {
-              developer.log(
-                'Failed to parse PNG header: $e',
-                name: 'PhotoProcessorService',
-              );
-            }
-
-            if (width <= 0 || height <= 0) {
-              final error =
-                  'Failed to determine image dimensions from header: $filename';
-              developer.log(error, name: 'PhotoProcessorService');
-              PhotoEventService().notifyError(
-                'processing',
-                error,
-                photoPath: sourcePath,
-              );
-              return null;
-            }
-
-            final parsedMetadata = await VrcxMetadataService()
-                .extractVrcxMetadata(sourcePath);
-            final bool isResonite = (parsedMetadata?.application == 'Resonite') ||
-                (config.resonitePhotosDirectory.isNotEmpty &&
-                    path.isWithin(config.resonitePhotosDirectory, sourcePath));
-
-            if (!isResonite && !_isValidAspectRatio(width, height)) {
-              final ratio = (width / height).toStringAsFixed(2);
-              final error =
-                  'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
-              developer.log(error, name: 'PhotoProcessorService');
-              PhotoEventService().notifyError(
-                'processing',
-                error,
-                photoPath: sourcePath,
-              );
-              return null;
-            }
-
-            int? targetWidth;
-            int? targetHeight;
-
-            if (width > maxDimension || height > maxDimension) {
-              if (width > height) {
-                targetWidth = maxDimension;
-                targetHeight = (height * (maxDimension / width)).round();
-              } else {
-                targetHeight = maxDimension;
-                targetWidth = (width * (maxDimension / height)).round();
-              }
-            }
-
-            final int processedWidth = targetWidth ?? width;
-            final int processedHeight = targetHeight ?? height;
-            final int processedPixels = processedWidth * processedHeight;
-            final int maxTierPixels = tier['maxTierPixels']!;
-
-            int scaledMaxSizeBytes =
-                (maxSizeBytes * (processedPixels / maxTierPixels)).round();
-            scaledMaxSizeBytes = scaledMaxSizeBytes.clamp(153600, maxSizeBytes);
-            if (scaledMaxSizeBytes > maxSizeBytes) {
-              scaledMaxSizeBytes = maxSizeBytes;
-            }
-
-            developer.log(
-              'Dynamic size ceiling: $scaledMaxSizeBytes bytes for resolution ${processedWidth}x$processedHeight (max tier limit: $maxSizeBytes bytes)',
-              name: 'PhotoProcessorService',
-            );
-
-            await _webpEncoderService.encodeFileToWebP(
-              sourcePath,
-              outputPath,
-              quality: webpQuality,
-              targetWidth: targetWidth,
-              targetHeight: targetHeight,
-              maxSizeBytes: scaledMaxSizeBytes,
-              originalWidth: width,
-              originalHeight: height,
-            );
-
-            developer.log(
-              'Direct cwebp/native encoding completed successfully: $outputPath',
-              name: 'PhotoProcessorService',
-            );
-          } else {
-            final bytes = await file.readAsBytes();
-            final image = await _decodeImage(bytes);
-
-            if (image == null) {
-              final error = 'Failed to decode image: $filename';
-              developer.log(error, name: 'PhotoProcessorService');
-              PhotoEventService().notifyError(
-                'processing',
-                error,
-                photoPath: sourcePath,
-              );
-              return null;
-            }
-
-            if (!_isValidAspectRatio(image.width, image.height)) {
-              final ratio = (image.width / image.height).toStringAsFixed(2);
-              final error =
-                  'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
-              developer.log(error, name: 'PhotoProcessorService');
-              PhotoEventService().notifyError(
-                'processing',
-                error,
-                photoPath: sourcePath,
-              );
-              return null;
-            }
-
-            final processedImage = await _resizeImageIfNeeded(
-              image,
-              maxDimension,
-            );
-
-            final int processedPixels =
-                processedImage.width * processedImage.height;
-            final int maxTierPixels = tier['maxTierPixels']!;
-
-            int scaledMaxSizeBytes =
-                (maxSizeBytes * (processedPixels / maxTierPixels)).round();
-            scaledMaxSizeBytes = scaledMaxSizeBytes.clamp(153600, maxSizeBytes);
-            if (scaledMaxSizeBytes > maxSizeBytes) {
-              scaledMaxSizeBytes = maxSizeBytes;
-            }
-
-            developer.log(
-              'Fallback path dynamic size ceiling: $scaledMaxSizeBytes bytes for resolution ${processedImage.width}x${processedImage.height} (max tier limit: $maxSizeBytes bytes)',
-              name: 'PhotoProcessorService',
-            );
-
-            Uint8List webpBytes = await _encodeToWebP(
-              processedImage,
-              webpQuality,
-            );
-
-            if (webpBytes.length > scaledMaxSizeBytes) {
-              int currentQuality = webpQuality;
-              developer.log(
-                'Initial encode too large for user tier (${webpBytes.length} bytes, limit is $scaledMaxSizeBytes), starting iterative compression...',
-                name: 'PhotoProcessorService',
-              );
-
-              while (webpBytes.length > scaledMaxSizeBytes &&
-                  currentQuality > 50) {
-                currentQuality -= 10;
-                if (currentQuality < 50) currentQuality = 50;
-                webpBytes = await _encodeToWebP(processedImage, currentQuality);
+        _photoUploadService
+            .uploadPhoto(
+              webpPath,
+              config,
+              metadata,
+              metadata: photoMetadata,
+              originalPath: sourcePath,
+              deleteFileOnComplete: true,
+            )
+            .then((uploadSuccess) async {
+              if (uploadSuccess) {
                 developer.log(
-                  'Retry quality $currentQuality produced ${webpBytes.length} bytes',
+                  'Background photo upload completed successfully',
                   name: 'PhotoProcessorService',
                 );
-                if (currentQuality <= 50) break;
-              }
-            }
 
-            developer.log(
-              'Final WebP: ${webpBytes.length} bytes (Quality: $webpQuality / Limit: $scaledMaxSizeBytes)',
-              name: 'PhotoProcessorService',
-            );
-
-            await File(outputPath).writeAsBytes(webpBytes);
-            developer.log(
-              'Saved WebP file to: $outputPath',
-              name: 'PhotoProcessorService',
-            );
-          }
-
-          final sourceFile = File(sourcePath);
-          final sourceStats = sourceFile.statSync();
-          final creationTimeMs = sourceStats.modified.millisecondsSinceEpoch;
-
-          final parsedMetadata = await VrcxMetadataService()
-              .extractVrcxMetadata(sourcePath);
-
-          final bool isResonite = (parsedMetadata?.application == 'Resonite') ||
-              (config.resonitePhotosDirectory.isNotEmpty &&
-                  path.isWithin(config.resonitePhotosDirectory, sourcePath));
-
-          final photoMetadata = PhotoMetadata(
-            takenDate: creationTimeMs,
-            filename: path.basename(sourcePath),
-            views: 0,
-            world: parsedMetadata?.world ?? metadata?.world,
-            players: parsedMetadata?.players ?? metadata?.players ?? [],
-            localPath: sourcePath,
-            application: isResonite ? 'Resonite' : parsedMetadata?.application,
-            takenGlobalPosition: parsedMetadata?.takenGlobalPosition,
-            takenGlobalRotation: parsedMetadata?.takenGlobalRotation,
-            takenGlobalScale: parsedMetadata?.takenGlobalScale,
-            cameraFov: parsedMetadata?.cameraFov,
-            cameraManufacturer: parsedMetadata?.cameraManufacturer,
-            takenById: parsedMetadata?.takenById,
-            isNonVrcx: isResonite ? false : (parsedMetadata?.isNonVrcx ??
-                (parsedMetadata?.world == null && metadata?.world == null)),
-          );
-
-          final saveResult = await _photoMetadataRepository.savePhotoMetadata(
-            photoMetadata,
-          );
-          developer.log(
-            'Metadata saved: $saveResult for ${photoMetadata.filename}',
-            name: 'PhotoProcessorService',
-          );
-
-          String metadataDetails = 'Metadata saved locally';
-          if (photoMetadata.world != null) {
-            metadataDetails +=
-                ' (World: ${photoMetadata.world!.name}, Players: ${photoMetadata.players.length})';
-          }
-          PhotoEventService().notifyError(
-            'info',
-            metadataDetails,
-            photoPath: sourcePath,
-          );
-
-          if (config.uploadEnabled) {
-            developer.log(
-              'Starting asynchronous upload for photo: ${path.basename(outputPath)}',
-              name: 'PhotoProcessorService',
-            );
-            PhotoEventService().notifyError(
-              'info',
-              'Starting upload process...',
-              photoPath: sourcePath,
-            );
-
-            _photoUploadService
-                .uploadPhoto(
-                  outputPath,
-                  config,
-                  metadata,
-                  metadata: photoMetadata,
-                  originalPath: sourcePath,
-                  deleteFileOnComplete: true,
-                )
-                .then((uploadSuccess) async {
-                  if (uploadSuccess) {
-                    developer.log(
-                      'Background photo upload completed successfully',
-                      name: 'PhotoProcessorService',
-                    );
-
-                    final updatedMetadata = await _photoMetadataRepository
-                        .getPhotoMetadataForFile(sourcePath);
-                    if (updatedMetadata != null &&
-                        updatedMetadata.galleryUrl != null) {
-                      developer.log(
-                        'Photo has gallery URL: ${updatedMetadata.galleryUrl}',
-                        name: 'PhotoProcessorService',
-                      );
-                    } else {
-                      developer.log(
-                        'No gallery URL found after background upload',
-                        name: 'PhotoProcessorService',
-                      );
-                      PhotoEventService().notifyError(
-                        'warning',
-                        'Upload succeeded but no gallery URL was found',
-                        photoPath: sourcePath,
-                      );
-                    }
-                  } else {
-                    developer.log(
-                      'Background photo upload failed',
-                      name: 'PhotoProcessorService',
-                    );
-                  }
-                })
-                .catchError((e) {
+                final updatedMetadata = await _photoMetadataRepository
+                    .getPhotoMetadataForFile(sourcePath);
+                if (updatedMetadata != null &&
+                    updatedMetadata.galleryUrl != null) {
                   developer.log(
-                    'Unhandled error in background photo upload: $e',
+                    'Photo has gallery URL: ${updatedMetadata.galleryUrl}',
                     name: 'PhotoProcessorService',
                   );
-                });
-          }
-
-          if (!config.uploadEnabled) {
-            PhotoEventService().notifyError(
-              'success',
-              'Photo processing completed successfully',
-              photoPath: sourcePath,
-            );
-
-            try {
-              final webpFile = File(outputPath);
-              if (await webpFile.exists()) {
-                await webpFile.delete();
+                } else {
+                  developer.log(
+                    'No gallery URL found after background upload',
+                    name: 'PhotoProcessorService',
+                  );
+                  PhotoEventService().notifyError(
+                    'warning',
+                    'Upload succeeded but no gallery URL was found',
+                    photoPath: sourcePath,
+                  );
+                }
+              } else {
                 developer.log(
-                  'Deleted temporary WebP file: $outputPath',
+                  'Background photo upload failed',
                   name: 'PhotoProcessorService',
                 );
               }
-            } catch (e) {
+            })
+            .catchError((e) {
               developer.log(
-                'Error deleting temporary WebP file: $e',
+                'Unhandled error in background photo upload: $e',
                 name: 'PhotoProcessorService',
               );
-            }
-          }
+            });
+      } else {
+        PhotoEventService().notifyError(
+          'success',
+          'Photo processing completed successfully',
+          photoPath: sourcePath,
+        );
 
-          return sourcePath;
+        try {
+          final webpFile = File(webpPath);
+          if (await webpFile.exists()) {
+            await webpFile.delete();
+            developer.log(
+              'Deleted temporary WebP file: $webpPath',
+              name: 'PhotoProcessorService',
+            );
+          }
         } catch (e) {
-          final error = 'Error processing image: $e';
-          developer.log(error, name: 'PhotoProcessorService');
-          PhotoEventService().notifyError(
-            'processing',
-            error,
-            photoPath: sourcePath,
+          developer.log(
+            'Error deleting temporary WebP file: $e',
+            name: 'PhotoProcessorService',
           );
-          return null;
+        }
+      }
+
+      return sourcePath;
+    } catch (e) {
+      final error = 'Unexpected error processing photo: $e';
+      developer.log(error, name: 'PhotoProcessorService');
+      PhotoEventService().notifyError(
+        'processing',
+        error,
+        photoPath: sourcePath,
+      );
+      return null;
+    }
+  }
+
+  Future<String?> compressPhotoToWebP(
+    String sourcePath,
+    List<String> badges, {
+    required bool isResonite,
+  }) async {
+    final filename = path.basename(sourcePath);
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final outputDir = Directory(
+        path.join(
+          tempDir.path,
+          'GalleVR-Temp',
+          DateTime.now().toIso8601String().split('T')[0],
+        ),
+      );
+
+      if (!await outputDir.exists()) {
+        developer.log(
+          'Creating output directory: ${outputDir.path}',
+          name: 'PhotoProcessorService',
+        );
+        await outputDir.create(recursive: true);
+      }
+
+      final fileName = path.basenameWithoutExtension(sourcePath);
+      final outputPath = path.join(outputDir.path, '$fileName.webp');
+
+      final file = File(sourcePath);
+      final tier = _getTierSettings(badges);
+      final int maxDimension = tier['maxDimension']!;
+      final int webpQuality = tier['webpQuality']!;
+      final int maxSizeBytes = tier['maxSizeBytes']!;
+
+      int width = 0;
+      int height = 0;
+
+      try {
+        final bytes = await file.readAsBytes();
+        final decoder = img.findDecoderForData(bytes);
+        if (decoder != null) {
+          final info = decoder.startDecode(bytes);
+          if (info != null) {
+            width = info.width;
+            height = info.height;
+          }
         }
       } catch (e) {
-        final error = 'Error creating temporary directory: $e';
+        developer.log(
+          'Failed to parse image dimensions: $e',
+          name: 'PhotoProcessorService',
+        );
+      }
+
+      if (width <= 0 || height <= 0) {
+        final error =
+            'Failed to determine image dimensions from header: $filename';
         developer.log(error, name: 'PhotoProcessorService');
         PhotoEventService().notifyError(
           'processing',
@@ -438,12 +275,138 @@ class PhotoProcessorService {
         );
         return null;
       }
+
+      if (!isResonite && !_isValidAspectRatio(width, height)) {
+        final ratio = (width / height).toStringAsFixed(2);
+        final error =
+            'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
+        developer.log(error, name: 'PhotoProcessorService');
+        PhotoEventService().notifyError(
+          'processing',
+          error,
+          photoPath: sourcePath,
+        );
+        return null;
+      }
+
+      int? targetWidth;
+      int? targetHeight;
+
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          targetWidth = maxDimension;
+          targetHeight = (height * (maxDimension / width)).round();
+        } else {
+          targetHeight = maxDimension;
+          targetWidth = (width * (maxDimension / height)).round();
+        }
+      }
+
+      final int processedWidth = targetWidth ?? width;
+      final int processedHeight = targetHeight ?? height;
+      final int processedPixels = processedWidth * processedHeight;
+      final int maxTierPixels = tier['maxTierPixels']!;
+
+      int scaledMaxSizeBytes =
+          (maxSizeBytes * (processedPixels / maxTierPixels)).round();
+      scaledMaxSizeBytes = scaledMaxSizeBytes.clamp(153600, maxSizeBytes);
+      if (scaledMaxSizeBytes > maxSizeBytes) {
+        scaledMaxSizeBytes = maxSizeBytes;
+      }
+
+      developer.log(
+        'Dynamic size ceiling: $scaledMaxSizeBytes bytes for resolution ${processedWidth}x$processedHeight (max tier limit: $maxSizeBytes bytes)',
+        name: 'PhotoProcessorService',
+      );
+
+      if (Platform.isWindows || Platform.isLinux || Platform.isAndroid) {
+        developer.log(
+          'Using fast-path direct cwebp/native encoding on $sourcePath',
+          name: 'PhotoProcessorService',
+        );
+        await _webpEncoderService.encodeFileToWebP(
+          sourcePath,
+          outputPath,
+          quality: webpQuality,
+          targetWidth: targetWidth,
+          targetHeight: targetHeight,
+          maxSizeBytes: scaledMaxSizeBytes,
+          originalWidth: width,
+          originalHeight: height,
+        );
+
+        developer.log(
+          'Direct cwebp/native encoding completed successfully: $outputPath',
+          name: 'PhotoProcessorService',
+        );
+      } else {
+        final bytes = await file.readAsBytes();
+        final image = await _decodeImage(bytes);
+
+        if (image == null) {
+          final error = 'Failed to decode image: $filename';
+          developer.log(error, name: 'PhotoProcessorService');
+          PhotoEventService().notifyError(
+            'processing',
+            error,
+            photoPath: sourcePath,
+          );
+          return null;
+        }
+
+        final processedImage = await _resizeImageIfNeeded(
+          image,
+          maxDimension,
+        );
+
+        developer.log(
+          'Fallback path dynamic size ceiling: $scaledMaxSizeBytes bytes for resolution ${processedImage.width}x${processedImage.height} (max tier limit: $maxSizeBytes bytes)',
+          name: 'PhotoProcessorService',
+        );
+
+        Uint8List webpBytes = await _encodeToWebP(
+          processedImage,
+          webpQuality,
+        );
+
+        if (webpBytes.length > scaledMaxSizeBytes) {
+          int currentQuality = webpQuality;
+          developer.log(
+            'Initial encode too large for user tier (${webpBytes.length} bytes, limit is $scaledMaxSizeBytes), starting iterative compression...',
+            name: 'PhotoProcessorService',
+          );
+
+          while (webpBytes.length > scaledMaxSizeBytes &&
+              currentQuality > 50) {
+            currentQuality -= 10;
+            if (currentQuality < 50) currentQuality = 50;
+            webpBytes = await _encodeToWebP(processedImage, currentQuality);
+            developer.log(
+              'Retry quality $currentQuality produced ${webpBytes.length} bytes',
+              name: 'PhotoProcessorService',
+            );
+            if (currentQuality <= 50) break;
+          }
+        }
+
+        developer.log(
+          'Final WebP: ${webpBytes.length} bytes (Quality: $webpQuality / Limit: $scaledMaxSizeBytes)',
+          name: 'PhotoProcessorService',
+        );
+
+        await File(outputPath).writeAsBytes(webpBytes);
+        developer.log(
+          'Saved WebP file to: $outputPath',
+          name: 'PhotoProcessorService',
+        );
+      }
+
+      return outputPath;
     } catch (e) {
-      final error = 'Unexpected error processing photo: $e';
-      developer.log(error, name: 'PhotoProcessorService');
+      developer.log('Error in compressPhotoToWebP: $e', name: 'PhotoProcessorService');
       PhotoEventService().notifyError(
         'processing',
-        error,
+        'Error compressing photo: $e',
         photoPath: sourcePath,
       );
       return null;

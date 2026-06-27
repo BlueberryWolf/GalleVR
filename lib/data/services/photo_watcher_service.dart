@@ -8,6 +8,7 @@ import '../../core/platform/platform_service.dart';
 import '../../core/platform/platform_service_factory.dart';
 import '../../core/utils/log_file_watcher.dart';
 import '../../core/utils/resonite_dir_watcher.dart';
+import '../../core/utils/screenshot_utils.dart';
 import '../models/config_model.dart';
 import '../repositories/config_repository.dart';
 import 'app_service_manager.dart';
@@ -34,22 +35,10 @@ class PhotoWatcherService {
 
   bool _useForegroundService = false;
 
-  // Regex pattern to match VRChat screenshot filenames
-  // Pattern: VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT.png
-  static final RegExp _vrchatScreenshotPattern = RegExp(
-    r'^VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}_\d+x\d+\.png$',
-  );
-
   PhotoWatcherService({PlatformService? platformService})
     : _platformService =
           platformService ?? PlatformServiceFactory.getPlatformService() {
     FlutterForegroundTask.addTaskDataCallback(_onReceiveTaskData);
-  }
-
-  /// Checks if a filename matches the VRChat screenshot pattern
-  bool _isVRChatScreenshot(String filePath) {
-    final filename = path.basename(filePath);
-    return _vrchatScreenshotPattern.hasMatch(filename);
   }
 
   Future<void> _initForegroundTask() async {
@@ -159,7 +148,9 @@ class PhotoWatcherService {
           final updatedConfig = currentConfig.copyWith(
             photosDirectory: newPhotosDir,
           );
-          AppServiceManager().updateConfig(updatedConfig);
+          ConfigRepository().saveConfig(updatedConfig).then((_) {
+            AppServiceManager().updateConfig(updatedConfig);
+          });
         }
       } else if (data.containsKey('error')) {
         final errorMessage = data['error'] as String;
@@ -332,68 +323,11 @@ class PhotoWatcherService {
     String screenshotPath,
     ConfigModel config,
   ) async {
-    String finalPath = screenshotPath;
-
-    // On Linux, VRChat (via Proton/Wine) might log Windows-style paths.
-    if ((Platform.isLinux || Platform.isMacOS) && finalPath.contains(r'\')) {
-      developer.log(
-        'Detected Windows-style path on non-Windows platform: $finalPath',
-        name: 'PhotoWatcherService',
-      );
-
-      final photosDirName = path.basename(config.photosDirectory);
-      const pathSeparator = r'\';
-
-      final vrchatFolderIndex = finalPath.toLowerCase().lastIndexOf(
-        photosDirName.toLowerCase() + pathSeparator,
-      );
-
-      if (vrchatFolderIndex != -1) {
-        final relativePath = finalPath.substring(
-          vrchatFolderIndex + photosDirName.length + 1,
-        );
-        final platformRelativePath = relativePath.replaceAll(
-          r'\',
-          path.separator,
-        );
-
-        finalPath = path.join(config.photosDirectory, platformRelativePath);
-
-        developer.log(
-          'Converted Windows path to: $finalPath',
-          name: 'PhotoWatcherService',
-        );
-      }
-    }
+    String finalPath = ScreenshotUtils.translatePlatformPath(screenshotPath, config.photosDirectory);
 
     // Verify the file exists and is a VRChat screenshot
     final file = File(finalPath);
-    bool ready = false;
-    int lastSize = -1;
-
-    for (int i = 0; i < 25; i++) {
-      if (await file.exists()) {
-        try {
-          final length = await file.length();
-          if (length > 0 && length == lastSize) {
-            ready = true;
-            break;
-          }
-          lastSize = length;
-        } catch (e) {
-          // File might be locked or not fully created
-        }
-      }
-      await Future.delayed(const Duration(milliseconds: 200));
-    }
-
-    if (!ready) {
-      try {
-        if (await file.exists() && (await file.length()) > 0) {
-          ready = true;
-        }
-      } catch (_) {}
-    }
+    final ready = await ScreenshotUtils.waitForFileReady(file, maxAttempts: 25);
 
     if (!ready) {
       developer.log(
@@ -403,7 +337,7 @@ class PhotoWatcherService {
       return;
     }
 
-    if (!_isVRChatScreenshot(finalPath)) {
+    if (!ScreenshotUtils.isVRChatScreenshot(finalPath)) {
       developer.log(
         'Ignoring non-VRChat screenshot: $finalPath',
         name: 'PhotoWatcherService',
@@ -463,17 +397,8 @@ class PhotoWatcherService {
 
     // Wait for the file to be fully written before processing.
     final file = File(photoPath);
-    int lastSize = -1;
-    for (int i = 0; i < 15; i++) {
-      try {
-        if (!await file.exists()) return;
-        final len = await file.length();
-        if (len > 0 && len == lastSize) break;
-        lastSize = len;
-      } catch (_) {}
-      await Future.delayed(const Duration(milliseconds: 200));
-    }
-    if (lastSize <= 0) return;
+    final ready = await ScreenshotUtils.waitForFileReady(file, maxAttempts: 15);
+    if (!ready) return;
 
     _handledPhotos.add(photoPath);
     developer.log('New Resonite screenshot detected: $photoPath', name: 'PhotoWatcherService');
