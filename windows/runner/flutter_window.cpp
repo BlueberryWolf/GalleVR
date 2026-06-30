@@ -7,7 +7,7 @@
 #include "flutter/standard_method_codec.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
-    : project_(project), system_command_close_(false) {}
+    : project_(project), system_command_close_(false), minimize_to_tray_(true) {}
 
 FlutterWindow::~FlutterWindow() {}
 
@@ -28,6 +28,29 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+
+  // Setup the window channel to receive updateMinimizeToTray call from Dart
+  window_channel_ = std::make_unique<flutter::MethodChannel<>>(
+      flutter_controller_->engine()->messenger(), "gallevr/window",
+      &flutter::StandardMethodCodec::GetInstance());
+  window_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<>& call,
+             std::unique_ptr<flutter::MethodResult<>> result) {
+        if (call.method_name() == "updateMinimizeToTray") {
+          const auto* val = std::get_if<bool>(call.arguments());
+          if (val) {
+            this->minimize_to_tray_ = *val;
+            printf("GalleVR C++: updateMinimizeToTray set to %d\n", *val);
+          } else {
+            this->minimize_to_tray_ = true;
+            printf("GalleVR C++: updateMinimizeToTray failed to parse argument, defaulted to true\n");
+          }
+          fflush(stdout);
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     bool start_minimized = false;
@@ -65,6 +88,29 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == WM_CLOSE) {
+    if (minimize_to_tray_) {
+      if (flutter_controller_ && flutter_controller_->engine()) {
+        flutter::MethodChannel<> channel(
+            flutter_controller_->engine()->messenger(),
+            "gallevr/window",
+            &flutter::StandardMethodCodec::GetInstance());
+        channel.InvokeMethod("onWindowHidden", nullptr);
+      }
+      ::ShowWindow(hwnd, SW_HIDE);
+      return 0;
+    } else {
+      if (flutter_controller_ && flutter_controller_->engine()) {
+        flutter::MethodChannel<> channel(
+            flutter_controller_->engine()->messenger(),
+            "gallevr/window",
+            &flutter::StandardMethodCodec::GetInstance());
+        channel.InvokeMethod("onWindowCloseRequest", nullptr);
+      }
+      return 0;
+    }
+  }
+
   bool parent_visible = ::IsWindowVisible(hwnd);
   if (message == WM_SHOWWINDOW) {
     parent_visible = wparam;
@@ -138,37 +184,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   switch (message) {
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
-      break;
-    case WM_SYSCOMMAND:
-      if ((wparam & 0xFFF0) == SC_CLOSE) {
-        system_command_close_ = true;
-      }
-      break;
-    case WM_CLOSE:
-      // Check if Alt key is pressed
-      if (GetAsyncKeyState(VK_MENU) & 0x8000) {
-        system_command_close_ = true;
-      }
-
-      if (system_command_close_) {
-        system_command_close_ = false;
-
-        // Send onWindowHidden to Flutter so Dart can unmount the UI and trim memory.
-        if (flutter_controller_ && flutter_controller_->engine()) {
-          flutter::MethodChannel<> channel(
-              flutter_controller_->engine()->messenger(),
-              "gallevr/window",
-              &flutter::StandardMethodCodec::GetInstance());
-
-          channel.InvokeMethod("onWindowHidden", nullptr);
-        }
-
-        ::ShowWindow(hwnd, SW_HIDE);
-        return 0;
-      }
-
-      // If not system_command_close, quit the app.
-      SetQuitOnClose(true);
       break;
   }
 

@@ -32,6 +32,9 @@ class WindowsService {
   // State broadcaster indicating if the UI window is hidden (for widget tree virtualization)
   final ValueNotifier<bool> isHidden = ValueNotifier<bool>(false);
 
+  // Callback to handle clean exit when minimizeToTray is disabled
+  Future<void> Function()? onCloseRequest;
+
   // Singleton instance
   static final WindowsService _instance = WindowsService._internal();
 
@@ -41,7 +44,9 @@ class WindowsService {
   }
 
   // Private constructor
-  WindowsService._internal();
+  WindowsService._internal() {
+    _setupWindowEventChannel();
+  }
 
   /// Initialize the Windows service
   Future<void> initialize({
@@ -72,8 +77,8 @@ class WindowsService {
       // Initialize system tray
       await _initSystemTray(appTitle ?? 'GalleVR');
 
-      // Set up window event channel handler
-      _setupWindowEventChannel();
+      // Sync minimize to tray setting with native C++ runner
+      await _windowChannel.invokeMethod('updateMinimizeToTray', minimizeToTray);
 
       _isInitialized = true;
       developer.log('Windows service initialized', name: 'WindowsService');
@@ -167,6 +172,7 @@ class WindowsService {
   /// Update the minimize to tray setting
   void updateMinimizeToTray(bool minimizeToTray) {
     _minimizeToTray = minimizeToTray;
+    _windowChannel.invokeMethod('updateMinimizeToTray', minimizeToTray);
   }
 
   /// Handle window close event
@@ -218,24 +224,20 @@ class WindowsService {
         // Hide the window first
         _appWindow.hide();
 
-        await _systemTray.setToolTip('').timeout(
-          const Duration(milliseconds: 100),
-          onTimeout: () => false,
-        );
-        await _systemTray.setTitle('').timeout(
-          const Duration(milliseconds: 100),
-          onTimeout: () => false,
-        );
+        await _systemTray
+            .setToolTip('')
+            .timeout(const Duration(milliseconds: 100), onTimeout: () => false);
+        await _systemTray
+            .setTitle('')
+            .timeout(const Duration(milliseconds: 100), onTimeout: () => false);
 
         final emptyMenu = Menu();
-        await emptyMenu.buildFrom([]).timeout(
-          const Duration(milliseconds: 100),
-          onTimeout: () => false,
-        );
-        await _systemTray.setContextMenu(emptyMenu).timeout(
-          const Duration(milliseconds: 100),
-          onTimeout: () => false,
-        );
+        await emptyMenu
+            .buildFrom([])
+            .timeout(const Duration(milliseconds: 100), onTimeout: () => false);
+        await _systemTray
+            .setContextMenu(emptyMenu)
+            .timeout(const Duration(milliseconds: 100), onTimeout: () => false);
 
         await Future.delayed(const Duration(milliseconds: 50));
 
@@ -487,6 +489,21 @@ class WindowsService {
           name: 'WindowsService',
         );
         await hideWindow(showNotification: true);
+      }
+
+      if (call.method == 'onWindowCloseRequest') {
+        try {
+          if (onCloseRequest != null) {
+            await onCloseRequest!().timeout(const Duration(milliseconds: 300));
+          }
+        } catch (e) {
+          developer.log(
+            'Error during close request cleanup: $e',
+            name: 'WindowsService',
+          );
+        } finally {
+          await exitApplication();
+        }
       }
 
       if (call.method == 'onWindowMinimized' && !isHidden.value) {

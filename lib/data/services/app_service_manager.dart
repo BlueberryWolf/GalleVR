@@ -42,9 +42,13 @@ class AppServiceManager {
       if (authData != null && authData.userId.startsWith('U-')) {
         if (_config != null && _config!.resonitePhotosDirectory.isEmpty) {
           try {
-            final defaultResoniteDir = await PlatformServiceFactory.getPlatformService().getResonitePhotosDirectory();
+            final defaultResoniteDir =
+                await PlatformServiceFactory.getPlatformService()
+                    .getResonitePhotosDirectory();
             if (defaultResoniteDir.isNotEmpty) {
-              final updatedConfig = _config!.copyWith(resonitePhotosDirectory: defaultResoniteDir);
+              final updatedConfig = _config!.copyWith(
+                resonitePhotosDirectory: defaultResoniteDir,
+              );
               await _configRepository.saveConfig(updatedConfig);
               await updateConfig(updatedConfig);
             }
@@ -267,6 +271,9 @@ class AppServiceManager {
 
       if (_config != null) {
         if (Platform.isWindows) {
+          windowsService.onCloseRequest = () async {
+            await handleWindowClose();
+          };
           await windowsService.initialize(
             minimizeToTray: _config!.minimizeToTray,
             appTitle: 'GalleVR',
@@ -337,9 +344,13 @@ class AppServiceManager {
         'Background processing photo: $photoPath',
         name: 'AppServiceManager',
       );
-      final isResonite = (_config!.resonitePhotosDirectory.isNotEmpty &&
+      final isResonite =
+          (_config!.resonitePhotosDirectory.isNotEmpty &&
               path.isWithin(_config!.resonitePhotosDirectory, photoPath));
-      final metadata = isResonite ? null : await _logParserService.getLatestLogMetadata(_config!);
+      final metadata =
+          isResonite
+              ? null
+              : await _logParserService.getLatestLogMetadata(_config!);
       final outputPath = await _photoProcessorService.processPhoto(
         photoPath,
         _config!,
@@ -376,8 +387,6 @@ class AppServiceManager {
         _config?.logsDirectory != config.logsDirectory;
     final bool resonitePhotosDirectoryChanged =
         _config?.resonitePhotosDirectory != config.resonitePhotosDirectory;
-    final bool minimizeToTrayChanged =
-        _config?.minimizeToTray != config.minimizeToTray;
     final bool startWithWindowsChanged =
         _config?.startWithWindows != config.startWithWindows;
 
@@ -386,21 +395,17 @@ class AppServiceManager {
 
     // Update Windows-specific settings if needed
     if (Platform.isWindows) {
-      // Update minimize to tray setting
-      if (minimizeToTrayChanged) {
-        windowsService.updateMinimizeToTray(config.minimizeToTray);
-      }
+      windowsService.updateMinimizeToTray(config.minimizeToTray);
 
       // Update auto-start setting
       if (startWithWindowsChanged) {
         await windowsService.setStartWithWindows(config.startWithWindows);
       }
     } else if (Platform.isLinux) {
-      if (minimizeToTrayChanged) {
-        linuxService.updateMinimizeToTray(config.minimizeToTray);
-      }
+      linuxService.updateMinimizeToTray(config.minimizeToTray);
     }
-    final bool dirChanged = photosDirectoryChanged ||
+    final bool dirChanged =
+        photosDirectoryChanged ||
         logsDirectoryChanged ||
         resonitePhotosDirectoryChanged;
 
@@ -535,8 +540,6 @@ class AppServiceManager {
         name: 'AppServiceManager',
       );
     }
-
-
 
     // Dispose update service
     try {

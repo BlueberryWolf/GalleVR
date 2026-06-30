@@ -8,6 +8,9 @@
 
 #include "win32_window.h"
 
+#include <flutter/method_channel.h>
+#include <flutter/standard_method_codec.h>
+
 // A window that does nothing but host a Flutter view.
 class FlutterWindow : public Win32Window {
  public:
@@ -31,6 +34,12 @@ class FlutterWindow : public Win32Window {
 
   // Whether close was initiated by a system command (Alt+F4, user click, etc.)
   bool system_command_close_ = false;
+
+  // Whether the app should minimize to tray on close
+  bool minimize_to_tray_ = true;
+
+  // Method channel for window actions
+  std::unique_ptr<flutter::MethodChannel<>> window_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_
