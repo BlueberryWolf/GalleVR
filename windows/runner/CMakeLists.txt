@@ -45,7 +45,7 @@ add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
     "$<TARGET_FILE_DIR:${BINARY_NAME}>/$<TARGET_FILE_NAME:gallevr_core>"
 )
 
-# Custom elevated migrator helper sharing the same resources/icons
+# Elevated migrator helper
 add_executable(GalleVR-Migrator WIN32
   "migrator.cpp"
   "Runner.rc"

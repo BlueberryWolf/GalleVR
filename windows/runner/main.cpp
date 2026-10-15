@@ -7,7 +7,7 @@
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
-  // Create mutex for Inno Setup installer/updater detection
+  // The installer and updater check this mutex to detect a running app.
   ::CreateMutex(nullptr, FALSE, L"2fc54373-926e-545c-883a-dabcd36b229f");
 
   // Attach to console when present (e.g., 'flutter run') or create a
@@ -29,20 +29,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
 
-  // Get the primary monitor dimensions
   RECT workArea;
   SystemParametersInfo(SPI_GETWORKAREA, 0, &workArea, 0);
   int screenWidth = workArea.right - workArea.left;
   int screenHeight = workArea.bottom - workArea.top;
 
-  // Define window size
   Win32Window::Size size(1280, 720);
 
-  // Calculate center position
   int centerX = (screenWidth - size.width) / 2;
   int centerY = (screenHeight - size.height) / 2;
 
-  // Ensure the position is not negative
   centerX = centerX < 0 ? 0 : centerX;
   centerY = centerY < 0 ? 0 : centerY;
 

@@ -32,14 +32,16 @@ class FlutterWindow : public Win32Window {
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
 
-  // Whether close was initiated by a system command (Alt+F4, user click, etc.)
-  bool system_command_close_ = false;
-
-  // Whether the app should minimize to tray on close
   bool minimize_to_tray_ = true;
 
-  // Method channel for window actions
   std::unique_ptr<flutter::MethodChannel<>> window_channel_;
+
+  bool restore_maximized_ = false;
+  bool in_size_move_ = false;
+
+  void RestorePlacement();
+  void SavePlacement();
+  void ShowWithRestoredState();
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

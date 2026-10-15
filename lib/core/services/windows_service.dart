@@ -194,6 +194,17 @@ class WindowsService {
   Future<void> exitApplication() async {
     developer.log('Exiting application', name: 'WindowsService');
 
+    try {
+      await _windowChannel
+          .invokeMethod('savePlacement')
+          .timeout(const Duration(milliseconds: 200));
+    } catch (e) {
+      developer.log(
+        'Error saving window placement: $e',
+        name: 'WindowsService',
+      );
+    }
+
     if (_isInitialized) {
       try {
         developer.log(

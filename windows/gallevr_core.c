@@ -475,7 +475,7 @@ EXPORT char* extract_resonite_metadata(const char* file_path, const char* ext) {
             fseek(fallback_file, 0, SEEK_END);
             size_t file_size = ftell(fallback_file);
             
-            // Check if WebP file by extension to check tail first
+            // WebP keeps its XMP chunk near the end, so read the tail first.
             int is_webp = 0;
             size_t path_len = strlen(file_path);
             if (path_len >= 5) {
@@ -487,7 +487,6 @@ EXPORT char* extract_resonite_metadata(const char* file_path, const char* ext) {
             
             char* buf = NULL;
             if (is_webp) {
-                // Try reading the end of the file first
                 size_t tail_size = file_size > 65536 ? 65536 : file_size;
                 fseek(fallback_file, (long)(file_size - tail_size), SEEK_SET);
                 buf = malloc(tail_size + 1);

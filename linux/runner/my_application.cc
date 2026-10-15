@@ -33,12 +33,10 @@ static gboolean on_window_state_event(GtkWidget *widget,
                               "gallevr/window", FL_METHOD_CODEC(codec));
 
     if (event->new_window_state & GDK_WINDOW_STATE_ICONIFIED) {
-      // Hide widget and notify Dart
       gtk_widget_hide(GTK_WIDGET(view));
       fl_method_channel_invoke_method(channel, "onWindowMinimized", nullptr,
                                       nullptr, nullptr, nullptr);
     } else {
-      // Show widget and notify Dart
       gtk_widget_show(GTK_WIDGET(view));
       fl_method_channel_invoke_method(channel, "onWindowRestored", nullptr,
                                       nullptr, nullptr, nullptr);
@@ -105,7 +103,6 @@ static void my_application_activate(GApplication *application) {
 
   gtk_window_set_default_size(window, 1280, 720);
 
-  // Set window icon
   g_autofree gchar *exe_path = g_file_read_link("/proc/self/exe", nullptr);
   if (exe_path) {
     g_autofree gchar *exe_dir = g_path_get_dirname(exe_path);

@@ -88,7 +88,7 @@ var
 begin
   Result := True;
   
-  // Extract and run our elevated migrator helper if the old directory exists
+  // Run the elevated migrator when the old install directory exists.
   if DirExists(ExpandConstant('{commonpf}\GalleVR')) then
   begin
     ExtractTemporaryFile('GalleVR-Migrator.exe');

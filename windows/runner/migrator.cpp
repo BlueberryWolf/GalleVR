@@ -26,7 +26,6 @@ void WriteLog(const std::wstring& message) {
   }
 }
 
-// Helper to trim quotes from a wide string
 std::wstring TrimQuotes(const std::wstring& str) {
   if (str.length() >= 2 && str.front() == L'"' && str.back() == L'"') {
     return str.substr(1, str.length() - 2);
@@ -34,7 +33,6 @@ std::wstring TrimQuotes(const std::wstring& str) {
   return str;
 }
 
-// Terminates any running process with the specified name
 bool KillProcess(const std::wstring& processName) {
   bool terminated = false;
   const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -69,7 +67,6 @@ bool KillProcess(const std::wstring& processName) {
   return terminated;
 }
 
-// Recursively deletes the directory at the specified path
 bool DeleteDirectory(const std::wstring& path) {
   WriteLog(L"Attempting to delete directory: " + path);
   
@@ -95,7 +92,7 @@ bool DeleteDirectory(const std::wstring& path) {
   }
 }
 
-// Cleans up legacy shortcuts from both common and user folders
+// Cleans up legacy shortcuts
 void CleanLegacyShortcuts() {
   WriteLog(L"Cleaning legacy shortcuts...");
   
@@ -128,15 +125,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_ int nCmdShow) {
   WriteLog(L"GalleVR-Migrator started.");
 
-  // Check if running as Admin
   BOOL isAdmin = IsUserAnAdmin();
   WriteLog(L"Running with Admin privileges: " + std::wstring(isAdmin ? L"Yes" : L"No"));
 
-  // Check if GalleVR.exe is running and kill it
   KillProcess(L"GalleVR.exe");
   Sleep(500);
 
-  // Read command line argument
   std::wstring legacyPath = TrimQuotes(lpCmdLine);
   WriteLog(L"Command line argument passed: L\"" + legacyPath + L"\"");
 
@@ -147,7 +141,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
   DeleteDirectory(legacyPath);
   
-  // Clean up legacy shortcuts to prevent dead link icons
+  // Old shortcuts would otherwise point at the removed install.
   CleanLegacyShortcuts();
 
   WriteLog(L"GalleVR-Migrator completed successfully.");

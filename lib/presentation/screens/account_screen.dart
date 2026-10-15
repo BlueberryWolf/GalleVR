@@ -263,36 +263,40 @@ class _AccountScreenState extends State<AccountScreen> {
         isResonite ? const Color(0xFF00b4d8) : const Color(0xFF8b5cf6);
     final platformText = isResonite ? 'Resonite' : 'VRChat';
 
+    final avatarSize = isWide ? 100.0 : 70.0;
+    final avatarFallback = Center(
+      child: Icon(
+        Icons.person_rounded,
+        size: avatarSize / 2,
+        color: platformColor,
+      ),
+    );
     final avatarWidget = Container(
-      width: isWide ? 100 : 70,
-      height: isWide ? 100 : 70,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: platformColor.withValues(alpha: 0.1),
+      width: avatarSize,
+      height: avatarSize,
+      foregroundDecoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: platformColor.withValues(alpha: 0.3),
+          color: platformColor.withValues(alpha: 0.4),
           width: 2,
         ),
       ),
-      child:
-          auth.avatarUrl != null
-              ? Image.network(
-                auth.avatarUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Icon(
-                    Icons.person_rounded,
-                    size: isWide ? 50 : 40,
-                    color: platformColor,
-                  );
-                },
-              )
-              : Icon(
-                Icons.person_rounded,
-                size: isWide ? 50 : 40,
-                color: platformColor,
-              ),
+      child: ClipOval(
+        child: ColoredBox(
+          color: AppTheme.tint(platformColor, 0.15),
+          child:
+              auth.avatarUrl != null
+                  ? Image.network(
+                    auth.avatarUrl!,
+                    width: avatarSize,
+                    height: avatarSize,
+                    fit: BoxFit.cover,
+                    errorBuilder:
+                        (context, error, stackTrace) => avatarFallback,
+                  )
+                  : avatarFallback,
+        ),
+      ),
     );
 
     final nameAndStatus = Column(

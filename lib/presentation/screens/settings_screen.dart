@@ -22,6 +22,7 @@ import '../widgets/tos_modal.dart';
 import '../widgets/app_card.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_switch.dart';
+import '../widgets/tinted_button.dart';
 import 'mass_upload_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -965,6 +966,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: _getPlatformName(),
               leading: Icons.devices,
             ),
+            if (Platform.isWindows || Platform.isLinux) ...[
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: TintedButton(
+                  onPressed:
+                      () => AppServiceManager().handleWindowClose(
+                        forceExit: true,
+                      ),
+                  icon: Icons.power_settings_new_rounded,
+                  label: 'Quit GalleVR',
+                  color: AppTheme.errorColor,
+                  dense: true,
+                ),
+              ),
+            ],
           ],
         ),
       ),

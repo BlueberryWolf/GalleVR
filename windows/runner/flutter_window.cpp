@@ -6,8 +6,15 @@
 #include "flutter/method_channel.h"
 #include "flutter/standard_method_codec.h"
 
+namespace {
+
+constexpr wchar_t kSettingsKey[] = L"Software\\GalleVR";
+constexpr wchar_t kPlacementValue[] = L"WindowPlacement";
+
+}  // namespace
+
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
-    : project_(project), system_command_close_(false), minimize_to_tray_(true) {}
+    : project_(project), minimize_to_tray_(true) {}
 
 FlutterWindow::~FlutterWindow() {}
 
@@ -16,20 +23,20 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
 
+  RestorePlacement();
+
   RECT frame = GetClientArea();
 
   // The size here must match the window dimensions to avoid unnecessary surface
   // creation / destruction in the startup path.
   flutter_controller_ = std::make_unique<flutter::FlutterViewController>(
       frame.right - frame.left, frame.bottom - frame.top, project_);
-  // Ensure that basic setup of the controller was successful.
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
-  // Setup the window channel to receive updateMinimizeToTray call from Dart
   window_channel_ = std::make_unique<flutter::MethodChannel<>>(
       flutter_controller_->engine()->messenger(), "gallevr/window",
       &flutter::StandardMethodCodec::GetInstance());
@@ -47,6 +54,9 @@ bool FlutterWindow::OnCreate() {
           }
           fflush(stdout);
           result->Success();
+        } else if (call.method_name() == "savePlacement") {
+          this->SavePlacement();
+          result->Success();
         } else {
           result->NotImplemented();
         }
@@ -63,17 +73,59 @@ bool FlutterWindow::OnCreate() {
     }
 
     if (!start_minimized) {
-      this->Show();
+      this->ShowWithRestoredState();
     }
   });
 
-  // Flutter can complete the first frame before the "show window" callback is
-  // registered. The following call ensures a frame is pending to ensure the
-  // window is shown. It is a no-op if the first frame hasn't completed yet.
-  // We still need to force a redraw even if we're starting minimized
+  // The comments in this file are from flutter itself,
+  // so I thought I would be a little more clear:
+  // The first frame can finish before the show callback is registered, so
+  // force one more frame. This runs even when starting minimized.
   flutter_controller_->ForceRedraw();
 
   return true;
+}
+
+void FlutterWindow::RestorePlacement() {
+  WINDOWPLACEMENT placement{};
+  DWORD size = sizeof(placement);
+  if (::RegGetValue(HKEY_CURRENT_USER, kSettingsKey, kPlacementValue,
+                    RRF_RT_REG_BINARY, nullptr, &placement,
+                    &size) != ERROR_SUCCESS ||
+      size != sizeof(placement) || placement.length != sizeof(placement)) {
+    return;
+  }
+
+  if (::MonitorFromRect(&placement.rcNormalPosition,
+                        MONITOR_DEFAULTTONULL) == nullptr) {
+    return;
+  }
+
+  restore_maximized_ = placement.showCmd == SW_SHOWMAXIMIZED;
+  placement.showCmd = SW_HIDE;
+  placement.flags = 0;
+  ::SetWindowPlacement(GetHandle(), &placement);
+}
+
+void FlutterWindow::SavePlacement() {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr || ::IsIconic(hwnd)) {
+    return;
+  }
+
+  WINDOWPLACEMENT placement{};
+  placement.length = sizeof(placement);
+  if (!::GetWindowPlacement(hwnd, &placement)) {
+    return;
+  }
+
+  ::RegSetKeyValue(HKEY_CURRENT_USER, kSettingsKey, kPlacementValue,
+                   REG_BINARY, &placement, sizeof(placement));
+}
+
+void FlutterWindow::ShowWithRestoredState() {
+  ::ShowWindow(GetHandle(),
+               restore_maximized_ ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
 }
 
 void FlutterWindow::OnDestroy() {
@@ -88,7 +140,26 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == WM_ENTERSIZEMOVE) {
+    in_size_move_ = true;
+  }
+
+  if (message == WM_EXITSIZEMOVE) {
+    in_size_move_ = false;
+    SavePlacement();
+  }
+
+  if (message == WM_WINDOWPOSCHANGED && !in_size_move_ &&
+      ::IsWindowVisible(hwnd)) {
+    const auto* pos = reinterpret_cast<const WINDOWPOS*>(lparam);
+    if ((pos->flags & (SWP_NOMOVE | SWP_NOSIZE)) !=
+        (SWP_NOMOVE | SWP_NOSIZE)) {
+      SavePlacement();
+    }
+  }
+
   if (message == WM_CLOSE) {
+    SavePlacement();
     if (minimize_to_tray_) {
       if (flutter_controller_ && flutter_controller_->engine()) {
         flutter::MethodChannel<> channel(
@@ -167,6 +238,11 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
         channel.InvokeMethod("onWindowMinimized", nullptr);
       }
     } else if (wparam == SIZE_RESTORED || wparam == SIZE_MAXIMIZED) {
+      bool maximized = wparam == SIZE_MAXIMIZED;
+      if (maximized != restore_maximized_ && ::IsWindowVisible(hwnd)) {
+        restore_maximized_ = maximized;
+        SavePlacement();
+      }
       if (flutter_controller_ && flutter_controller_->engine()) {
         flutter::MethodChannel<> channel(
             flutter_controller_->engine()->messenger(),
