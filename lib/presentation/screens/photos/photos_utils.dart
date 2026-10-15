@@ -108,7 +108,9 @@ void showStyledBottomSheet({
     context: context,
     backgroundColor: AppTheme.surfaceColor,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(AppTheme.radiusModal),
+      ),
     ),
     builder: builder,
   );

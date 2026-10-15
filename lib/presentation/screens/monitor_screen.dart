@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'dart:io';
@@ -390,7 +391,10 @@ class _MonitorScreenState extends State<MonitorScreen> {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(
+        horizontal: max(16.0, (MediaQuery.sizeOf(context).width - 1100) / 2),
+        vertical: 16,
+      ),
       children: [
         _buildStatusCard(),
         const SizedBox(height: 20),
@@ -402,7 +406,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                 'Activity',
                 style: TextStyle(
                   color: AppTheme.textColor,
-                  fontSize: 14,
+                  fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -411,13 +415,13 @@ class _MonitorScreenState extends State<MonitorScreen> {
                 '${_events.length}',
                 style: const TextStyle(
                   color: AppTheme.secondaryTextColor,
-                  fontSize: 13,
+                  fontSize: 14,
                 ),
               ),
               const Spacer(),
               TextButton.icon(
                 onPressed: _events.isEmpty ? null : _clearEvents,
-                icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                icon: const Icon(Icons.delete_sweep_outlined, size: 18),
                 label: const Text('Clear'),
                 style: TextButton.styleFrom(
                   foregroundColor: AppTheme.secondaryTextColor,
@@ -427,7 +431,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                   ),
                   minimumSize: Size.zero,
                   textStyle: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -468,7 +472,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                     ? Icons.visibility_outlined
                     : Icons.visibility_off_outlined,
                 color: statusColor,
-                size: 20,
+                size: 22,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -476,7 +480,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                   _isWatching ? 'Watching for new photos' : 'Not watching',
                   style: const TextStyle(
                     color: AppTheme.textColor,
-                    fontSize: 15,
+                    fontSize: 17,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -485,7 +489,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                 'Auto-upload',
                 style: TextStyle(
                   color: AppTheme.secondaryTextColor,
-                  fontSize: 13,
+                  fontSize: 14,
                 ),
               ),
               const SizedBox(width: 10),
@@ -508,7 +512,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
           ),
           const SizedBox(height: 16),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: AppTheme.surfaceBase,
               borderRadius: BorderRadius.circular(AppTheme.radiusControl),
@@ -536,29 +540,30 @@ class _MonitorScreenState extends State<MonitorScreen> {
             : 'Not found';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
           SizedBox(
-            width: 120,
+            width: 140,
             child: Text(
               label,
               style: const TextStyle(
                 color: AppTheme.secondaryTextColor,
-                fontSize: 12,
+                fontSize: 14,
               ),
             ),
           ),
-          Expanded(
+          Flexible(
             child: Text(
               directory.isEmpty ? '-' : directory,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AppTheme.textColor, fontSize: 12),
+              style: const TextStyle(color: AppTheme.textColor, fontSize: 14),
             ),
           ),
+          const SizedBox(width: 10),
           Icon(
             problem == null ? Icons.check_rounded : Icons.warning_amber_rounded,
-            size: 14,
+            size: 16,
             color:
                 problem == null ? AppTheme.successColor : AppTheme.warningColor,
           ),
@@ -568,7 +573,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
               problem,
               style: const TextStyle(
                 color: AppTheme.warningColor,
-                fontSize: 12,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -585,7 +590,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
         child: Center(
           child: Text(
             'No activity yet',
-            style: TextStyle(color: AppTheme.secondaryTextColor, fontSize: 13),
+            style: TextStyle(color: AppTheme.secondaryTextColor, fontSize: 14),
           ),
         ),
       );
@@ -630,25 +635,25 @@ class _MonitorScreenState extends State<MonitorScreen> {
                   ? () => _showPhotoPreview(event.photoPath!)
                   : null,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
                 Text(
                   _formatTimestamp(event.timestamp),
                   style: const TextStyle(
                     color: AppTheme.secondaryTextColor,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 ),
                 const SizedBox(width: 14),
                 Container(
-                  padding: const EdgeInsets.all(5),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: AppTheme.tint(color, 0.15),
                     borderRadius: BorderRadius.circular(AppTheme.radiusTag),
                   ),
-                  child: Icon(iconData, color: color, size: 14),
+                  child: Icon(iconData, color: color, size: 16),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -659,7 +664,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                           event.type == _EventType.error
                               ? AppTheme.errorColor
                               : AppTheme.textColor,
-                      fontSize: 13,
+                      fontSize: 14,
                     ),
                   ),
                 ),

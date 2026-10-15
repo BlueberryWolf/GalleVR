@@ -145,7 +145,7 @@ class _TOSModalState extends State<TOSModal> {
                       'Effective Date: ${_formatDate((_tosData['content'] as Map)['effectiveDate'])}',
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: AppTheme.secondaryTextColor,
                       ),
                     ),
                   ] else if (_tosData.containsKey('lastModified')) ...[
@@ -154,7 +154,7 @@ class _TOSModalState extends State<TOSModal> {
                       'Last Updated: ${_formatDate(_tosData['lastModified'])}',
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: AppTheme.secondaryTextColor,
                       ),
                     ),
                   ],
@@ -169,7 +169,10 @@ class _TOSModalState extends State<TOSModal> {
                     const SizedBox(height: 16),
                     Text(
                       _errorMessage,
-                      style: const TextStyle(color: Colors.red, fontSize: 14),
+                      style: const TextStyle(
+                        color: AppTheme.errorColor,
+                        fontSize: 14,
+                      ),
                     ),
                   ],
 
@@ -182,7 +185,7 @@ class _TOSModalState extends State<TOSModal> {
                           onPressed: _isAccepting ? null : widget.onDecline,
                           child: const Text(
                             'Decline',
-                            style: TextStyle(color: Colors.red),
+                            style: TextStyle(color: AppTheme.errorColor),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -226,12 +229,16 @@ class _TOSModalState extends State<TOSModal> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 48),
+            const Icon(
+              Icons.error_outline,
+              color: AppTheme.errorColor,
+              size: 48,
+            ),
             const SizedBox(height: 16),
             Text(
               _errorMessage,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: AppTheme.errorColor),
             ),
             const SizedBox(height: 24),
             ElevatedButton(
@@ -313,7 +320,7 @@ class _TOSModalState extends State<TOSModal> {
       return const Center(
         child: Text(
           'Terms of Service content not available.',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: AppTheme.secondaryTextColor),
         ),
       );
     }

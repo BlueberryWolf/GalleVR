@@ -113,7 +113,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
             content: Text(
               'Downloading GalleVR v$_latestVersion update automatically...',
             ),
-            backgroundColor: Theme.of(context).colorScheme.primary,
             duration: const Duration(seconds: 5),
           ),
         );
@@ -125,7 +124,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
                 content: const Text(
                   'Auto-update failed. Click to download manually.',
                 ),
-                backgroundColor: Colors.redAccent,
                 action: SnackBarAction(
                   label: 'DOWNLOAD',
                   textColor: Colors.white,
@@ -148,7 +146,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
 
     final snackBar = SnackBar(
       content: Text('A new version ($_latestVersion) is available!'),
-      backgroundColor: Theme.of(context).colorScheme.primary,
       duration: const Duration(seconds: 8),
       action: SnackBarAction(
         label: 'DOWNLOAD',
@@ -220,7 +217,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         content: Text(
           'Photo uploading has been disabled until you accept the Terms of Service.',
         ),
-        backgroundColor: Colors.orange,
         duration: Duration(seconds: 5),
       ),
     );
@@ -303,7 +299,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
                   ? 'Terms of Service accepted. Photo uploading has been re-enabled.'
                   : 'Terms of Service accepted. You can now enable photo uploading in settings.',
             ),
-            backgroundColor: Colors.green,
             duration: const Duration(seconds: 5),
           ),
         );
@@ -316,7 +311,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
             content: Text(
               'Terms of Service accepted, but there was an error restoring your upload settings.',
             ),
-            backgroundColor: Colors.orange,
           ),
         );
       }
@@ -326,7 +320,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           content: Text(
             'Terms of Service accepted. You can now upload photos.',
           ),
-          backgroundColor: Colors.green,
         ),
       );
     }
@@ -342,7 +335,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('You must accept the Terms of Service to upload photos.'),
-        backgroundColor: Colors.orange,
         duration: Duration(seconds: 5),
       ),
     );
@@ -388,10 +380,10 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFFEF4444).withAlpha(230),
+            color: AppTheme.errorColor.withAlpha(230),
             borderRadius: BorderRadius.circular(AppTheme.radiusCard),
             border: Border.all(
-              color: const Color(0xFFEF4444).withAlpha(128),
+              color: AppTheme.errorColor.withAlpha(128),
               width: 1.5,
             ),
             boxShadow: [

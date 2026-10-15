@@ -124,7 +124,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     RichText(
                       text: TextSpan(
                         style: const TextStyle(
-                          color: Colors.white70,
+                          color: AppTheme.secondaryTextColor,
                           fontSize: 14.5,
                           height: 1.5,
                         ),
@@ -163,7 +163,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                             const Text(
                               'Downloading update...',
                               style: TextStyle(
-                                color: Colors.white70,
+                                color: AppTheme.secondaryTextColor,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
                               ),
@@ -211,19 +211,19 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.1),
+                        color: AppTheme.errorColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(
                           AppTheme.radiusControl,
                         ),
                         border: Border.all(
-                          color: Colors.red.withValues(alpha: 0.2),
+                          color: AppTheme.errorColor.withValues(alpha: 0.2),
                         ),
                       ),
                       child: Row(
                         children: [
                           const Icon(
                             Icons.error_outline,
-                            color: Colors.redAccent,
+                            color: AppTheme.errorColor,
                             size: 20,
                           ),
                           const SizedBox(width: 10),
@@ -231,7 +231,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                             child: Text(
                               _errorMessage,
                               style: const TextStyle(
-                                color: Colors.redAccent,
+                                color: AppTheme.errorColor,
                                 fontSize: 13,
                               ),
                             ),

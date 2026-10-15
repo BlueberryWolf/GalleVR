@@ -11,6 +11,10 @@ class AppTheme {
   static const Color brandPurpleDeep = Color(0xFF8B5CF6);
   static const Color switchOffColor = Color(0xFF404040);
 
+  static const Color accentCyan = Color(0xFF22D3EE);
+  static const Color accentPink = Color(0xFFF472B6);
+  static const Color resoniteColor = Color(0xFF00B4D8);
+
   static const Color backgroundColor = Color(0xFF101016);
   static const Color surfaceBase = Color(0xFF16161E);
   static const Color surfaceColor = Color(0xFF1C1C24);
@@ -24,7 +28,7 @@ class AppTheme {
   static const Color buttonBorderColor = Color(0x1AFFFFFF);
 
   static const Color errorColor = Color(0xFFEF4444);
-  static const Color successColor = Color(0xFF10B981);
+  static const Color successColor = Color(0xFF4ADE80);
   static const Color warningColor = Color(0xFFF59E0B);
 
   static const Color textColor = Colors.white;
@@ -49,6 +53,7 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
+      fontFamily: 'Outfit',
       colorScheme: const ColorScheme.dark(
         primary: primaryColor,
         secondary: secondaryColor,
@@ -88,11 +93,11 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           foregroundColor: Colors.white,
-          backgroundColor: tint(primaryColor, 0.35),
+          backgroundColor: tint(brandPurple, 0.22),
           disabledBackgroundColor: buttonColor,
           elevation: 0,
           shape: controlShape.copyWith(
-            side: BorderSide(color: primaryColor.withAlpha(110)),
+            side: BorderSide(color: brandPurple.withAlpha(90)),
           ),
           padding: buttonPadding,
         ),
@@ -100,7 +105,7 @@ class AppTheme {
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           foregroundColor: Colors.white,
-          backgroundColor: tint(primaryColor, 0.35),
+          backgroundColor: tint(brandPurple, 0.22),
           shape: controlShape,
           padding: buttonPadding,
         ),

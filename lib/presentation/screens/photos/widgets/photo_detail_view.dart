@@ -133,21 +133,15 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
         await _loadCurrentMetadata();
         widget.onMetadataUpdated?.call();
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Uploaded successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Uploaded successfully!')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Upload failed: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);
@@ -196,7 +190,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
               left: 0,
               top: 0,
               bottom: 0,
-              right: _isMetadataPanelOpen ? 300 : 0,
+              right: _isMetadataPanelOpen ? 340 : 0,
               child: Stack(
                 children: [
                   PageView.builder(
@@ -288,10 +282,10 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
             AnimatedPositioned(
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOutCubic,
-              right: _isMetadataPanelOpen ? 0 : -300,
+              right: _isMetadataPanelOpen ? 0 : -340,
               top: 0,
               bottom: 0,
-              width: 300,
+              width: 340,
               child: PhotoMetadataPanel(
                 metadata: _currentMetadata,
                 isOpen: true,
@@ -332,7 +326,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                                 value: _uploadProgress,
                                 backgroundColor: Colors.white10,
                                 valueColor: const AlwaysStoppedAnimation<Color>(
-                                  Color(0xFF3b82f6),
+                                  AppTheme.primaryColor,
                                 ),
                               ),
                             ),
@@ -342,7 +336,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                                 _uploadStatus!,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 13,
+                                  fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -435,7 +429,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                 _PodButton(
                   icon: Icons.cloud_upload_rounded,
                   label: 'Upload',
-                  activeColor: const Color(0xFF3b82f6),
+                  activeColor: AppTheme.primaryColor,
                   onPressed: _manualUpload,
                   tooltip: 'Upload to Gallery',
                 ),
@@ -456,48 +450,62 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
           '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     }
 
-    return SafeArea(
-      bottom: false,
-      child: Container(
-        height: 64,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          children: [
-            _OverlayIconButton(
-              icon: Icons.arrow_back_rounded,
-              tooltip: 'Back',
-              onPressed: () => Navigator.pop(context),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    _currentMetadata?.filename ??
-                        path.basename(widget.photos[_currentIndex].path),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (dateStr.isNotEmpty)
-                    Text(
-                      dateStr,
-                      style: TextStyle(
-                        color: AppTheme.secondaryTextColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                ],
+    const textShadows = [Shadow(color: Color(0x99000000), blurRadius: 6)];
+
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xB3000000), Color(0x59000000), Color(0x00000000)],
+          stops: [0, 0.55, 1],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Container(
+          height: 96,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+          child: Row(
+            children: [
+              _OverlayIconButton(
+                icon: Icons.arrow_back_rounded,
+                tooltip: 'Back',
+                onPressed: () => Navigator.pop(context),
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      _currentMetadata?.filename ??
+                          path.basename(widget.photos[_currentIndex].path),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        shadows: textShadows,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (dateStr.isNotEmpty)
+                      Text(
+                        dateStr,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          shadows: textShadows,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -581,22 +589,28 @@ class _PodButton extends StatelessWidget {
                           isActive
                               ? Colors.white
                               : Colors.white.withValues(alpha: 0.8),
-                      size: 20,
+                      size: 22,
                     ),
                     if (badge != null && badge! > 0)
                       Positioned(
                         top: -4,
                         right: -4,
                         child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF3b82f6),
-                            shape: BoxShape.circle,
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor,
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             '$badge',
                             style: const TextStyle(
-                              fontSize: 7,
+                              fontSize: 11,
+                              height: 1.2,
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                             ),
@@ -614,7 +628,7 @@ class _PodButton extends StatelessWidget {
                           isActive
                               ? Colors.white
                               : Colors.white.withValues(alpha: 0.8),
-                      fontSize: 13,
+                      fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -700,14 +714,15 @@ class _NavigationRegionState extends State<_NavigationRegion> {
         child: Container(
           color: Colors.transparent,
           child: Center(
-            child: ClipOval(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F0F0F).withValues(alpha: 0.45),
-                    shape: BoxShape.circle,
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                     border: Border.all(
                       color:
                           _isHovered
@@ -731,7 +746,7 @@ class _NavigationRegionState extends State<_NavigationRegion> {
                           _isHovered
                               ? Colors.white.withValues(alpha: 0.1)
                               : Colors.transparent,
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusTag),
                     ),
                     alignment: Alignment.center,
                     child: AnimatedScale(

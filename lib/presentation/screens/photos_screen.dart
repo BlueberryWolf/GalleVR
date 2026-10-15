@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
@@ -139,91 +138,66 @@ class PhotosScreenState extends State<PhotosScreen> {
 
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
+      curve: const Cubic(0.16, 1, 0.3, 1),
       left: 0,
       right: 0,
       bottom: hasSelection ? 24 : -100,
       child: Center(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppTheme.radiusModal),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1B26).withValues(alpha: 0.75),
-                borderRadius: BorderRadius.circular(AppTheme.radiusModal),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  width: 1.5,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: hasSelection ? 1 : 0,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceBase,
+              borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+              border: Border.all(color: AppTheme.cardBorderColor),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0xBF000000),
+                  blurRadius: 40,
+                  spreadRadius: -12,
+                  offset: Offset(0, 16),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.4),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.library_add_check_rounded,
+                  size: 18,
+                  color: AppTheme.brandPurple,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '$count',
+                  style: const TextStyle(
+                    color: AppTheme.textColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: [FontFeature.tabularFigures()],
                   ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
-                      border: Border.all(
-                        color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
-                        width: 1,
-                      ),
-                      borderRadius: BorderRadius.circular(
-                        AppTheme.radiusControl,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 20,
-                          height: 20,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF3B82F6),
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            '$count',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          count == 1 ? 'photo selected' : 'photos selected',
-                          style: const TextStyle(
-                            color: Color(0xFF60A5FA),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  count == 1 ? 'photo selected' : 'photos selected',
+                  style: const TextStyle(
+                    color: AppTheme.secondaryTextColor,
+                    fontSize: 14,
                   ),
-
-                  Container(
-                    height: 24,
-                    width: 1,
-                    color: Colors.white.withValues(alpha: 0.1),
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-
-                  ElevatedButton.icon(
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  width: 1,
+                  height: 24,
+                  color: AppTheme.cardBorderColor,
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 40,
+                  child: ElevatedButton.icon(
                     onPressed:
                         count == 0
                             ? null
@@ -241,55 +215,28 @@ class PhotosScreenState extends State<PhotosScreen> {
                               );
                             },
                     icon: const Icon(Icons.cloud_upload_rounded, size: 18),
-                    label: const Text('UPLOAD'),
+                    label: const Text('Upload'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(
-                        0xFF3B82F6,
-                      ).withValues(alpha: 0.15),
-                      foregroundColor: const Color(0xFF60A5FA),
-                      disabledBackgroundColor: Colors.white.withValues(
-                        alpha: 0.05,
-                      ),
-                      disabledForegroundColor: Colors.white24,
-                      elevation: 0,
-                      side: BorderSide(
-                        color:
-                            count == 0
-                                ? Colors.white.withValues(alpha: 0.1)
-                                : const Color(
-                                  0xFF3B82F6,
-                                ).withValues(alpha: 0.5),
-                        width: 1.5,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          AppTheme.radiusControl,
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-
-                  Container(
-                    height: 24,
-                    width: 1,
-                    color: Colors.white.withValues(alpha: 0.1),
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () => widget.controller.clearSelection(),
+                  tooltip: 'Cancel selection',
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  style: IconButton.styleFrom(
+                    fixedSize: const Size(40, 40),
+                    foregroundColor: AppTheme.secondaryTextColor,
+                    hoverColor: AppTheme.buttonHoverColor,
                   ),
-
-                  IconButton(
-                    onPressed: () => widget.controller.clearSelection(),
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    color: Colors.grey,
-                    hoverColor: Colors.white.withValues(alpha: 0.1),
-                    padding: const EdgeInsets.all(8),
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -302,7 +249,11 @@ class PhotosScreenState extends State<PhotosScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.photo_library, size: 64, color: Colors.grey),
+          const Icon(
+            Icons.photo_library,
+            size: 64,
+            color: AppTheme.secondaryTextColor,
+          ),
           const SizedBox(height: 16),
           Text(
             'No photos found',
@@ -329,16 +280,13 @@ class PhotosScreenState extends State<PhotosScreen> {
     final finalIndex = allIndex != -1 ? allIndex : 0;
 
     Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder:
-            (context, animation, secondaryAnimation) => PhotoDetailView(
+      MaterialPageRoute(
+        builder:
+            (context) => PhotoDetailView(
               photos: widget.controller.value.allPhotos,
               initialIndex: finalIndex,
               onMetadataUpdated: () => widget.controller.refresh(),
             ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
       ),
     );
   }

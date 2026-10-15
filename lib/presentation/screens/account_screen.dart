@@ -9,6 +9,7 @@ import '../../data/services/vrchat_service.dart';
 import '../../data/services/app_service_manager.dart';
 import '../widgets/blurrable_qr_code.dart';
 import '../widgets/app_card.dart';
+import '../widgets/avatar_circle.dart';
 import '../widgets/tinted_button.dart';
 import 'verification_screen.dart';
 import '../theme/app_theme.dart';
@@ -136,8 +137,11 @@ class _AccountScreenState extends State<AccountScreen> {
               ElevatedButton(
                 onPressed: () => Navigator.of(context).pop(true),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                  foregroundColor: Theme.of(context).colorScheme.onError,
+                  backgroundColor: AppTheme.tint(AppTheme.errorColor, 0.2),
+                  foregroundColor: AppTheme.errorColor,
+                  side: BorderSide(
+                    color: AppTheme.errorColor.withValues(alpha: 0.35),
+                  ),
                 ),
                 child: const Text('Logout'),
               ),
@@ -260,43 +264,13 @@ class _AccountScreenState extends State<AccountScreen> {
     final displayName = auth.displayName ?? 'User';
     final isResonite = auth.userId.startsWith('U-');
     final platformColor =
-        isResonite ? const Color(0xFF00b4d8) : const Color(0xFF8b5cf6);
+        isResonite ? AppTheme.resoniteColor : AppTheme.brandPurpleDeep;
     final platformText = isResonite ? 'Resonite' : 'VRChat';
 
-    final avatarSize = isWide ? 100.0 : 70.0;
-    final avatarFallback = Center(
-      child: Icon(
-        Icons.person_rounded,
-        size: avatarSize / 2,
-        color: platformColor,
-      ),
-    );
-    final avatarWidget = Container(
-      width: avatarSize,
-      height: avatarSize,
-      foregroundDecoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: platformColor.withValues(alpha: 0.4),
-          width: 2,
-        ),
-      ),
-      child: ClipOval(
-        child: ColoredBox(
-          color: AppTheme.tint(platformColor, 0.15),
-          child:
-              auth.avatarUrl != null
-                  ? Image.network(
-                    auth.avatarUrl!,
-                    width: avatarSize,
-                    height: avatarSize,
-                    fit: BoxFit.cover,
-                    errorBuilder:
-                        (context, error, stackTrace) => avatarFallback,
-                  )
-                  : avatarFallback,
-        ),
-      ),
+    final avatarWidget = AvatarCircle(
+      imageUrl: auth.avatarUrl,
+      size: isWide ? 100 : 70,
+      color: platformColor,
     );
 
     final nameAndStatus = Column(
@@ -450,8 +424,8 @@ class _AccountScreenState extends State<AccountScreen> {
                   : 'Link Resonite Account';
           final btnColor =
               targetPlatform == 'vrchat'
-                  ? const Color(0xFF8b5cf6)
-                  : const Color(0xFF00b4d8);
+                  ? AppTheme.brandPurpleDeep
+                  : AppTheme.resoniteColor;
 
           list.add(const SizedBox(height: 24));
           list.add(

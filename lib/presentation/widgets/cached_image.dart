@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/image/image_cache_service.dart';
+import '../theme/app_theme.dart';
 
 class CachedImage extends StatefulWidget {
   final String filePath;
@@ -31,6 +32,8 @@ class CachedImage extends StatefulWidget {
 
   static final Map<String, Map<(int, int), ImageProvider>> _originalProviders =
       {};
+
+  static final Map<String, ImageProvider> _thumbnailProviders = {};
 
   static void evictOriginal(String filePath) {
     final providers = _originalProviders.remove(filePath)?.values ?? const [];
@@ -130,6 +133,7 @@ class _CachedImageState extends State<CachedImage> {
                   allowUpscaling: false,
                 );
               });
+          final placeholder = CachedImage._thumbnailProviders[widget.filePath];
           return Image(
             image: provider,
             fit: widget.fit,
@@ -140,19 +144,36 @@ class _CachedImageState extends State<CachedImage> {
                 widget.highQuality ? FilterQuality.high : FilterQuality.medium,
             opacity: AlwaysStoppedAnimation(widget.opacity),
             errorBuilder: _errorBuilder,
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+              if (frame != null || wasSynchronouslyLoaded) return child;
+              if (placeholder == null) return child;
+              return Image(
+                image: placeholder,
+                fit: widget.fit,
+                width: maxW.isFinite ? maxW : null,
+                height: maxH.isFinite ? maxH : null,
+                filterQuality: FilterQuality.medium,
+              );
+            },
           );
         },
       );
     }
 
     if (_isLoading && _thumbnailFile == null) {
-      return Container(color: Colors.grey[900]);
+      return Container(color: AppTheme.surfaceBase);
     }
 
     final displayFile = _thumbnailFile ?? File(widget.filePath);
 
-    final image = Image.file(
-      displayFile,
+    final provider = ResizeImage.resizeIfNeeded(
+      widget.thumbnailSize ?? 300,
+      null,
+      FileImage(displayFile),
+    );
+    CachedImage._thumbnailProviders[widget.filePath] = provider;
+    final image = Image(
+      image: provider,
       fit: widget.fit,
       width: widget.width,
       height: widget.height,
@@ -160,7 +181,6 @@ class _CachedImageState extends State<CachedImage> {
       filterQuality:
           widget.highQuality ? FilterQuality.high : FilterQuality.low,
       opacity: AlwaysStoppedAnimation(widget.opacity),
-      cacheWidth: widget.thumbnailSize ?? 300,
       errorBuilder: _errorBuilder,
     );
     if (!widget.greyscale) return image;
@@ -197,8 +217,12 @@ class _CachedImageState extends State<CachedImage> {
     StackTrace? stackTrace,
   ) {
     return Container(
-      color: Colors.grey[800],
-      child: const Icon(Icons.broken_image, color: Colors.grey, size: 20),
+      color: AppTheme.buttonColor,
+      child: const Icon(
+        Icons.broken_image,
+        color: AppTheme.secondaryTextColor,
+        size: 20,
+      ),
     );
   }
 }

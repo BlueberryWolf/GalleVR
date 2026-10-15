@@ -632,7 +632,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         'Your VR photos, organized and accessible',
                         style: TextStyle(
                           fontSize: 16,
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: AppTheme.secondaryTextColor,
                           height: 1.5,
                           fontWeight: FontWeight.w500,
                         ),
@@ -725,11 +725,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            'Get Started'.toUpperCase(),
+                            'Get Started',
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
-                              letterSpacing: 1.5,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -777,7 +776,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 'GalleVR needs access to your media files',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withValues(alpha: 0.7),
+                  color: AppTheme.secondaryTextColor,
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -887,7 +886,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 'GalleVR is your personal and social VR hub',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withValues(alpha: 0.7),
+                  color: AppTheme.secondaryTextColor,
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -906,7 +905,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.05),
+                            color: AppTheme.surfaceBase,
                             borderRadius: BorderRadius.circular(
                               AppTheme.radiusControl,
                             ),
@@ -937,7 +936,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       style: TextStyle(
                         fontSize: 14,
                         height: 1.5,
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: AppTheme.secondaryTextColor,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -997,10 +996,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        'Link VRChat Account'.toUpperCase(),
+                        'Link VRChat Account',
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
-                          letterSpacing: 1.5,
                           fontSize: 14,
                         ),
                       ),
@@ -1088,7 +1086,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 'Enable full logging for photo metadata tagging',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withValues(alpha: 0.7),
+                  color: AppTheme.secondaryTextColor,
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1114,7 +1112,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     children: [
                       Icon(
                         Icons.info_outline_rounded,
-                        color: Colors.orange,
+                        color: AppTheme.warningColor,
                         size: 20,
                       ),
                       SizedBox(width: 12),
@@ -1122,7 +1120,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         child: Text(
                           'VRChat full logging is required to process and organize your photos. Please enable it to continue.',
                           style: TextStyle(
-                            color: Colors.orange,
+                            color: AppTheme.warningColor,
                             fontWeight: FontWeight.w500,
                             fontSize: 14,
                           ),
@@ -1210,12 +1208,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Widget _buildLoggingCard() {
-    final accentColor = _isVRChatLoggingEnabled ? Colors.green : _brandPurple;
+    final accentColor =
+        _isVRChatLoggingEnabled ? AppTheme.successColor : _brandPurple;
 
     return AppCard(
       padding: const EdgeInsets.all(24),
       borderColor:
-          _isVRChatLoggingEnabled ? Colors.green.withValues(alpha: 0.2) : null,
+          _isVRChatLoggingEnabled
+              ? AppTheme.successColor.withValues(alpha: 0.2)
+              : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1224,7 +1225,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
+                  color: AppTheme.surfaceBase,
                   borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: Icon(
@@ -1255,7 +1256,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             style: TextStyle(
               fontSize: 14,
               height: 1.5,
-              color: Colors.white.withValues(alpha: 0.7),
+              color: AppTheme.secondaryTextColor,
             ),
           ),
           const SizedBox(height: 12),
@@ -1307,12 +1308,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.check_circle_outline, color: Colors.green),
+                    Icon(
+                      Icons.check_circle_outline,
+                      color: AppTheme.successColor,
+                    ),
                     SizedBox(width: 8),
                     Text(
                       'Full logging enabled',
                       style: TextStyle(
-                        color: Colors.green,
+                        color: AppTheme.successColor,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -1330,13 +1334,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: AppTheme.warningColor,
+                      ),
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           'VRChat is running. Please restart the game for logging to take effect.',
                           style: TextStyle(
-                            color: Colors.orange,
+                            color: AppTheme.warningColor,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -1349,12 +1356,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           else
             const Row(
               children: [
-                Icon(Icons.check_circle_outline, color: Colors.green),
+                Icon(Icons.check_circle_outline, color: AppTheme.successColor),
                 SizedBox(width: 8),
                 Text(
                   'Full logging enabled',
                   style: TextStyle(
-                    color: Colors.green,
+                    color: AppTheme.successColor,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1396,7 +1403,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.05),
+              color: AppTheme.surfaceBase,
               borderRadius: BorderRadius.circular(AppTheme.radiusControl),
             ),
             child: Icon(icon, color: _brandPurple, size: 24),
@@ -1460,7 +1467,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 'Configure how GalleVR behaves on your system',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withValues(alpha: 0.7),
+                  color: AppTheme.secondaryTextColor,
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1539,7 +1546,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
+                  color: AppTheme.surfaceBase,
                   borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: const Icon(
@@ -1568,7 +1575,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             style: TextStyle(
               fontSize: 14,
               height: 1.5,
-              color: Colors.white.withValues(alpha: 0.7),
+              color: AppTheme.secondaryTextColor,
             ),
           ),
           const SizedBox(height: 20),
@@ -1614,12 +1621,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Widget _buildPermissionsCard() {
-    final accentColor = _permissionsGranted ? Colors.green : _brandPurple;
+    final accentColor =
+        _permissionsGranted ? AppTheme.successColor : _brandPurple;
 
     return AppCard(
       padding: const EdgeInsets.all(24),
       borderColor:
-          _permissionsGranted ? Colors.green.withValues(alpha: 0.2) : null,
+          _permissionsGranted
+              ? AppTheme.successColor.withValues(alpha: 0.2)
+              : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1628,7 +1638,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
+                  color: AppTheme.surfaceBase,
                   borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: Icon(
@@ -1659,7 +1669,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             style: TextStyle(
               fontSize: 14,
               height: 1.5,
-              color: Colors.white.withValues(alpha: 0.7),
+              color: AppTheme.secondaryTextColor,
             ),
           ),
           const SizedBox(height: 20),
@@ -1695,12 +1705,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           else
             const Row(
               children: [
-                Icon(Icons.check_circle_outline, color: Colors.green),
+                Icon(Icons.check_circle_outline, color: AppTheme.successColor),
                 SizedBox(width: 8),
                 Text(
                   'Permissions granted',
                   style: TextStyle(
-                    color: Colors.green,
+                    color: AppTheme.successColor,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1739,7 +1749,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 'Enable full logging for photo metadata tagging',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withValues(alpha: 0.7),
+                  color: AppTheme.secondaryTextColor,
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1765,7 +1775,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     children: [
                       const Icon(
                         Icons.info_outline_rounded,
-                        color: Colors.orange,
+                        color: AppTheme.warningColor,
                         size: 20,
                       ),
                       const SizedBox(width: 12),
@@ -1775,7 +1785,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                               ? 'VRChat logging is off. You must enable logging in VRChat settings first, and then restart VRChat for logging to take effect before you can continue.'
                               : 'Please enable VRChat full logging to continue setup.',
                           style: const TextStyle(
-                            color: Colors.orange,
+                            color: AppTheme.warningColor,
                             fontWeight: FontWeight.w500,
                             fontSize: 14,
                           ),
@@ -1864,13 +1874,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Widget _buildNonWindowsLoggingCard() {
-    final accentColor = _isLogsDirectoryAvailable ? Colors.green : _brandPurple;
+    final accentColor =
+        _isLogsDirectoryAvailable ? AppTheme.successColor : _brandPurple;
 
     return AppCard(
       padding: const EdgeInsets.all(24),
       borderColor:
           _isLogsDirectoryAvailable
-              ? Colors.green.withValues(alpha: 0.2)
+              ? AppTheme.successColor.withValues(alpha: 0.2)
               : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1880,7 +1891,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
+                  color: AppTheme.surfaceBase,
                   borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: Icon(
@@ -1913,7 +1924,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             style: TextStyle(
               fontSize: 14,
               height: 1.5,
-              color: Colors.white.withValues(alpha: 0.7),
+              color: AppTheme.secondaryTextColor,
             ),
           ),
           const SizedBox(height: 12),
@@ -1930,7 +1941,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.03),
+              color: AppTheme.surfaceBase,
               borderRadius: BorderRadius.circular(AppTheme.radiusControl),
               border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
@@ -2008,12 +2019,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               padding: EdgeInsets.only(top: 16),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle_outline, color: Colors.green),
+                  Icon(
+                    Icons.check_circle_outline,
+                    color: AppTheme.successColor,
+                  ),
                   SizedBox(width: 8),
                   Text(
                     'Full logging detected',
                     style: TextStyle(
-                      color: Colors.green,
+                      color: AppTheme.successColor,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -2061,7 +2075,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             backgroundColor: const Color.fromRGBO(20, 20, 30, 1),
             title: const Row(
               children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                Icon(Icons.warning_amber_rounded, color: AppTheme.warningColor),
                 SizedBox(width: 12),
                 Text('Skip Logging?', style: TextStyle(color: Colors.white)),
               ],
@@ -2107,7 +2121,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 onPressed: () => Navigator.of(context).pop(true),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white12,
-                  foregroundColor: Colors.white70,
+                  foregroundColor: AppTheme.secondaryTextColor,
                 ),
                 child: const Text('Continue (Limited)'),
               ),
@@ -2140,7 +2154,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 onPressed: () => Navigator.of(context).pop(true),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white12,
-                  foregroundColor: Colors.white70,
+                  foregroundColor: AppTheme.secondaryTextColor,
                 ),
                 child: const Text('Continue (Limited)'),
               ),
@@ -2190,7 +2204,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 'You\'re all set to start using GalleVR. Your VR memories are ready to be organized.',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withValues(alpha: 0.7),
+                  color: AppTheme.secondaryTextColor,
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -2201,20 +2215,27 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.1),
+                    color: AppTheme.warningColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                     border: Border.all(
-                      color: Colors.orange.withValues(alpha: 0.3),
+                      color: AppTheme.warningColor.withValues(alpha: 0.3),
                     ),
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                      Icon(
+                        Icons.info_outline,
+                        color: AppTheme.warningColor,
+                        size: 20,
+                      ),
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           'Note: World detection and tagging are disabled because logging is off.',
-                          style: TextStyle(color: Colors.orange, fontSize: 13),
+                          style: TextStyle(
+                            color: AppTheme.warningColor,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                     ],
@@ -2240,12 +2261,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     children: [
                       Text(
                         (_wantsToLinkAccount
-                                ? 'Link Account & Start'
-                                : 'Start Using GalleVR')
-                            .toUpperCase(),
+                            ? 'Link Account & Start'
+                            : 'Start Using GalleVR'),
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
-                          letterSpacing: 1.5,
                           fontSize: 14,
                         ),
                       ),

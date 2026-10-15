@@ -19,32 +19,29 @@ class RefreshButton extends StatefulWidget {
 
 class _RefreshButtonState extends State<RefreshButton>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  bool _isHovered = false;
-  bool _isPressed = false;
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1000),
+  );
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    );
+    if (widget.isLoading) _controller.repeat();
   }
 
   @override
   void didUpdateWidget(RefreshButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isLoading != oldWidget.isLoading) {
-      if (widget.isLoading) {
-        _controller.repeat();
-      } else {
-        _controller.animateTo(
-          1.0,
-          duration: const Duration(milliseconds: 800),
-          curve: Curves.elasticOut,
-        );
-      }
+    if (widget.isLoading == oldWidget.isLoading) return;
+    if (widget.isLoading) {
+      _controller.repeat();
+    } else {
+      _controller.animateTo(
+        1.0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
   }
 
@@ -54,90 +51,23 @@ class _RefreshButtonState extends State<RefreshButton>
     super.dispose();
   }
 
-  void _handleHoverChange(bool hovered) {
-    setState(() => _isHovered = hovered);
-    if (!widget.isLoading) {
-      if (hovered) {
-        _controller.animateTo(
-          0.25,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeOutCubic,
-        );
-      } else {
-        _controller.animateTo(
-          0.0,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeOutCubic,
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    double scale = 1.0;
-    if (_isPressed) {
-      scale = 0.92;
-    } else if (_isHovered && !widget.isLoading) {
-      scale = 1.05;
-    }
-
-    return MouseRegion(
-      cursor:
-          widget.isLoading
-              ? SystemMouseCursors.basic
-              : SystemMouseCursors.click,
-      onEnter: (_) => _handleHoverChange(true),
-      onExit: (_) => _handleHoverChange(false),
-      child: Tooltip(
-        message: widget.tooltip ?? 'Refresh',
-        child: GestureDetector(
-          onTapDown: (_) => setState(() => _isPressed = true),
-          onTapUp: (_) => setState(() => _isPressed = false),
-          onTapCancel: () => setState(() => _isPressed = false),
-          onTap: widget.isLoading ? null : widget.onTap,
-          child: AnimatedScale(
-            scale: scale,
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOutCubic,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(
-                  alpha: _isPressed ? 0.15 : (_isHovered ? 0.1 : 0.05),
-                ),
-                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: _isHovered ? 0.2 : 0.1),
-                  width: 1,
-                ),
-                boxShadow: [
-                  if (_isHovered && !widget.isLoading)
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                ],
-              ),
-              child: Center(
-                child: RotationTransition(
-                  turns: _controller,
-                  child: Icon(
-                    Icons.refresh_rounded,
-                    size: 20,
-                    color:
-                        _isHovered || widget.isLoading
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.6),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+    return IconButton(
+      onPressed: widget.isLoading ? null : widget.onTap,
+      tooltip: widget.tooltip ?? 'Refresh',
+      icon: RotationTransition(
+        turns: _controller,
+        child: const Icon(Icons.refresh_rounded, size: 20),
+      ),
+      style: IconButton.styleFrom(
+        fixedSize: const Size(44, 44),
+        backgroundColor: AppTheme.buttonColor,
+        disabledBackgroundColor: AppTheme.buttonColor,
+        hoverColor: AppTheme.buttonHoverColor,
+        foregroundColor: AppTheme.textColor,
+        disabledForegroundColor: AppTheme.textColor,
+        side: const BorderSide(color: AppTheme.buttonBorderColor),
       ),
     );
   }

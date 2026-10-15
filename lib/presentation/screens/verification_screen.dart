@@ -10,6 +10,8 @@ import '../../data/services/app_service_manager.dart';
 import '../theme/app_theme.dart';
 import '../widgets/blurrable_qr_code.dart';
 import '../widgets/app_card.dart';
+import '../widgets/avatar_circle.dart';
+import '../widgets/tinted_button.dart';
 import '../widgets/step_indicator.dart';
 import '../widgets/tos_modal.dart';
 import 'onboarding_screen.dart';
@@ -564,7 +566,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Terms of Service accepted. You can now use the app.'),
-        backgroundColor: Colors.green,
       ),
     );
   }
@@ -579,7 +580,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
         content: Text(
           'You can still use the app, but some features may be limited.',
         ),
-        backgroundColor: Colors.orange,
         duration: Duration(seconds: 5),
       ),
     );
@@ -718,19 +718,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
             'Pick the account you want to link to GalleVR or enter a website pairing code.',
             style: TextStyle(
               fontSize: 16,
-              color: Colors.grey[400],
+              color: AppTheme.secondaryTextColor,
               height: 1.5,
               fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 36),
 
-          _buildGradientActionCard(
+          _buildActionCard(
             title: 'Instant Link Code',
             description:
                 'Best option. If you followed onboarding on the website, just type the 6-digit code here.',
             icon: Icons.flash_on_rounded,
-            gradientColors: [const Color(0xFF3B82F6), const Color(0xFF06B6D4)],
+            color: AppTheme.primaryColor,
             onTap: () {
               setState(() {
                 _selectedMethod = VerificationMethod.pairCode;
@@ -741,12 +741,12 @@ class _VerificationScreenState extends State<VerificationScreen> {
           ),
           const SizedBox(height: 20),
 
-          _buildGradientActionCard(
+          _buildActionCard(
             title: 'VRChat',
             description:
                 'Link your VRChat account to organize and share your VRChat photos.',
             imageAsset: 'assets/images/VRChat_logo.png',
-            gradientColors: [const Color(0xFF8B5CF6), const Color(0xFF4C1D95)],
+            color: AppTheme.brandPurpleDeep,
             onTap: () {
               setState(() {
                 _activePlatform = 'vrchat';
@@ -756,12 +756,12 @@ class _VerificationScreenState extends State<VerificationScreen> {
           ),
           const SizedBox(height: 20),
 
-          _buildGradientActionCard(
+          _buildActionCard(
             title: 'Resonite',
             description:
                 'Link your Resonite account using our verification bot.',
             imageAsset: 'assets/images/resonite_logo.png',
-            gradientColors: [const Color(0xFF00B4D8), const Color(0xFF0077B6)],
+            color: AppTheme.resoniteColor,
             onTap: () {
               setState(() {
                 _activePlatform = 'resonite';
@@ -799,19 +799,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
             'To link your VRChat account, I just need to confirm you own it. You verify with a temporary code in your VRChat status.',
             style: TextStyle(
               fontSize: 16,
-              color: Colors.grey[400],
+              color: AppTheme.secondaryTextColor,
               height: 1.5,
               fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 48),
 
-          _buildGradientActionCard(
+          _buildActionCard(
             title: 'Automatic Verification',
             description:
                 'Log in once and GalleVR will automatically handle adding and removing the verification code from your status for you.',
             icon: Icons.verified_user_rounded,
-            gradientColors: [const Color(0xFF8B5CF6), const Color(0xFF4C1D95)],
+            color: AppTheme.brandPurpleDeep,
             onTap: () {
               setState(() {
                 _selectedMethod = VerificationMethod.automatic;
@@ -820,12 +820,12 @@ class _VerificationScreenState extends State<VerificationScreen> {
             },
           ),
           const SizedBox(height: 20),
-          _buildGradientActionCard(
+          _buildActionCard(
             title: 'Manual Verification',
             description:
                 'Prefer to handle it yourself? Just look up your account and copy the code in manually.',
             icon: Icons.edit_note_rounded,
-            gradientColors: [const Color(0xFFEC4899), const Color(0xFF7C3AED)],
+            color: AppTheme.accentPink,
             onTap: () {
               setState(() {
                 _selectedMethod = VerificationMethod.manual;
@@ -850,12 +850,12 @@ class _VerificationScreenState extends State<VerificationScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withAlpha(30),
+                  color: AppTheme.primaryColor.withAlpha(30),
                   borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: const Icon(
                   Icons.flash_on_rounded,
-                  color: Colors.blue,
+                  color: AppTheme.primaryColor,
                   size: 24,
                 ),
               ),
@@ -875,7 +875,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             'Look at the website setup screen. You\'ll find a 6-digit numerical code there.',
             style: TextStyle(
               fontSize: 15,
-              color: Colors.grey[400],
+              color: AppTheme.secondaryTextColor,
               height: 1.5,
             ),
           ),
@@ -886,18 +886,22 @@ class _VerificationScreenState extends State<VerificationScreen> {
               padding: const EdgeInsets.all(12),
               margin: const EdgeInsets.only(bottom: 20),
               decoration: BoxDecoration(
-                color: Colors.red.withAlpha(20),
-                border: Border.all(color: Colors.red.withAlpha(80)),
+                color: AppTheme.errorColor.withAlpha(20),
+                border: Border.all(color: AppTheme.errorColor.withAlpha(80)),
                 borderRadius: BorderRadius.circular(AppTheme.radiusControl),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                  const Icon(
+                    Icons.error_outline,
+                    color: AppTheme.errorColor,
+                    size: 20,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       _errorMessage,
-                      style: const TextStyle(color: Colors.redAccent),
+                      style: const TextStyle(color: AppTheme.errorColor),
                     ),
                   ),
                 ],
@@ -937,7 +941,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             child: ElevatedButton(
               onPressed: _isLoading ? null : _submitPairCode,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue[600],
+                backgroundColor: AppTheme.primaryDarkColor,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppTheme.radiusControl),
@@ -972,7 +976,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   _errorMessage = '';
                 });
               },
-              child: Text('Go Back', style: TextStyle(color: Colors.grey[500])),
+              child: Text(
+                'Go Back',
+                style: TextStyle(color: AppTheme.secondaryTextColor),
+              ),
             ),
           ),
         ],
@@ -980,12 +987,12 @@ class _VerificationScreenState extends State<VerificationScreen> {
     );
   }
 
-  Widget _buildGradientActionCard({
+  Widget _buildActionCard({
     required String title,
     required String description,
     IconData? icon,
     String? imageAsset,
-    required List<Color> gradientColors,
+    required Color color,
     required VoidCallback onTap,
   }) {
     return Material(
@@ -1009,7 +1016,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   height: 56,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: AppTheme.tint(gradientColors.first, 0.25),
+                    color: AppTheme.tint(color, 0.25),
                     borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                   ),
                   child:
@@ -1062,7 +1069,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 const SizedBox(width: 8),
                 const Icon(
                   Icons.arrow_forward_ios,
-                  color: Colors.white70,
+                  color: AppTheme.secondaryTextColor,
                   size: 20,
                 ),
               ],
@@ -1083,7 +1090,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             children: [
               const Icon(
                 Icons.verified_user_rounded,
-                color: Color(0xFF8B5CF6),
+                color: AppTheme.brandPurpleDeep,
                 size: 24,
               ),
               const SizedBox(width: 12),
@@ -1100,7 +1107,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
           const SizedBox(height: 20),
           const Text(
             'Sign in to your VRChat account and I\'ll handle the verification process for you.',
-            style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
+            style: TextStyle(
+              color: AppTheme.secondaryTextColor,
+              fontSize: 14,
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 24),
           TextField(
@@ -1136,7 +1147,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
             const SizedBox(height: 8),
             const Text(
               'You must be at least 13 years old. Please enter your date of birth:',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
+              style: TextStyle(
+                color: AppTheme.secondaryTextColor,
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 16),
             InkWell(
@@ -1156,7 +1170,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                     const Icon(
                       Icons.calendar_today,
                       size: 20,
-                      color: Colors.white70,
+                      color: AppTheme.secondaryTextColor,
                     ),
                     const SizedBox(width: 12),
                     Text(
@@ -1180,14 +1194,20 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 children: [
                   Icon(
                     _isOver13() ? Icons.check_circle : Icons.error,
-                    color: _isOver13() ? Colors.green : Colors.red,
+                    color:
+                        _isOver13()
+                            ? AppTheme.successColor
+                            : AppTheme.errorColor,
                     size: 16,
                   ),
                   const SizedBox(width: 8),
                   Text(
                     _isOver13() ? 'Age verified' : 'Must be at least 13',
                     style: TextStyle(
-                      color: _isOver13() ? Colors.green : Colors.red,
+                      color:
+                          _isOver13()
+                              ? AppTheme.successColor
+                              : AppTheme.errorColor,
                       fontSize: 12,
                     ),
                   ),
@@ -1212,15 +1232,18 @@ class _VerificationScreenState extends State<VerificationScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFf87171).withValues(alpha: 0.1),
+                color: AppTheme.errorColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 border: Border.all(
-                  color: const Color(0xFFf87171).withValues(alpha: 0.3),
+                  color: AppTheme.errorColor.withValues(alpha: 0.3),
                 ),
               ),
               child: Text(
                 _errorMessage.split('\n').first,
-                style: const TextStyle(color: Color(0xFFf87171), fontSize: 13),
+                style: const TextStyle(
+                  color: AppTheme.errorColor,
+                  fontSize: 13,
+                ),
               ),
             ),
           ],
@@ -1242,7 +1265,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 _login();
               },
               label: _showTotpField ? 'Verify Code' : 'Sign In',
-              color: const Color(0xFF8B5CF6),
+              color: AppTheme.brandPurpleDeep,
               icon: Icons.login_rounded,
             ),
           ),
@@ -1276,12 +1299,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
               Icon(icon, size: 20, color: color),
               const SizedBox(width: 12),
               Text(
-                label.toUpperCase(),
+                label,
                 style: TextStyle(
                   color: color,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  letterSpacing: 1,
                 ),
               ),
             ],
@@ -1330,13 +1352,13 @@ class _VerificationScreenState extends State<VerificationScreen> {
                             scale: 0.5,
                             child: CircularProgressIndicator(
                               strokeWidth: 3,
-                              color: Color(0xFF8B5CF6),
+                              color: AppTheme.brandPurpleDeep,
                             ),
                           )
                           : IconButton(
                             icon: const Icon(
                               Icons.search,
-                              color: Color(0xFF8B5CF6),
+                              color: AppTheme.brandPurpleDeep,
                             ),
                             onPressed:
                                 _isLoading ? null : _performAccountLookup,
@@ -1393,7 +1415,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                             _lookedUpAccount!['userId'] ?? '',
                             style: const TextStyle(
                               fontSize: 11,
-                              color: Colors.grey,
+                              color: AppTheme.secondaryTextColor,
                             ),
                           ),
                         ],
@@ -1401,7 +1423,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                     ),
                     const Icon(
                       Icons.check_circle,
-                      color: Colors.green,
+                      color: AppTheme.successColor,
                       size: 20,
                     ),
                   ],
@@ -1413,7 +1435,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 style: TextStyle(
                   fontSize: 12,
                   fontStyle: FontStyle.italic,
-                  color: Colors.grey,
+                  color: AppTheme.secondaryTextColor,
                 ),
               ),
             ],
@@ -1453,7 +1475,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   children: [
                     Icon(
                       _isOver13() ? Icons.check_circle : Icons.error,
-                      color: _isOver13() ? Colors.green : Colors.red,
+                      color:
+                          _isOver13()
+                              ? AppTheme.successColor
+                              : AppTheme.errorColor,
                       size: 16,
                     ),
                     const SizedBox(width: 8),
@@ -1462,7 +1487,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
                           ? 'Age verified'
                           : 'You must be at least 13 years old',
                       style: TextStyle(
-                        color: _isOver13() ? Colors.green : Colors.red,
+                        color:
+                            _isOver13()
+                                ? AppTheme.successColor
+                                : AppTheme.errorColor,
                         fontSize: 12,
                       ),
                     ),
@@ -1571,7 +1599,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 style: TextStyle(
                   fontSize: 12,
                   fontStyle: FontStyle.italic,
-                  color: Colors.grey,
+                  color: AppTheme.secondaryTextColor,
                 ),
               ),
           ] else if (_manualVerificationStep == 2) ...[
@@ -1748,36 +1776,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 700;
 
-        final avatarWidget = Container(
-          width: isWide ? 120 : 80,
-          height: isWide ? 120 : 80,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: const Color(0xFF4ade80).withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: const Color(0xFF4ade80).withValues(alpha: 0.3),
-              width: 2,
-            ),
-          ),
-          child:
-              avatarUrl != null
-                  ? Image.network(
-                    avatarUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Icon(
-                        Icons.verified_user_rounded,
-                        size: isWide ? 60 : 50,
-                        color: const Color(0xFF4ade80),
-                      );
-                    },
-                  )
-                  : Icon(
-                    Icons.verified_user_rounded,
-                    size: isWide ? 60 : 50,
-                    color: const Color(0xFF4ade80),
-                  ),
+        final avatarWidget = AvatarCircle(
+          imageUrl: avatarUrl,
+          size: isWide ? 120 : 80,
+          color: AppTheme.successColor,
+          fallbackIcon: Icons.verified_user_rounded,
         );
 
         final nameAndStatus = Column(
@@ -1810,7 +1813,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               },
               icon: Icons.dashboard_customize_rounded,
               label: 'Go to Dashboard',
-              color: const Color(0xFF3b82f6),
+              color: AppTheme.primaryColor,
             ),
           ],
         );
@@ -1850,14 +1853,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
+                      color: AppTheme.surfaceBase,
                       borderRadius: BorderRadius.circular(
                         AppTheme.radiusControl,
                       ),
                     ),
                     child: const Icon(
                       Icons.qr_code_scanner_rounded,
-                      color: Colors.white70,
+                      color: AppTheme.secondaryTextColor,
                       size: 24,
                     ),
                   ),
@@ -1920,47 +1923,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
     required Color color,
     required IconData icon,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        mouseCursor: SystemMouseCursors.click,
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-          decoration: BoxDecoration(
-            color: (onPressed == null ? Colors.white10 : color).withValues(
-              alpha: 0.1,
-            ),
-            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-            border: Border.all(
-              color: (onPressed == null ? Colors.white10 : color).withValues(
-                alpha: 0.2,
-              ),
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color: onPressed == null ? Colors.white24 : color,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                label.toUpperCase(),
-                style: TextStyle(
-                  color: onPressed == null ? Colors.white24 : color,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return TintedButton(
+      onPressed: onPressed,
+      label: label,
+      color: color,
+      icon: icon,
     );
   }
 }

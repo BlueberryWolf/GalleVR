@@ -151,10 +151,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'Update available! Version $_latestVersion is ready to download.',
                   )
                   : const Text('You have the latest version.'),
-          backgroundColor:
-              _updateAvailable
-                  ? Theme.of(context).colorScheme.primary
-                  : Colors.green,
           duration: const Duration(seconds: 3),
           action:
               _updateAvailable
@@ -265,7 +261,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           content: Text(
             'Terms of Service accepted. Photo uploading has been enabled.',
           ),
-          backgroundColor: Colors.green,
           duration: Duration(seconds: 5),
         ),
       );
@@ -284,7 +279,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         content: Text(
           'You must accept the Terms of Service to enable photo uploading.',
         ),
-        backgroundColor: Colors.orange,
         duration: Duration(seconds: 5),
       ),
     );
@@ -388,8 +382,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return RepaintBoundary(
       child: AppCard(
-        color: const Color(0xFF8b5cf6).withValues(alpha: 0.1),
-        borderColor: const Color(0xFF8b5cf6).withValues(alpha: 0.2),
+        color: AppTheme.brandPurpleDeep.withValues(alpha: 0.1),
+        borderColor: AppTheme.brandPurpleDeep.withValues(alpha: 0.2),
         padding: padding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -398,14 +392,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 const Icon(
                   Icons.edit_note_rounded,
-                  color: Color(0xFFa78bfa),
+                  color: AppTheme.brandPurple,
                   size: 24,
                 ),
                 const SizedBox(width: 12),
                 const Text(
                   'Editor Tools',
                   style: TextStyle(
-                    color: Color(0xFFa78bfa),
+                    color: AppTheme.brandPurple,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
@@ -555,7 +549,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Icon(
                   Icons.folder_copy_rounded,
-                  color: Color(0xFF60a5fa),
+                  color: AppTheme.primaryLightColor,
                   size: 20,
                 ),
                 SizedBox(width: 12),
@@ -580,7 +574,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildPhotoProcessingSection([bool isSmallScreen = false]) {
     final padding =
         isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
-    final accentColor = const Color(0xFFf472b6);
+    final accentColor = AppTheme.accentPink;
 
     return RepaintBoundary(
       child: AppCard(
@@ -650,7 +644,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildNotificationsSection([bool isSmallScreen = false]) {
     final padding =
         isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
-    final accentColor = const Color(0xFF60a5fa);
+    final accentColor = AppTheme.primaryLightColor;
 
     return RepaintBoundary(
       child: AppCard(
@@ -722,7 +716,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildSharingSection([bool isSmallScreen = false]) {
     final padding =
         isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
-    final accentColor = const Color(0xFF4ade80);
+    final accentColor = AppTheme.successColor;
 
     return RepaintBoundary(
       child: AppCard(
@@ -768,7 +762,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               content: Text(
                                 'VRChat full logging must be enabled to upload photos.',
                               ),
-                              backgroundColor: Colors.orange,
                             ),
                           );
                         }
@@ -825,7 +818,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Icon(
                   Icons.info_outline_rounded,
-                  color: Color(0xFFa78bfa),
+                  color: AppTheme.brandPurple,
                   size: 20,
                 ),
                 SizedBox(width: 12),
@@ -846,13 +839,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               decoration: BoxDecoration(
                 color:
                     _updateAvailable
-                        ? Colors.amber.withValues(alpha: 0.1)
-                        : Colors.white.withValues(alpha: 0.05),
+                        ? AppTheme.warningColor.withValues(alpha: 0.1)
+                        : AppTheme.surfaceBase,
                 borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 border: Border.all(
                   color:
                       _updateAvailable
-                          ? Colors.amber.withValues(alpha: 0.3)
+                          ? AppTheme.warningColor.withValues(alpha: 0.3)
                           : Colors.white.withValues(alpha: 0.08),
                 ),
               ),
@@ -917,41 +910,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
 
                   if (_updateAvailable && _latestVersion != null) ...[
-                    TextButton(
-                      onPressed: () async {
-                        await _checkForUpdatesWithFeedback();
-                      },
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        minimumSize: const Size(0, 36),
+                    OutlinedButton(
+                      onPressed: _checkForUpdatesWithFeedback,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                       ),
                       child: const Text('Check Again'),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 8),
                     ElevatedButton.icon(
-                      onPressed: () {
-                        _updateService.openReleasesPage();
-                      },
-                      icon: const Icon(Icons.download, size: 16),
+                      onPressed: _updateService.openReleasesPage,
+                      icon: const Icon(Icons.download_rounded, size: 18),
                       label: const Text('Download'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        foregroundColor:
-                            Theme.of(context).colorScheme.onPrimary,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                       ),
                     ),
                   ] else
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.refresh, size: 16),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
                       label: const Text('Check for Updates'),
-                      onPressed: () async {
-                        await _checkForUpdatesWithFeedback();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        minimumSize: const Size(0, 36),
+                      onPressed: _checkForUpdatesWithFeedback,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                       ),
                     ),
                 ],
@@ -1014,14 +1004,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
+                    color: AppTheme.surfaceBase,
                     borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                     border: Border.all(color: Colors.white10),
                   ),
                   child: Text(
                     value.isEmpty ? 'Not set' : value,
                     style: TextStyle(
-                      color: value.isEmpty ? Colors.white24 : Colors.white70,
+                      color:
+                          value.isEmpty
+                              ? Colors.white24
+                              : AppTheme.secondaryTextColor,
                       fontSize: 13,
                     ),
                     maxLines: 1,
@@ -1046,7 +1039,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
+                      color: AppTheme.surfaceBase,
                       borderRadius: BorderRadius.circular(
                         AppTheme.radiusControl,
                       ),
@@ -1055,7 +1048,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Text(
                       value.isEmpty ? 'Not set' : value,
                       style: TextStyle(
-                        color: value.isEmpty ? Colors.white24 : Colors.white70,
+                        color:
+                            value.isEmpty
+                                ? Colors.white24
+                                : AppTheme.secondaryTextColor,
                         fontSize: 14,
                       ),
                       maxLines: 1,
@@ -1081,38 +1077,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String label,
     required Color color,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        mouseCursor: SystemMouseCursors.click,
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: (onPressed == null ? Colors.white10 : color).withValues(
-              alpha: 0.1,
-            ),
-            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-            border: Border.all(
-              color: (onPressed == null ? Colors.white10 : color).withValues(
-                alpha: 0.2,
-              ),
-            ),
-          ),
-          child: Center(
-            child: Text(
-              label.toUpperCase(),
-              style: TextStyle(
-                color: onPressed == null ? Colors.white24 : color,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.2,
-              ),
-            ),
-          ),
-        ),
-      ),
+    return TintedButton(
+      onPressed: onPressed,
+      label: label,
+      color: color,
+      dense: true,
     );
   }
 
@@ -1331,7 +1300,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Icon(
                   Icons.settings_applications_rounded,
-                  color: Color(0xFF60a5fa),
+                  color: AppTheme.primaryLightColor,
                   size: 20,
                 ),
                 SizedBox(width: 12),
@@ -1485,7 +1454,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Text(
                       subtitle,
                       style: const TextStyle(
-                        color: Colors.white70,
+                        color: AppTheme.secondaryTextColor,
                         fontSize: 13,
                       ),
                     ),

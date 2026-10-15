@@ -29,7 +29,7 @@ class PhotoMetadataPanel extends StatelessWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(
-            width: 300,
+            width: 340,
             height: double.infinity,
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.7),
@@ -58,8 +58,8 @@ class PhotoMetadataPanel extends StatelessWidget {
                       Text(
                         'Photo Info',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 16,
+                          color: AppTheme.textColor,
+                          fontSize: 18,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -96,7 +96,7 @@ class PhotoMetadataPanel extends StatelessWidget {
           Text(
             'No metadata available',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.25),
+              color: AppTheme.secondaryTextColor,
               fontSize: 16,
               fontWeight: FontWeight.w600,
             ),
@@ -136,7 +136,7 @@ class PhotoMetadataPanel extends StatelessWidget {
                   '${metadata!.players.length}',
                   style: TextStyle(
                     color: AppTheme.secondaryTextColor,
-                    fontSize: 11,
+                    fontSize: 13,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -166,7 +166,7 @@ class PhotoMetadataPanel extends StatelessWidget {
         title,
         style: TextStyle(
           color: AppTheme.secondaryTextColor,
-          fontSize: 12,
+          fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -179,7 +179,7 @@ class PhotoMetadataPanel extends StatelessWidget {
         Icon(
           Icons.public_rounded,
           color: Colors.white.withValues(alpha: 0.7),
-          size: 18,
+          size: 20,
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -191,7 +191,7 @@ class PhotoMetadataPanel extends StatelessWidget {
                   world.name,
                   const TextStyle(
                     color: Colors.white,
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -204,7 +204,7 @@ class PhotoMetadataPanel extends StatelessWidget {
         Icon(
           Icons.arrow_forward_ios_rounded,
           color: AppTheme.secondaryTextColor,
-          size: 12,
+          size: 14,
         ),
       ],
     );
@@ -216,7 +216,7 @@ class PhotoMetadataPanel extends StatelessWidget {
         Icon(
           Icons.person_outline_rounded,
           color: Colors.white.withValues(alpha: 0.7),
-          size: 18,
+          size: 20,
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -224,7 +224,7 @@ class PhotoMetadataPanel extends StatelessWidget {
             player.name,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: FontWeight.w400,
             ),
             maxLines: 1,
@@ -234,7 +234,7 @@ class PhotoMetadataPanel extends StatelessWidget {
         Icon(
           Icons.arrow_forward_ios_rounded,
           color: AppTheme.secondaryTextColor,
-          size: 12,
+          size: 14,
         ),
       ],
     );
@@ -342,9 +342,12 @@ class _HeaderCloseButtonState extends State<_HeaderCloseButton> {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: IconButton(
+        mouseCursor: SystemMouseCursors.click,
+        tooltip: 'Close',
         icon: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.all(8),
@@ -353,7 +356,7 @@ class _HeaderCloseButtonState extends State<_HeaderCloseButton> {
                 _isHovered
                     ? Colors.white.withValues(alpha: 0.1)
                     : Colors.transparent,
-            shape: BoxShape.circle,
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
           ),
           child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
         ),

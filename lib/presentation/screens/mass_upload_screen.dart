@@ -267,7 +267,7 @@ class _MassUploadScreenState extends State<MassUploadScreen>
               IconButton(
                 icon: const Icon(
                   Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white70,
+                  color: AppTheme.secondaryTextColor,
                   size: 20,
                 ),
                 onPressed: () => Navigator.of(context).pop(),
@@ -384,12 +384,11 @@ class _MassUploadScreenState extends State<MassUploadScreen>
               Icon(icon, size: large ? 24 : 18, color: color),
               const SizedBox(width: 12),
               Text(
-                label.toUpperCase(),
+                label,
                 style: TextStyle(
                   color: color,
                   fontWeight: FontWeight.w700,
                   fontSize: large ? 15 : 12,
-                  letterSpacing: 1,
                 ),
               ),
             ],
@@ -445,19 +444,19 @@ class _MassUploadScreenState extends State<MassUploadScreen>
                 'Queue',
                 _tasks.length.toString(),
                 Icons.list_alt_rounded,
-                Colors.white70,
+                AppTheme.secondaryTextColor,
               ),
               _buildSummaryStat(
                 'Done',
                 _completedCount.toString(),
                 Icons.check_circle_rounded,
-                const Color(0xFF4ade80),
+                AppTheme.successColor,
               ),
               _buildSummaryStat(
                 'Failed',
                 _failedCount.toString(),
                 Icons.error_rounded,
-                const Color(0xFFf87171),
+                AppTheme.errorColor,
               ),
             ],
           ),
@@ -499,9 +498,7 @@ class _MassUploadScreenState extends State<MassUploadScreen>
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.4),
-        border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
-        ),
+        border: Border(top: BorderSide(color: AppTheme.surfaceBase)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -545,10 +542,10 @@ class _TaskTile extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         borderColor:
             task.status == TaskStatus.completed
-                ? const Color(0xFF4ade80).withValues(alpha: 0.3)
+                ? AppTheme.successColor.withValues(alpha: 0.3)
                 : task.status == TaskStatus.failed
-                ? const Color(0xFFf87171).withValues(alpha: 0.3)
-                : Colors.white.withValues(alpha: 0.05),
+                ? AppTheme.errorColor.withValues(alpha: 0.3)
+                : AppTheme.surfaceBase,
         child: Row(
           children: [
             _buildLeading(context),
@@ -576,9 +573,9 @@ class _TaskTile extends StatelessWidget {
                       style: TextStyle(
                         color:
                             task.status == TaskStatus.failed
-                                ? const Color(0xFFf87171)
+                                ? AppTheme.errorColor
                                 : !task.hasMetadata
-                                ? Colors.orangeAccent
+                                ? AppTheme.warningColor
                                 : AppTheme.secondaryTextColor,
                         fontSize: 12,
                       ),
@@ -594,7 +591,7 @@ class _TaskTile extends StatelessWidget {
                           color:
                               task.hasMetadata
                                   ? AppTheme.secondaryTextColor
-                                  : Colors.orangeAccent,
+                                  : AppTheme.warningColor,
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -605,7 +602,7 @@ class _TaskTile extends StatelessWidget {
                             color:
                                 task.hasMetadata
                                     ? AppTheme.secondaryTextColor
-                                    : Colors.orangeAccent.withValues(
+                                    : AppTheme.warningColor.withValues(
                                       alpha: 0.9,
                                     ),
                             fontSize: 11,
@@ -628,7 +625,7 @@ class _TaskTile extends StatelessWidget {
                   IconButton(
                     icon: const Icon(
                       Icons.info_outline_rounded,
-                      color: Colors.orangeAccent,
+                      color: AppTheme.warningColor,
                       size: 20,
                     ),
                     onPressed: () => _showMetadataInfo(context),
@@ -661,13 +658,6 @@ class _TaskTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppTheme.radiusControl),
             border: Border.all(color: Colors.white10),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(AppTheme.radiusControl),
@@ -698,7 +688,7 @@ class _TaskTile extends StatelessWidget {
             width: size,
             height: size,
             decoration: BoxDecoration(
-              color: Colors.orangeAccent.withValues(alpha: small ? 1.0 : 0.1),
+              color: AppTheme.warningColor.withValues(alpha: small ? 1.0 : 0.1),
               shape: BoxShape.circle,
               border:
                   small
@@ -707,7 +697,7 @@ class _TaskTile extends StatelessWidget {
             ),
             child: Icon(
               Icons.warning_amber_rounded,
-              color: small ? Colors.black : Colors.orangeAccent,
+              color: small ? Colors.black : AppTheme.warningColor,
               size: iconSize,
             ),
           );
@@ -759,7 +749,7 @@ class _TaskTile extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: Colors.greenAccent.withValues(alpha: small ? 1.0 : 0.1),
+            color: AppTheme.successColor.withValues(alpha: small ? 1.0 : 0.1),
             shape: BoxShape.circle,
             border:
                 small
@@ -768,7 +758,7 @@ class _TaskTile extends StatelessWidget {
           ),
           child: Icon(
             Icons.check_rounded,
-            color: small ? Colors.black : Colors.greenAccent,
+            color: small ? Colors.black : AppTheme.successColor,
             size: iconSize,
           ),
         );
@@ -777,7 +767,7 @@ class _TaskTile extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: Colors.redAccent.withValues(alpha: small ? 1.0 : 0.1),
+            color: AppTheme.errorColor.withValues(alpha: small ? 1.0 : 0.1),
             shape: BoxShape.circle,
             border:
                 small
@@ -786,7 +776,7 @@ class _TaskTile extends StatelessWidget {
           ),
           child: Icon(
             Icons.error_outline_rounded,
-            color: small ? Colors.white : Colors.redAccent,
+            color: small ? Colors.white : AppTheme.errorColor,
             size: iconSize,
           ),
         );
@@ -800,7 +790,7 @@ class _TaskTile extends StatelessWidget {
           (context) => AlertDialog(
             title: const Row(
               children: [
-                Icon(Icons.info_outline_rounded, color: Colors.orangeAccent),
+                Icon(Icons.info_outline_rounded, color: AppTheme.warningColor),
                 SizedBox(width: 12),
                 Text('Missing Metadata'),
               ],
@@ -821,7 +811,7 @@ class _TaskTile extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
+                    color: AppTheme.surfaceBase,
                     borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                   ),
                   child: const Column(

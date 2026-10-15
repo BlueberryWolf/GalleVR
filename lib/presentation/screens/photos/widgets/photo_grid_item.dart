@@ -98,12 +98,7 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                   final bool isGreyedOut =
                       !isUploaded && !hovered && !widget.isSelected;
                   return AnimatedScale(
-                    scale:
-                        widget.isSelected
-                            ? 0.96
-                            : hovered
-                            ? 1.04
-                            : 1.0,
+                    scale: hovered && !widget.isSelected ? 1.04 : 1.0,
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeOutCubic,
                     child: AnimatedContainer(
@@ -111,7 +106,7 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                       foregroundDecoration: BoxDecoration(
                         color:
                             widget.isSelected
-                                ? AppTheme.primaryColor.withValues(alpha: 0.15)
+                                ? AppTheme.brandPurple.withValues(alpha: 0.14)
                                 : hovered
                                 ? Colors.white.withValues(alpha: 0.05)
                                 : Colors.transparent,
@@ -162,11 +157,11 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                         border: Border.all(
                           color:
                               widget.isSelected
-                                  ? AppTheme.primaryColor
+                                  ? AppTheme.brandPurple
                                   : hovered
                                   ? Colors.white.withValues(alpha: 0.3)
                                   : Colors.white.withValues(alpha: 0.1),
-                          width: widget.isSelected ? 2.5 : 1.5,
+                          width: widget.isSelected ? 2 : 1.5,
                         ),
                       ),
                     ),
@@ -273,7 +268,7 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                     const Icon(
                       Icons.public_rounded,
                       size: 13,
-                      color: Color(0xFF3b82f6),
+                      color: AppTheme.primaryColor,
                     ),
                     const SizedBox(width: 4),
                     Flexible(
@@ -297,7 +292,7 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                     const Icon(
                       Icons.people_alt_rounded,
                       size: 13,
-                      color: Color(0xFF4ade80),
+                      color: AppTheme.successColor,
                     ),
                     const SizedBox(width: 4),
                     Text(
@@ -331,7 +326,7 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
           if (widget.metadata?.galleryUrl != null)
             _buildIndicatorButton(
               icon: Icons.cloud_done_rounded,
-              color: const Color(0xFF4ade80),
+              color: AppTheme.successColor,
               tooltip: 'Uploaded to Gallery',
               onPressed: widget.onTap,
             ),
@@ -356,7 +351,7 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.3),
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
               border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
             ),
             child: Icon(icon, size: 16, color: color.withValues(alpha: 0.9)),
@@ -370,33 +365,40 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
     final isUploaded = widget.metadata?.galleryUrl != null;
     if (!widget.isSelectionMode || isUploaded) return const SizedBox.shrink();
 
-    final showIndicator = widget.isSelected || hovered;
-
     return Positioned(
-      bottom: 12,
-      right: 12,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 150),
-        opacity: showIndicator ? 1.0 : 0.0,
-        child: Container(
+      left: 10,
+      bottom: 10,
+      child: IgnorePointer(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
           width: 24,
           height: 24,
           decoration: BoxDecoration(
             color:
                 widget.isSelected
-                    ? AppTheme.primaryColor
-                    : Colors.black.withValues(alpha: 0.4),
-            shape: BoxShape.circle,
+                    ? AppTheme.brandPurple
+                    : Colors.black.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(AppTheme.radiusTag),
             border: Border.all(
-              color: widget.isSelected ? Colors.white : Colors.white70,
-              width: 1.5,
+              color:
+                  widget.isSelected
+                      ? AppTheme.brandPurple
+                      : Colors.white.withValues(alpha: 0.85),
+              width: 2,
             ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x80000000),
+                blurRadius: 4,
+                offset: Offset(0, 1),
+              ),
+            ],
           ),
           child:
               widget.isSelected
                   ? const Icon(
                     Icons.check_rounded,
-                    size: 14,
+                    size: 16,
                     color: Colors.white,
                   )
                   : null,

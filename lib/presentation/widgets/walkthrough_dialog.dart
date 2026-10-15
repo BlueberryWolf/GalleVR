@@ -43,7 +43,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
   final List<_SlideData> _slides = [
     _SlideData(
       icon: Icons.favorite_rounded,
-      iconColor: const Color(0xFF8B5CF6),
+      iconColor: AppTheme.brandPurpleDeep,
       title: 'Welcome to GalleVR',
       content:
           'GalleVR is my passion project, built by a solo developer. There may be a few issues here and there, but I hope you love it!\n\n'
@@ -51,7 +51,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
     ),
     _SlideData(
       icon: Icons.settings_suggest_rounded,
-      iconColor: const Color(0xFF22D3EE),
+      iconColor: AppTheme.accentCyan,
       title: 'Keep it Running',
       content:
           'Photos can only be uploaded if GalleVR was open when they were taken, or if you had the third-party app VRCX tagging them.\n\n'
@@ -59,7 +59,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
     ),
     _SlideData(
       icon: Icons.image_search_rounded,
-      iconColor: const Color(0xFF3B82F6),
+      iconColor: AppTheme.primaryColor,
       title: 'How Photos Appear',
       content:
           'To show up in the Photos tab, a screenshot needs embedded world and player metadata.\n\n'
@@ -67,7 +67,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
     ),
     _SlideData(
       icon: Icons.cloud_upload_rounded,
-      iconColor: Colors.grey,
+      iconColor: AppTheme.secondaryTextColor,
       title: 'Grey vs. Uploaded Photos',
       content:
           'The Photos tab displays all eligible photos. If a photo is grey, it means it has metadata but has not been uploaded to the GalleVR website yet. Simply click on any grey photo and select Upload Photo to upload it!\n\n'
@@ -75,7 +75,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
     ),
     _SlideData(
       icon: Icons.collections_bookmark_rounded,
-      iconColor: const Color(0xFF4ADE80),
+      iconColor: AppTheme.successColor,
       title: 'Organize with Galleries',
       content:
           'On the website, you can organize your photos using Galleries.\n\n'
@@ -83,7 +83,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
     ),
     _SlideData(
       icon: Icons.campaign_rounded,
-      iconColor: const Color(0xFFF472B6),
+      iconColor: AppTheme.accentPink,
       title: 'Share to the Feed',
       content:
           'When photos are uploaded, they are private by default, meaning only you can see them.\n\n'
