@@ -46,12 +46,14 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
   bool _isMetadataPanelOpen = false;
   String? _uploadStatus;
   Timer? _metadataDebounceTimer;
+  final Set<String> _loadedPaths = {};
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: _currentIndex);
+    _trackLoadedPhotos();
     _loadConfig();
     _loadCurrentMetadata();
   }
@@ -60,6 +62,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
   void dispose() {
     _metadataDebounceTimer?.cancel();
     _pageController.dispose();
+    _loadedPaths.forEach(CachedImage.evictOriginal);
     super.dispose();
   }
 
@@ -82,10 +85,24 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
     }
   }
 
+  void _trackLoadedPhotos() {
+    final nearby = {
+      for (var i = _currentIndex - 1; i <= _currentIndex + 1; i++)
+        if (i >= 0 && i < widget.photos.length) widget.photos[i].path,
+    };
+    for (final path in _loadedPaths.difference(nearby)) {
+      CachedImage.evictOriginal(path);
+    }
+    _loadedPaths
+      ..clear()
+      ..addAll(nearby);
+  }
+
   void _onPageChanged(int index) {
     setState(() {
       _currentIndex = index;
     });
+    _trackLoadedPhotos();
 
     _metadataDebounceTimer?.cancel();
     _metadataDebounceTimer = Timer(const Duration(milliseconds: 150), () {
@@ -184,6 +201,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                 children: [
                   PageView.builder(
                     controller: _pageController,
+                    allowImplicitScrolling: true,
                     itemCount: widget.photos.length,
                     onPageChanged: _onPageChanged,
                     itemBuilder: (context, index) {
@@ -192,19 +210,31 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                         minScale: 0.5,
                         maxScale: 4.0,
                         child: Center(
-                          child: Hero(
-                            tag: photo.path,
-                            child: CachedImage(
-                              filePath: photo.path,
-                              fit: BoxFit.contain,
-                              useOriginal: true,
-                              highQuality: true,
+                          child: HeroMode(
+                            enabled: index == _currentIndex,
+                            child: Hero(
+                              tag: photo.path,
+                              child: CachedImage(
+                                filePath: photo.path,
+                                fit: BoxFit.contain,
+                                useOriginal: true,
+                                highQuality: true,
+                              ),
                             ),
                           ),
                         ),
                       );
                     },
                   ),
+
+                  if (_isMetadataPanelOpen)
+                    Positioned.fill(
+                      child: GestureDetector(
+                        onTap:
+                            () => setState(() => _isMetadataPanelOpen = false),
+                        behavior: HitTestBehavior.opaque,
+                      ),
+                    ),
 
                   if (_currentIndex > 0)
                     Positioned(
@@ -254,15 +284,6 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                 ],
               ),
             ),
-
-            if (_isMetadataPanelOpen)
-              Positioned.fill(
-                child: GestureDetector(
-                  onTap: () => setState(() => _isMetadataPanelOpen = false),
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(color: Colors.transparent),
-                ),
-              ),
 
             AnimatedPositioned(
               duration: const Duration(milliseconds: 300),

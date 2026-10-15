@@ -260,8 +260,6 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
             }
           }
         }
-
-        if (mounted) {}
       } else {
         if (mounted) {
           setState(() {

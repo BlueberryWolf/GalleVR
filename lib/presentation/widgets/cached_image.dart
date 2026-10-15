@@ -28,6 +28,16 @@ class CachedImage extends StatefulWidget {
 
   @override
   State<CachedImage> createState() => _CachedImageState();
+
+  static final Map<String, Map<(int, int), ImageProvider>> _originalProviders =
+      {};
+
+  static void evictOriginal(String filePath) {
+    final providers = _originalProviders.remove(filePath)?.values ?? const [];
+    for (final provider in providers) {
+      provider.evict();
+    }
+  }
 }
 
 class _CachedImageState extends State<CachedImage> {
@@ -103,16 +113,23 @@ class _CachedImageState extends State<CachedImage> {
           final dpr = MediaQuery.devicePixelRatioOf(context);
           final maxW = widget.width ?? constraints.maxWidth;
           final maxH = widget.height ?? constraints.maxHeight;
-          ImageProvider provider = FileImage(File(widget.filePath));
-          if (maxW.isFinite && maxH.isFinite) {
-            provider = ResizeImage(
-              provider,
-              width: (maxW * dpr * 2).round(),
-              height: (maxH * dpr * 2).round(),
-              policy: ResizeImagePolicy.fit,
-              allowUpscaling: false,
-            );
-          }
+          final size =
+              maxW.isFinite && maxH.isFinite
+                  ? ((maxW * dpr * 2).round(), (maxH * dpr * 2).round())
+                  : (0, 0);
+          final provider = CachedImage._originalProviders
+              .putIfAbsent(widget.filePath, () => {})
+              .putIfAbsent(size, () {
+                final file = FileImage(File(widget.filePath));
+                if (size == (0, 0)) return file;
+                return ResizeImage(
+                  file,
+                  width: size.$1,
+                  height: size.$2,
+                  policy: ResizeImagePolicy.fit,
+                  allowUpscaling: false,
+                );
+              });
           return Image(
             image: provider,
             fit: widget.fit,

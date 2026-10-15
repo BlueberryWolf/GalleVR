@@ -7,6 +7,7 @@ import '../../data/services/app_service_manager.dart';
 import '../../data/services/photo_event_service.dart';
 import '../../data/services/vrchat_service.dart';
 import '../../data/models/config_model.dart';
+import '../../data/repositories/config_repository.dart';
 import '../../data/models/verification_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_card.dart';
@@ -21,6 +22,7 @@ class MonitorScreen extends StatefulWidget {
 
 class _MonitorScreenState extends State<MonitorScreen> {
   final AppServiceManager _appServiceManager = AppServiceManager();
+  final ConfigRepository _configRepository = ConfigRepository();
   final PhotoEventService _photoEventService = PhotoEventService();
 
   ConfigModel? _config;
@@ -133,14 +135,23 @@ class _MonitorScreenState extends State<MonitorScreen> {
           _config?.uploadEnabled != updatedConfig.uploadEnabled;
 
       if (configChanged) {
-        _config = updatedConfig;
         _dirExists.clear();
-
-        if (mounted) {}
+        if (mounted) {
+          setState(() => _config = updatedConfig);
+        } else {
+          _config = updatedConfig;
+        }
 
         _updateWatcherStatus();
       }
     });
+  }
+
+  Future<void> _setUploadEnabled(bool value) async {
+    final updated = _config!.copyWith(uploadEnabled: value);
+    setState(() => _config = updated);
+    await _configRepository.saveConfig(updated);
+    await _appServiceManager.updateConfig(updated);
   }
 
   void _listenForAuthChanges() {
@@ -480,12 +491,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
               const SizedBox(width: 10),
               AppSwitch(
                 value: _config?.uploadEnabled ?? false,
-                onChanged:
-                    _config == null
-                        ? null
-                        : (value) => _appServiceManager.updateConfig(
-                          _config!.copyWith(uploadEnabled: value),
-                        ),
+                onChanged: _config == null ? null : _setUploadEnabled,
               ),
               const SizedBox(width: 16),
               OutlinedButton(
