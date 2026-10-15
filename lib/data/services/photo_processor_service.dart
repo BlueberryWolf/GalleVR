@@ -54,16 +54,25 @@ class PhotoProcessorService {
       final authData = await _vrchatService.loadAuthData();
       final secondaryAuth = await _vrchatService.loadAuthDataSecondary();
 
-      final parsedMetadata = await VrcxMetadataService().extractVrcxMetadata(sourcePath);
-      final bool isResonite = (parsedMetadata?.application == 'Resonite') ||
+      final parsedMetadata = await VrcxMetadataService().extractVrcxMetadata(
+        sourcePath,
+      );
+      final bool isResonite =
+          (parsedMetadata?.application == 'Resonite') ||
           (config.resonitePhotosDirectory.isNotEmpty &&
               path.isWithin(config.resonitePhotosDirectory, sourcePath));
 
-      final uploadAuth = isResonite
-          ? (authData?.userId.startsWith('U-') == true ? authData : secondaryAuth)
-          : (authData?.userId.startsWith('U-') == false ? authData : secondaryAuth);
+      final uploadAuth =
+          isResonite
+              ? (authData?.userId.startsWith('U-') == true
+                  ? authData
+                  : secondaryAuth)
+              : (authData?.userId.startsWith('U-') == false
+                  ? authData
+                  : secondaryAuth);
 
-      final badges = uploadAuth?.badges.map((b) => b.toLowerCase()).toList() ?? [];
+      final badges =
+          uploadAuth?.badges.map((b) => b.toLowerCase()).toList() ?? [];
 
       final webpPath = await compressPhotoToWebP(
         sourcePath,
@@ -92,8 +101,11 @@ class PhotoProcessorService {
         cameraFov: parsedMetadata?.cameraFov,
         cameraManufacturer: parsedMetadata?.cameraManufacturer,
         takenById: parsedMetadata?.takenById,
-        isNonVrcx: isResonite ? false : (parsedMetadata?.isNonVrcx ??
-            (parsedMetadata?.world == null && metadata?.world == null)),
+        isNonVrcx:
+            isResonite
+                ? false
+                : (parsedMetadata?.isNonVrcx ??
+                    (parsedMetadata?.world == null && metadata?.world == null)),
       );
 
       final saveResult = await _photoMetadataRepository.savePhotoMetadata(
@@ -278,8 +290,7 @@ class PhotoProcessorService {
 
       if (!isResonite && !_isValidAspectRatio(width, height)) {
         final ratio = (width / height).toStringAsFixed(2);
-        final error =
-            'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
+        final error = 'Invalid aspect ratio: $ratio (expected 16:9 or 9:16)';
         developer.log(error, name: 'PhotoProcessorService');
         PhotoEventService().notifyError(
           'processing',
@@ -354,20 +365,14 @@ class PhotoProcessorService {
           return null;
         }
 
-        final processedImage = await _resizeImageIfNeeded(
-          image,
-          maxDimension,
-        );
+        final processedImage = await _resizeImageIfNeeded(image, maxDimension);
 
         developer.log(
           'Fallback path dynamic size ceiling: $scaledMaxSizeBytes bytes for resolution ${processedImage.width}x${processedImage.height} (max tier limit: $maxSizeBytes bytes)',
           name: 'PhotoProcessorService',
         );
 
-        Uint8List webpBytes = await _encodeToWebP(
-          processedImage,
-          webpQuality,
-        );
+        Uint8List webpBytes = await _encodeToWebP(processedImage, webpQuality);
 
         if (webpBytes.length > scaledMaxSizeBytes) {
           int currentQuality = webpQuality;
@@ -376,8 +381,7 @@ class PhotoProcessorService {
             name: 'PhotoProcessorService',
           );
 
-          while (webpBytes.length > scaledMaxSizeBytes &&
-              currentQuality > 50) {
+          while (webpBytes.length > scaledMaxSizeBytes && currentQuality > 50) {
             currentQuality -= 10;
             if (currentQuality < 50) currentQuality = 50;
             webpBytes = await _encodeToWebP(processedImage, currentQuality);
@@ -403,7 +407,10 @@ class PhotoProcessorService {
 
       return outputPath;
     } catch (e) {
-      developer.log('Error in compressPhotoToWebP: $e', name: 'PhotoProcessorService');
+      developer.log(
+        'Error in compressPhotoToWebP: $e',
+        name: 'PhotoProcessorService',
+      );
       PhotoEventService().notifyError(
         'processing',
         'Error compressing photo: $e',

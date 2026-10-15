@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:developer' as developer;
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
@@ -12,24 +11,21 @@ class WebpEncoderService {
   static const int maxSizeKb = 150;
   static const int maxAttempts = 5;
 
-  /// Encodes an image to WebP format with size constraints
+  /// Encodes to WebP under 150KB, lowering quality over up to 5 attempts.
   ///
-  /// Ensures the output is under 150KB by progressively reducing quality
-  /// if needed, making up to 5 attempts with decreasing quality.
-  /// On Windows, uses cwebp's built-in resizing capability.
+  /// cwebp does the resizing on Windows and Linux.
   Future<Uint8List> encodeToWebP(
     img.Image image, {
     int quality = 85,
     int method = 6,
     bool useResizing = true,
   }) async {
-    // Store original dimensions for Windows resizing
     final originalWidth = image.width;
     final originalHeight = image.height;
 
     if (Platform.isWindows || Platform.isLinux) {
       try {
-        // For Windows & Linux, we'll pass the original image and let cwebp handle resizing
+        // cwebp resizes on Windows and Linux, so the original image is passed through.
         return await _encodeWithSizeConstraint(
           image,
           initialQuality: quality,
@@ -51,7 +47,6 @@ class WebpEncoderService {
           'Error using cwebp.exe, falling back to image package: $e',
           name: 'WebpEncoderService',
         );
-        // For fallback, we'll use the resized image
         final resizedImage = await _resizeImageIfNeeded(image);
         return await _encodeWithSizeConstraint(
           resizedImage,
@@ -66,7 +61,6 @@ class WebpEncoderService {
         );
       }
     } else if (Platform.isAndroid) {
-      // For Android, resize the image first
       final resizedImage = await _resizeImageIfNeeded(image);
       final tempDir = await getTemporaryDirectory();
       final tempPngPath = path.join(
@@ -108,7 +102,6 @@ class WebpEncoderService {
         } catch (_) {}
       }
     } else {
-      // For other platforms, resize the image first
       final resizedImage = await _resizeImageIfNeeded(image);
       return await _encodeWithSizeConstraint(
         resizedImage,
@@ -123,10 +116,7 @@ class WebpEncoderService {
     }
   }
 
-  /// Encodes an image with size constraints by progressively reducing quality
-  ///
-  /// Makes multiple attempts to encode the image, reducing quality each time
-  /// until the file size is under maxSizeKb (150KB).
+  /// Lowers quality each attempt until the output is under [maxSizeKb].
   Future<Uint8List> _encodeWithSizeConstraint(
     img.Image image, {
     required int initialQuality,
@@ -148,7 +138,6 @@ class WebpEncoderService {
     int attempts = 0;
     Uint8List result;
 
-    // Calculate target dimensions for 1080p
     int? targetWidth;
     int? targetHeight;
 
@@ -176,7 +165,7 @@ class WebpEncoderService {
       }
 
       developer.log(
-        'Target dimensions: ${targetWidth}x${targetHeight} (original: ${originalWidth}x${originalHeight})',
+        'Target dimensions: ${targetWidth}x$targetHeight (original: ${originalWidth}x$originalHeight)',
         name: 'WebpEncoderService',
       );
     }
@@ -205,19 +194,18 @@ class WebpEncoderService {
         return result;
       }
 
-      // Calculate new quality based on how far we are from target size
-      // More aggressive reduction for larger files
+      // Reduce quality more aggressively the further the file is over the target size.
       final ratio = maxSizeKb / sizeKB;
       int qualityReduction;
 
       if (ratio < 0.5) {
-        qualityReduction = 25; // Very large file, reduce by 25
+        qualityReduction = 25;
       } else if (ratio < 0.7) {
-        qualityReduction = 15; // Large file, reduce by 15
+        qualityReduction = 15;
       } else if (ratio < 0.9) {
-        qualityReduction = 10; // Medium file, reduce by 10
+        qualityReduction = 10;
       } else {
-        qualityReduction = 5; // Close to target, reduce by 5
+        qualityReduction = 5;
       }
 
       currentQuality = (currentQuality - qualityReduction).clamp(5, 100);
@@ -232,7 +220,7 @@ class WebpEncoderService {
     return result;
   }
 
-  /// Resizes an image to fit within 1080p dimensions while maintaining aspect ratio
+  /// Fits the image within 1080px, keeping its aspect ratio.
   Future<img.Image> _resizeImageIfNeeded(img.Image image) async {
     const maxDimension = 1080;
 
@@ -302,7 +290,6 @@ class WebpEncoderService {
         outputPath,
       ];
 
-      // Add resize parameters if provided
       if (targetWidth != null && targetHeight != null) {
         args.addAll([
           '-resize',
@@ -311,7 +298,6 @@ class WebpEncoderService {
         ]);
       }
 
-      // Add input path at the end
       args.add(inputPath);
 
       developer.log(
@@ -407,51 +393,7 @@ class WebpEncoderService {
     }, EncoderParams(image, quality));
   }
 
-  Future<Uint8List> _encodeWithFlutterImageCompress(
-    img.Image image, {
-    int quality = 85,
-  }) async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final inputPath = path.join(
-        tempDir.path,
-        'input_${DateTime.now().millisecondsSinceEpoch}.png',
-      );
-
-      final pngBytes = await compute((EncoderParams params) {
-        return Uint8List.fromList(img.encodePng(params.image));
-      }, EncoderParams(image, quality));
-
-      await File(inputPath).writeAsBytes(pngBytes);
-
-      final result = await FlutterImageCompress.compressWithFile(
-        inputPath,
-        quality: quality,
-        format: CompressFormat.webp,
-      );
-
-      try {
-        if (await File(inputPath).exists()) {
-          await File(inputPath).delete();
-        }
-      } catch (_) {}
-
-      if (result == null) {
-        throw Exception('flutter_image_compress returned null');
-      }
-
-      return result;
-    } catch (e) {
-      developer.log(
-        'Error using flutter_image_compress: $e',
-        name: 'WebpEncoderService',
-      );
-      return await _encodeWithImagePackage(image, quality: quality);
-    }
-  }
-
-  /// Encodes a PNG file directly to WebP format using cwebp on Windows/Linux,
-  /// or native FlutterImageCompress on Android.
+  /// Uses cwebp on Windows and Linux, FlutterImageCompress on Android.
   Future<void> encodeFileToWebP(
     String inputPath,
     String outputPath, {
@@ -540,10 +482,7 @@ class WebpEncoderService {
     const maxAttempts = 5;
 
     while (attempts < maxAttempts) {
-      final args = [
-        '-m', '4', // Use method 4 for fast encoding
-        '-q', currentQuality.toString(),
-      ];
+      final args = ['-m', '4', '-q', currentQuality.toString()];
 
       if (targetWidth != null && targetHeight != null) {
         args.addAll([
@@ -574,7 +513,6 @@ class WebpEncoderService {
         name: 'WebpEncoderService',
       );
 
-      // Reduce quality factor for next attempt
       currentQuality -= 10;
       if (currentQuality < 50) {
         currentQuality = 50;

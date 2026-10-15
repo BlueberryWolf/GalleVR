@@ -1,5 +1,5 @@
 import 'dart:developer' as developer;
-import 'dart:io' show Platform, Process, File;
+import 'dart:io' show Platform, Process;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,16 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../data/models/verification_models.dart';
 import '../../data/services/vrchat_service.dart';
 import '../../data/services/app_service_manager.dart';
-import '../../data/models/config_model.dart';
-import '../../data/repositories/config_repository.dart';
 import '../widgets/blurrable_qr_code.dart';
 import '../widgets/app_card.dart';
+import '../widgets/tinted_button.dart';
 import 'verification_screen.dart';
-import 'photos/photos_utils.dart';
+import '../theme/app_theme.dart';
 
-// Screen for VRChat account management
 class AccountScreen extends StatefulWidget {
-  // Default constructor
   const AccountScreen({super.key});
 
   @override
@@ -25,15 +22,12 @@ class AccountScreen extends StatefulWidget {
 
 class _AccountScreenState extends State<AccountScreen> {
   final VRChatService _vrchatService = VRChatService();
-  final ConfigRepository _configRepository = ConfigRepository();
 
   bool _isLoading = true;
   bool _isVerified = false;
   String _galleryUrl = '';
   AuthData? _authData;
   AuthData? _authDataSec;
-  ConfigModel? _config;
-  bool _isQrCodeVisible = true;
 
   @override
   void initState() {
@@ -49,13 +43,8 @@ class _AccountScreenState extends State<AccountScreen> {
     });
 
     try {
-      // Initialize VRChat service
       await _vrchatService.initialize();
 
-      // Load config
-      _config = await _configRepository.loadConfig();
-
-      // Check if already verified
       await _checkLoginStatus();
     } catch (e) {
       developer.log('Error loading config: $e', name: 'AccountScreen');
@@ -204,40 +193,34 @@ class _AccountScreenState extends State<AccountScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 80,
-                height: 80,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF3b82f6), Color(0xFF8b5cf6)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: AppTheme.tint(AppTheme.primaryColor, 0.2),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                 ),
                 child: const Icon(
                   Icons.person_rounded,
-                  size: 40,
-                  color: Colors.white,
+                  size: 32,
+                  color: AppTheme.primaryLightColor,
                 ),
               ),
               const SizedBox(height: 24),
               const Text(
                 'Social Account',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppTheme.textColor,
                   fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               const Text(
-                'NOT VERIFIED',
+                'Not verified',
                 style: TextStyle(
-                  color: Color(0xFFf87171),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
+                  color: AppTheme.errorColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 24),
@@ -245,13 +228,13 @@ class _AccountScreenState extends State<AccountScreen> {
                 'Verify your account to unlock your personal gallery and enable photo sharing.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white60,
+                  color: AppTheme.secondaryTextColor,
                   fontSize: 14,
                   height: 1.5,
                 ),
               ),
               const SizedBox(height: 32),
-              _buildActionButton(
+              TintedButton(
                 onPressed: () async {
                   if (mounted) {
                     await Navigator.of(context).push(
@@ -264,7 +247,7 @@ class _AccountScreenState extends State<AccountScreen> {
                 },
                 icon: Icons.verified_user_rounded,
                 label: 'Start Verification',
-                color: const Color(0xFF3b82f6),
+                color: AppTheme.primaryColor,
               ),
             ],
           ),
@@ -285,9 +268,12 @@ class _AccountScreenState extends State<AccountScreen> {
       height: isWide ? 100 : 70,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: platformColor.withOpacity(0.1),
+        color: platformColor.withValues(alpha: 0.1),
         shape: BoxShape.circle,
-        border: Border.all(color: platformColor.withOpacity(0.3), width: 2),
+        border: Border.all(
+          color: platformColor.withValues(alpha: 0.3),
+          width: 2,
+        ),
       ),
       child:
           auth.avatarUrl != null
@@ -322,24 +308,21 @@ class _AccountScreenState extends State<AccountScreen> {
                 color: Colors.white,
                 fontSize: isWide ? 22 : 18,
                 fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
               ),
             ),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: platformColor.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: platformColor.withOpacity(0.5)),
+                color: AppTheme.tint(platformColor, 0.2),
+                borderRadius: BorderRadius.circular(AppTheme.radiusTag),
               ),
               child: Text(
-                platformText.toUpperCase(),
+                platformText,
                 style: TextStyle(
                   color: platformColor,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -352,7 +335,7 @@ class _AccountScreenState extends State<AccountScreen> {
       crossAxisAlignment:
           isWide ? CrossAxisAlignment.end : CrossAxisAlignment.center,
       children: [
-        _buildActionButton(
+        TintedButton(
           onPressed: () => _launchAccountGallery(auth),
           icon: Icons.open_in_new_rounded,
           label: 'Open Gallery',
@@ -363,16 +346,9 @@ class _AccountScreenState extends State<AccountScreen> {
         TextButton.icon(
           onPressed: () => _showLogoutConfirmationFor(isSecondary, displayName),
           icon: const Icon(Icons.logout_rounded, size: 14),
-          label: const Text(
-            'LOGOUT',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
-            ),
-          ),
+          label: const Text('Log out'),
           style: TextButton.styleFrom(
-            foregroundColor: const Color(0xFFf87171).withOpacity(0.6),
+            foregroundColor: AppTheme.errorColor,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
         ),
@@ -415,12 +391,18 @@ class _AccountScreenState extends State<AccountScreen> {
         await Process.run('xdg-open', [url.toString()]);
       }
     } catch (e) {
-      developer.log('Error launching account gallery: $e', name: 'AccountScreen');
+      developer.log(
+        'Error launching account gallery: $e',
+        name: 'AccountScreen',
+      );
       if (Platform.isLinux) {
         try {
           await Process.run('xdg-open', [url.toString()]);
         } catch (err) {
-          developer.log('xdg-open fallback failed: $err', name: 'AccountScreen');
+          developer.log(
+            'xdg-open fallback failed: $err',
+            name: 'AccountScreen',
+          );
         }
       }
     }
@@ -433,7 +415,6 @@ class _AccountScreenState extends State<AccountScreen> {
         final list = <Widget>[];
         final isAndroid = Platform.isAndroid;
 
-        // Primary account
         if (_authData != null) {
           final isRes = _authData!.userId.startsWith('U-');
           if (!isAndroid || !isRes) {
@@ -441,7 +422,6 @@ class _AccountScreenState extends State<AccountScreen> {
           }
         }
 
-        // Secondary account
         if (_authDataSec != null) {
           final isRes = _authDataSec!.userId.startsWith('U-');
           if (!isAndroid || !isRes) {
@@ -450,7 +430,6 @@ class _AccountScreenState extends State<AccountScreen> {
           }
         }
 
-        // Link button
         final hasVRC =
             (_authData != null && !_authData!.userId.startsWith('U-')) ||
             (_authDataSec != null && !_authDataSec!.userId.startsWith('U-'));
@@ -473,7 +452,7 @@ class _AccountScreenState extends State<AccountScreen> {
           list.add(const SizedBox(height: 24));
           list.add(
             Center(
-              child: _buildActionButton(
+              child: TintedButton(
                 onPressed: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute(
@@ -494,7 +473,6 @@ class _AccountScreenState extends State<AccountScreen> {
           );
         }
 
-        // QR code card
         final qrCard = AppCard(
           padding: EdgeInsets.all(isWide ? 40 : 24),
           child: Column(
@@ -506,12 +484,14 @@ class _AccountScreenState extends State<AccountScreen> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(8),
+                      color: AppTheme.tint(AppTheme.primaryColor, 0.15),
+                      borderRadius: BorderRadius.circular(
+                        AppTheme.radiusControl,
+                      ),
                     ),
                     child: const Icon(
                       Icons.qr_code_scanner_rounded,
-                      color: Colors.white70,
+                      color: AppTheme.primaryLightColor,
                       size: 24,
                     ),
                   ),
@@ -531,7 +511,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       Text(
                         'Scan to view your gallery on your phone',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
+                          color: AppTheme.secondaryTextColor,
                           fontSize: 13,
                         ),
                       ),
@@ -566,55 +546,5 @@ class _AccountScreenState extends State<AccountScreen> {
         );
       },
     );
-  }
-
-  Widget _buildActionButton({
-    required VoidCallback onPressed,
-    required IconData icon,
-    required String label,
-    required Color color,
-    bool outlined = false,
-    double? width,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: width,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: outlined ? Colors.transparent : color.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: color.withOpacity(outlined ? 0.3 : 0.5),
-              width: 1.5,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: width != null ? MainAxisSize.max : MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 20, color: color),
-              const SizedBox(width: 12),
-              Text(
-                label.toUpperCase(),
-                style: TextStyle(
-                  color: color,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _launchGallery() async {
-    await openUrl(_galleryUrl, context, loggerName: 'AccountScreen');
   }
 }

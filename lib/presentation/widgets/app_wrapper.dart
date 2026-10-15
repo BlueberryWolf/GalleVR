@@ -13,16 +13,12 @@ import '../../core/services/update_service.dart';
 import '../../core/services/connectivity_service.dart';
 import '../widgets/tos_modal.dart';
 import 'update_dialog.dart';
+import '../theme/app_theme.dart';
 
-/// A widget that wraps the entire app and handles global functionality
-/// such as showing the TOS modal when needed.
 class AppWrapper extends StatefulWidget {
   final Widget child;
 
-  const AppWrapper({
-    Key? key,
-    required this.child,
-  }) : super(key: key);
+  const AppWrapper({super.key, required this.child});
 
   @override
   State<AppWrapper> createState() => _AppWrapperState();
@@ -37,19 +33,14 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
 
   bool _showTOSModal = false;
   bool _isCheckingTOS = false;
-  bool _isAuthenticated = false;
 
-  // Update notification related fields
   String? _appVersion;
   String? _latestVersion;
-  bool _updateAvailable = false;
   StreamSubscription<bool>? _updateSubscription;
 
-  // Connectivity monitoring related fields
   bool _isOffline = false;
   StreamSubscription<bool>? _connectivitySubscription;
 
-  // Track the previous upload setting before TOS check
   bool _previousUploadEnabled = true;
   bool _wasUploadDisabledByTOS = false;
 
@@ -58,39 +49,33 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Listen for config changes
     _appServiceManager.configStream.listen((config) {
-      // If upload was enabled and TOS needs acceptance, disable it
       if (config.uploadEnabled && _wasUploadDisabledByTOS) {
         _showTOSPromptAndDisableUpload(config);
       }
     });
 
-    // Listen for update notifications
-    _updateSubscription = _updateService.updateAvailableStream.listen((hasUpdate) {
+    _updateSubscription = _updateService.updateAvailableStream.listen((
+      hasUpdate,
+    ) {
       if (mounted) {
         setState(() {
-          _updateAvailable = hasUpdate;
           _latestVersion = _updateService.latestVersion;
         });
 
-        // Show in-app notification when update is available
         if (hasUpdate && _latestVersion != null) {
           _showUpdateNotification();
         }
       }
     });
 
-    // Load app version
     _loadAppVersion();
 
     _checkTOSStatus();
 
-    // Start connectivity monitoring
     _startConnectivityMonitoring();
   }
 
-  /// Load the current app version
   Future<void> _loadAppVersion() async {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
@@ -105,30 +90,29 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     }
   }
 
-  // Track the last version we showed a notification for
   String? _lastNotifiedVersion;
 
-  /// Show an in-app notification about available updates
   void _showUpdateNotification() {
     if (!mounted) return;
 
-    // Check if we've already shown a notification for this version
     if (_lastNotifiedVersion == _latestVersion) {
-      developer.log('Already showed in-app notification for version $_latestVersion, skipping',
-          name: 'AppWrapper');
+      developer.log(
+        'Already showed in-app notification for version $_latestVersion, skipping',
+        name: 'AppWrapper',
+      );
       return;
     }
 
-    // Remember this version
     _lastNotifiedVersion = _latestVersion;
 
-    // If Windows, check auto update setting
     if (Platform.isWindows) {
       final config = _appServiceManager.config;
       if (config != null && config.autoUpdateEnabled) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Downloading GalleVR v$_latestVersion update automatically...'),
+            content: Text(
+              'Downloading GalleVR v$_latestVersion update automatically...',
+            ),
             backgroundColor: Theme.of(context).colorScheme.primary,
             duration: const Duration(seconds: 5),
           ),
@@ -138,7 +122,9 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: const Text('Auto-update failed. Click to download manually.'),
+                content: const Text(
+                  'Auto-update failed. Click to download manually.',
+                ),
                 backgroundColor: Colors.redAccent,
                 action: SnackBarAction(
                   label: 'DOWNLOAD',
@@ -170,15 +156,20 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         onPressed: () async {
           if (mounted) {
             await _updateService.openReleasesPage();
-            developer.log('Download button clicked in in-app notification', name: 'AppWrapper');
+            developer.log(
+              'Download button clicked in in-app notification',
+              name: 'AppWrapper',
+            );
           }
         },
       ),
     );
 
-    // Show the snackbar
     ScaffoldMessenger.of(context).showSnackBar(snackBar);
-    developer.log('Showed in-app notification for version $_latestVersion', name: 'AppWrapper');
+    developer.log(
+      'Showed in-app notification for version $_latestVersion',
+      name: 'AppWrapper',
+    );
   }
 
   @override
@@ -192,36 +183,30 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Check TOS status when app resumes
     if (state == AppLifecycleState.resumed) {
       _checkTOSStatus();
     }
   }
 
-  /// Show TOS prompt and disable upload if needed
   Future<void> _showTOSPromptAndDisableUpload(ConfigModel config) async {
-    // Check if a TOS modal is already visible
     if (_appServiceManager.isTOSModalVisible) {
-      developer.log('TOS modal is already visible, skipping', name: 'AppWrapper');
+      developer.log(
+        'TOS modal is already visible, skipping',
+        name: 'AppWrapper',
+      );
       return;
     }
 
-    // Save the current upload setting
     _previousUploadEnabled = config.uploadEnabled;
 
-    // Disable uploading
     final updatedConfig = config.copyWith(uploadEnabled: false);
     await _configRepository.saveConfig(updatedConfig);
 
-    // Notify the app service manager about the config change
     await _appServiceManager.updateConfig(updatedConfig);
 
-    // Mark that we disabled uploading due to TOS
     _wasUploadDisabledByTOS = true;
 
-    // Show the TOS modal
     if (mounted) {
-      // Set the global flag
       _appServiceManager.isTOSModalVisible = true;
 
       setState(() {
@@ -229,47 +214,44 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       });
     }
 
-    // Show a message to the user
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Photo uploading has been disabled until you accept the Terms of Service.'),
+        content: Text(
+          'Photo uploading has been disabled until you accept the Terms of Service.',
+        ),
         backgroundColor: Colors.orange,
         duration: Duration(seconds: 5),
       ),
     );
   }
 
-  /// Check if the user needs to accept the TOS
   Future<void> _checkTOSStatus() async {
     if (_isCheckingTOS) return;
 
     _isCheckingTOS = true;
     try {
-      // Check if user is authenticated
       final authData = await _vrchatService.loadAuthData();
       final isAuthenticated = authData != null;
 
       if (isAuthenticated) {
-        // Check if user needs to accept TOS
         final needsToAcceptTOS = await _tosService.needsToAcceptTOS();
 
         if (needsToAcceptTOS) {
-          // Get current config
           final config = await _configRepository.loadConfig();
 
-          // Check if a TOS modal is already visible
           if (_appServiceManager.isTOSModalVisible) {
-            developer.log('TOS modal is already visible, skipping', name: 'AppWrapper');
+            developer.log(
+              'TOS modal is already visible, skipping',
+              name: 'AppWrapper',
+            );
             return;
           }
 
-          // If uploading is enabled, disable it and show TOS
           if (config.uploadEnabled) {
             await _showTOSPromptAndDisableUpload(config);
           } else {
-            // Just show the TOS modal
             if (mounted) {
-              // Set the global flag
               _appServiceManager.isTOSModalVisible = true;
 
               setState(() {
@@ -279,15 +261,10 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           }
         }
 
-        if (mounted) {
-          setState(() {
-            _isAuthenticated = isAuthenticated;
-          });
-        }
+        if (mounted) {}
       } else {
         if (mounted) {
           setState(() {
-            _isAuthenticated = false;
             _showTOSModal = false;
             _wasUploadDisabledByTOS = false;
           });
@@ -305,31 +282,29 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       _showTOSModal = false;
     });
 
-    // Reset the global flag
     _appServiceManager.isTOSModalVisible = false;
 
-    // Re-enable uploading if it was disabled due to TOS
     if (_wasUploadDisabledByTOS) {
       try {
-        // Get current config
         final config = await _configRepository.loadConfig();
 
-        // Restore previous upload setting
-        final updatedConfig = config.copyWith(uploadEnabled: _previousUploadEnabled);
+        final updatedConfig = config.copyWith(
+          uploadEnabled: _previousUploadEnabled,
+        );
         await _configRepository.saveConfig(updatedConfig);
 
-        // Notify the app service manager about the config change
         await _appServiceManager.updateConfig(updatedConfig);
 
-        // Reset the flag
         _wasUploadDisabledByTOS = false;
 
-        // Show success message
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_previousUploadEnabled
-              ? 'Terms of Service accepted. Photo uploading has been re-enabled.'
-              : 'Terms of Service accepted. You can now enable photo uploading in settings.'),
+            content: Text(
+              _previousUploadEnabled
+                  ? 'Terms of Service accepted. Photo uploading has been re-enabled.'
+                  : 'Terms of Service accepted. You can now enable photo uploading in settings.',
+            ),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 5),
           ),
@@ -337,19 +312,22 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       } catch (e) {
         developer.log('Error restoring upload setting: $e', name: 'AppWrapper');
 
-        // Show error message
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Terms of Service accepted, but there was an error restoring your upload settings.'),
+            content: Text(
+              'Terms of Service accepted, but there was an error restoring your upload settings.',
+            ),
             backgroundColor: Colors.orange,
           ),
         );
       }
     } else {
-      // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Terms of Service accepted. You can now upload photos.'),
+          content: Text(
+            'Terms of Service accepted. You can now upload photos.',
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -361,10 +339,8 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       _showTOSModal = false;
     });
 
-    // Reset the global flag
     _appServiceManager.isTOSModalVisible = false;
 
-    // Show warning message
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('You must accept the Terms of Service to upload photos.'),
@@ -374,20 +350,20 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     );
   }
 
-  /// Start monitoring internet connectivity
   void _startConnectivityMonitoring() {
     final connectivityService = ConnectivityService();
     connectivityService.startMonitoring();
-    
-    // Set initial state
+
     _isOffline = !connectivityService.hasConnection;
-    
-    _connectivitySubscription = connectivityService.connectionStream.listen((isConnected) {
+
+    _connectivitySubscription = connectivityService.connectionStream.listen((
+      isConnected,
+    ) {
       if (mounted) {
         setState(() {
           _isOffline = !isConnected;
         });
-        
+
         if (!isConnected) {
           developer.log('App is offline', name: 'AppWrapper');
         } else {
@@ -401,7 +377,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   Widget _buildOfflineBanner() {
     final double bannerHeight = 60.0;
     final double topPadding = MediaQuery.of(context).padding.top;
-    
+
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
@@ -415,7 +391,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color: const Color(0xFFEF4444).withAlpha(230),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppTheme.radiusCard),
             border: Border.all(
               color: const Color(0xFFEF4444).withAlpha(128),
               width: 1.5,
@@ -430,11 +406,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
           ),
           child: Row(
             children: [
-              const Icon(
-                Icons.wifi_off_rounded,
-                color: Colors.white,
-                size: 24,
-              ),
+              const Icon(Icons.wifi_off_rounded, color: Colors.white, size: 24),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -469,19 +441,19 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
                 style: TextButton.styleFrom(
                   backgroundColor: Colors.white.withAlpha(38),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                   ),
                 ),
                 child: const Text(
                   'RETRY',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                 ),
               ),
             ],
@@ -495,13 +467,10 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Main app content
         widget.child,
 
-        // Offline Banner
         _buildOfflineBanner(),
 
-        // TOS Modal
         if (_showTOSModal)
           TOSModal(
             onAccept: _handleTOSAccept,

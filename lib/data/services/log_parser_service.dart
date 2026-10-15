@@ -8,12 +8,9 @@ import '../../core/platform/platform_service_factory.dart';
 import '../models/log_metadata.dart';
 import '../models/config_model.dart';
 
-// Service for parsing VRChat logs
 class LogParserService {
-  // Platform service for platform-specific operations
   final PlatformService platformService;
 
-  // Regular expressions for parsing logs
   static final _roomNameRegex = RegExp(
     r'\[Behaviour\] Entering Room: (.*?)(?:\r?\n|$)',
   );
@@ -98,12 +95,10 @@ class LogParserService {
     r'\[Behaviour\] OnPlayer(Joined|Left) (.+?) \((.+?)\)',
   );
 
-  // Default constructor
   LogParserService({PlatformService? platformService})
     : platformService =
           platformService ?? PlatformServiceFactory.getPlatformService();
 
-  // Get metadata from the latest log file
   Future<LogMetadata?> getLatestLogMetadata(ConfigModel config) async {
     try {
       final logPath = await _findLatestLogFile(config.logsDirectory);
@@ -130,13 +125,12 @@ class LogParserService {
 
       String logContent = utf8.decode(bytes, allowMalformed: true);
 
-      // Find the last world entry
       int lastEnteringIndex = [
         logContent.lastIndexOf('[Behaviour] Entering world'),
         logContent.lastIndexOf('[Behaviour] Entering Room'),
       ].reduce((a, b) => a > b ? a : b);
 
-      // Fallback to reading the full file if entering room is not in the last 200KB
+      // Read the full file when the room join is not in the last 200KB.
       if (lastEnteringIndex == -1 && fileSize > readSize) {
         developer.log(
           'Entering Room/World not found in last 200KB, falling back to full read of ${(fileSize / 1024 / 1024).toStringAsFixed(2)}MB log file',
@@ -155,14 +149,12 @@ class LogParserService {
 
       final relevantLog = logContent.substring(lastEnteringIndex);
 
-      // Extract room name
       String roomName = '';
       final roomNameMatch = _roomNameRegex.firstMatch(relevantLog);
       if (roomNameMatch != null && roomNameMatch.groupCount >= 1) {
         roomName = roomNameMatch.group(1)?.trim() ?? '';
       }
 
-      // Extract world info
       WorldInfo? worldInfo;
       for (final pattern in _worldPatterns) {
         final match = pattern.regex.firstMatch(relevantLog);
@@ -176,8 +168,7 @@ class LogParserService {
         }
       }
 
-      // Furality hotfix
-      // If no world info was found but we have a room name, create a basic WorldInfo
+      // Furality hotfix: build a basic WorldInfo when only the room name was logged.
       if (worldInfo == null && roomName.isNotEmpty) {
         final worldIdMatch = RegExp(
           r'Joining (wrld_[^:]+):',
@@ -187,7 +178,6 @@ class LogParserService {
         worldInfo = WorldInfo(name: roomName, id: worldId);
       }
 
-      // Extract players
       final playerMap = <String, String>{};
       final playerMatches = _playerRegex.allMatches(relevantLog).toList();
 
@@ -217,7 +207,6 @@ class LogParserService {
     }
   }
 
-  // Find the latest log file
   Future<String?> _findLatestLogFile(String logsDirectory) async {
     if (logsDirectory.isEmpty) {
       developer.log('Logs directory is empty', name: 'LogParserService');
@@ -239,10 +228,8 @@ class LogParserService {
         name: 'LogParserService',
       );
 
-      // Use the same pattern for both platforms since logs are named the same
       const logPattern = 'output_log_';
 
-      // Find all log files
       final logFiles = <FileSystemEntity>[];
       final allFiles = <String>[];
 
@@ -265,7 +252,6 @@ class LogParserService {
         return null;
       }
 
-      // Sort by modification time (newest first)
       logFiles.sort((a, b) {
         final aTime = a.statSync().modified;
         final bTime = b.statSync().modified;
@@ -288,7 +274,6 @@ class LogParserService {
   }
 }
 
-// Helper class for world pattern matching
 class _WorldPattern {
   final RegExp regex;
   final WorldInfo Function(List<String?>, String) handler;

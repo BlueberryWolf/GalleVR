@@ -11,6 +11,7 @@ class CachedImage extends StatefulWidget {
   final bool highQuality;
   final bool useOriginal;
   final double opacity;
+  final bool greyscale;
 
   const CachedImage({
     super.key,
@@ -22,6 +23,7 @@ class CachedImage extends StatefulWidget {
     this.highQuality = false,
     this.useOriginal = false,
     this.opacity = 1.0,
+    this.greyscale = false,
   });
 
   @override
@@ -31,7 +33,6 @@ class CachedImage extends StatefulWidget {
 class _CachedImageState extends State<CachedImage> {
   File? _thumbnailFile;
   bool _isLoading = true;
-  bool _hasError = false;
 
   @override
   void initState() {
@@ -53,7 +54,6 @@ class _CachedImageState extends State<CachedImage> {
 
     setState(() {
       _isLoading = true;
-      _hasError = false;
     });
 
     try {
@@ -71,7 +71,6 @@ class _CachedImageState extends State<CachedImage> {
         setState(() {
           _thumbnailFile = file;
           _isLoading = false;
-          _hasError = file == null;
         });
       }
     } catch (e) {
@@ -82,7 +81,6 @@ class _CachedImageState extends State<CachedImage> {
         }
         setState(() {
           _isLoading = false;
-          _hasError = true;
         });
       }
     }
@@ -100,19 +98,31 @@ class _CachedImageState extends State<CachedImage> {
 
   Widget _buildContent() {
     if (widget.useOriginal) {
-      return Image.file(
-        File(widget.filePath),
-        fit: widget.fit,
-        width: widget.width,
-        height: widget.height,
-        gaplessPlayback: true,
-        filterQuality:
-            widget.highQuality ? FilterQuality.high : FilterQuality.medium,
-        opacity: AlwaysStoppedAnimation(widget.opacity),
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            color: Colors.grey[800],
-            child: const Icon(Icons.broken_image, color: Colors.grey, size: 20),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final dpr = MediaQuery.devicePixelRatioOf(context);
+          final maxW = widget.width ?? constraints.maxWidth;
+          final maxH = widget.height ?? constraints.maxHeight;
+          ImageProvider provider = FileImage(File(widget.filePath));
+          if (maxW.isFinite && maxH.isFinite) {
+            provider = ResizeImage(
+              provider,
+              width: (maxW * dpr * 2).round(),
+              height: (maxH * dpr * 2).round(),
+              policy: ResizeImagePolicy.fit,
+              allowUpscaling: false,
+            );
+          }
+          return Image(
+            image: provider,
+            fit: widget.fit,
+            width: widget.width,
+            height: widget.height,
+            gaplessPlayback: true,
+            filterQuality:
+                widget.highQuality ? FilterQuality.high : FilterQuality.medium,
+            opacity: AlwaysStoppedAnimation(widget.opacity),
+            errorBuilder: _errorBuilder,
           );
         },
       );
@@ -124,7 +134,7 @@ class _CachedImageState extends State<CachedImage> {
 
     final displayFile = _thumbnailFile ?? File(widget.filePath);
 
-    return Image.file(
+    final image = Image.file(
       displayFile,
       fit: widget.fit,
       width: widget.width,
@@ -134,12 +144,44 @@ class _CachedImageState extends State<CachedImage> {
           widget.highQuality ? FilterQuality.high : FilterQuality.low,
       opacity: AlwaysStoppedAnimation(widget.opacity),
       cacheWidth: widget.thumbnailSize ?? 300,
-      errorBuilder: (context, error, stackTrace) {
-        return Container(
-          color: Colors.grey[800],
-          child: const Icon(Icons.broken_image, color: Colors.grey, size: 20),
-        );
-      },
+      errorBuilder: _errorBuilder,
+    );
+    if (!widget.greyscale) return image;
+    return ColorFiltered(colorFilter: _greyscaleFilter, child: image);
+  }
+
+  static const _lumaR = 0.2126, _lumaG = 0.7152, _lumaB = 0.0722;
+  static const _greyscaleFilter = ColorFilter.matrix(<double>[
+    _lumaR,
+    _lumaG,
+    _lumaB,
+    0,
+    0,
+    _lumaR,
+    _lumaG,
+    _lumaB,
+    0,
+    0,
+    _lumaR,
+    _lumaG,
+    _lumaB,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ]);
+
+  static Widget _errorBuilder(
+    BuildContext context,
+    Object error,
+    StackTrace? stackTrace,
+  ) {
+    return Container(
+      color: Colors.grey[800],
+      child: const Icon(Icons.broken_image, color: Colors.grey, size: 20),
     );
   }
 }

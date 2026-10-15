@@ -5,6 +5,7 @@ import 'package:path/path.dart' as path;
 import 'dart:developer' as developer;
 import '../../data/models/config_model.dart';
 import '../../data/models/photo_metadata.dart';
+import '../../data/models/verification_models.dart';
 import '../../data/repositories/config_repository.dart';
 import '../../data/repositories/photo_metadata_repository.dart';
 import '../../data/services/app_service_manager.dart';
@@ -60,10 +61,10 @@ class PhotosController extends ValueNotifier<PhotosState> {
   final PhotoMetadataRepository _metadataRepository = PhotoMetadataRepository();
   final PhotoEventService _photoEventService = PhotoEventService();
 
-  StreamSubscription? _photoAddedSub;
-  StreamSubscription? _photoUploadedSub;
+  StreamSubscription<String>? _photoAddedSub;
+  StreamSubscription<String>? _photoUploadedSub;
   StreamSubscription<ConfigModel>? _configSub;
-  StreamSubscription? _authSub;
+  StreamSubscription<AuthData?>? _authSub;
 
   int _currentPage = 0;
   static const int _pageSize = 24;
@@ -142,13 +143,9 @@ class PhotosController extends ValueNotifier<PhotosState> {
     value = value.copyWith(isLoading: true, error: null);
 
     try {
-      if (forceSync) {
-        await _metadataRepository.syncWithBackend(force: true);
-      } else {
-        await _metadataRepository.syncWithBackend();
-      }
+      final syncFuture = _metadataRepository.syncWithBackend(force: forceSync);
 
-      final List<FileSystemEntity> allPhotosList = [];
+      final List<(String, int)> allPhotosList = [];
 
       if (hasVrcDir) {
         final directory = Directory(vrcPhotosDir);
@@ -172,18 +169,14 @@ class PhotosController extends ValueNotifier<PhotosState> {
         }
       }
 
-      // Sort merged photos by modified time
-      final List<MapEntry<FileSystemEntity, DateTime>> photoStats = [];
-      for (final file in allPhotosList) {
-        try {
-          final stat = file.statSync();
-          photoStats.add(MapEntry(file, stat.modified));
-        } catch (e) {
-          photoStats.add(MapEntry(file, DateTime(1970)));
-        }
+      if (hasVrcDir && hasResoniteDir) {
+        allPhotosList.sort((a, b) => b.$2.compareTo(a.$2));
       }
-      photoStats.sort((a, b) => b.value.compareTo(a.value));
-      final sortedPhotos = photoStats.map((e) => e.key).toList();
+      final List<FileSystemEntity> sortedPhotos = [
+        for (final (p, _) in allPhotosList) File(p),
+      ];
+
+      await syncFuture;
 
       if (loadId != _currentLoadId) return;
 
@@ -235,7 +228,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
     }
   }
 
-  Future<List<FileSystemEntity>> _scanDirectoryAsync(
+  Future<List<(String, int)>> _scanDirectoryAsync(
     Directory directory, {
     required bool isResonite,
   }) async {
@@ -247,7 +240,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
       ScanParams(directory.path, knownNonVrcx, isResonite: isResonite),
     );
 
-    return sortedPaths.map((p) => File(p)).toList();
+    return sortedPaths;
   }
 
   Future<void> loadMore() async {
@@ -279,11 +272,12 @@ class PhotosController extends ValueNotifier<PhotosState> {
     final paths = batch.map((e) => e.path).toList();
     final metadata = await _metadataRepository.getMetadataForFiles(paths);
 
-    final resoniteDir = _config?.resonitePhotosDirectory;
     final List<String> badPaths = [];
     metadata.forEach((filePath, meta) {
       if (meta == null ||
-          (meta.world == null && meta.players.isEmpty && meta.galleryUrl == null)) {
+          (meta.world == null &&
+              meta.players.isEmpty &&
+              meta.galleryUrl == null)) {
         badPaths.add(filePath);
       }
     });
@@ -368,7 +362,7 @@ class ScanParams {
   ScanParams(this.directoryPath, this.knownNonVrcx, {this.isResonite = false});
 }
 
-Future<List<String>> _scanDirectoryIsolate(ScanParams params) async {
+Future<List<(String, int)>> _scanDirectoryIsolate(ScanParams params) async {
   final directory = Directory(params.directoryPath);
   if (!directory.existsSync()) return [];
 
@@ -404,16 +398,18 @@ Future<List<String>> _scanDirectoryIsolate(ScanParams params) async {
 
   if (photos.isEmpty) return [];
 
-  final List<MapEntry<String, DateTime>> photoStats = [];
+  final List<(String, int)> photoStats = [];
   for (final file in photos) {
     try {
-      final stat = file.statSync();
-      photoStats.add(MapEntry(file.path, stat.modified));
+      photoStats.add((
+        file.path,
+        file.statSync().modified.millisecondsSinceEpoch,
+      ));
     } catch (e) {
-      photoStats.add(MapEntry(file.path, DateTime(1970)));
+      photoStats.add((file.path, 0));
     }
   }
 
-  photoStats.sort((a, b) => b.value.compareTo(a.value));
-  return photoStats.map((e) => e.key).toList();
+  photoStats.sort((a, b) => b.$2.compareTo(a.$2));
+  return photoStats;
 }

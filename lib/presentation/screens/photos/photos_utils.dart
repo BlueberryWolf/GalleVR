@@ -15,12 +15,14 @@ String shortenGalleryUrl(String url) {
       return 'https://gallevr.app/p/$photoId';
     }
     // case 2: https://gallevr.app/gallery/USER_ID?focus=PHOTO_ID
-    if (uri.path.startsWith('/gallery/') && uri.queryParameters.containsKey('focus')) {
+    if (uri.path.startsWith('/gallery/') &&
+        uri.queryParameters.containsKey('focus')) {
       final photoId = uri.queryParameters['focus']!;
       return 'https://gallevr.app/p/$photoId';
     }
     // case 3: https://gallevr.app/u/USER_ID?focus=PHOTO_ID
-    if (uri.path.startsWith('/u/') && uri.queryParameters.containsKey('focus')) {
+    if (uri.path.startsWith('/u/') &&
+        uri.queryParameters.containsKey('focus')) {
       final photoId = uri.queryParameters['focus']!;
       return 'https://gallevr.app/p/$photoId';
     }
@@ -30,7 +32,6 @@ String shortenGalleryUrl(String url) {
   return url;
 }
 
-/// Utility function to copy text to clipboard and show a snackbar
 Future<void> copyToClipboard({
   required String text,
   required BuildContext context,
@@ -42,7 +43,8 @@ Future<void> copyToClipboard({
 }) async {
   final bool isContextMounted = context.mounted;
   final processedText = shortenGalleryUrl(text);
-  final processedFallback = fallbackText != null ? shortenGalleryUrl(fallbackText) : null;
+  final processedFallback =
+      fallbackText != null ? shortenGalleryUrl(fallbackText) : null;
 
   try {
     await Clipboard.setData(ClipboardData(text: processedText));
@@ -57,7 +59,6 @@ Future<void> copyToClipboard({
       );
       ScaffoldMessenger.of(context).showSnackBar(snackBar);
     }
-
   } catch (e) {
     if (processedFallback != null) {
       try {
@@ -81,7 +82,6 @@ Future<void> copyToClipboard({
   }
 }
 
-/// Helper function to handle clipboard errors
 void _handleClipboardError(
   dynamic error,
   BuildContext? context,
@@ -100,7 +100,6 @@ void _handleClipboardError(
   );
 }
 
-/// Shows a modal bottom sheet with consistent styling
 void showStyledBottomSheet({
   required BuildContext context,
   required Widget Function(BuildContext) builder,
@@ -115,7 +114,6 @@ void showStyledBottomSheet({
   );
 }
 
-/// Utility function to open a URL in the default browser
 Future<void> openUrl(
   String url,
   BuildContext context, {
@@ -129,20 +127,19 @@ Future<void> openUrl(
     if (Platform.isLinux) {
       try {
         if (File('/.flatpak-info').existsSync()) {
-          final res = await Process.run(
-            'flatpak-spawn',
-            ['--host', 'xdg-open', processedUrl],
-          );
+          final res = await Process.run('flatpak-spawn', [
+            '--host',
+            'xdg-open',
+            processedUrl,
+          ]);
           launched = res.exitCode == 0;
         } else {
           final env = Map<String, String>.from(Platform.environment);
           env.remove('LD_LIBRARY_PATH');
           env.remove('LD_PRELOAD');
-          final res = await Process.run(
-            'xdg-open',
-            [processedUrl],
-            environment: env,
-          );
+          final res = await Process.run('xdg-open', [
+            processedUrl,
+          ], environment: env);
           launched = res.exitCode == 0;
         }
       } catch (e) {
@@ -159,7 +156,9 @@ Future<void> openUrl(
       launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
     if (!launched && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open URL')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open URL')));
     }
   } catch (e) {
     if (Platform.isLinux) {
@@ -172,13 +171,14 @@ Future<void> openUrl(
       } catch (_) {}
     }
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error opening URL: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error opening URL: $e')));
     }
     developer.log('Error opening URL: $e', name: loggerName, error: e);
   }
 }
 
-/// Utility function to show a file in the system's file explorer
 Future<void> showFileInExplorer(String filePath, BuildContext context) async {
   try {
     final uri = Uri.parse('file:${filePath.replaceAll('\\', '/')}');
@@ -187,20 +187,34 @@ Future<void> showFileInExplorer(String filePath, BuildContext context) async {
       await Process.run('explorer.exe', [
         '/select,$filePath',
       ], runInShell: true);
-      developer.log('Opened file explorer and selected file: $filePath', name: 'FileExplorerUtil');
+      developer.log(
+        'Opened file explorer and selected file: $filePath',
+        name: 'FileExplorerUtil',
+      );
     } else if (await canLaunchUrl(uri)) {
       final directoryPath = path.dirname(filePath);
       await launchUrl(Uri.parse('file:$directoryPath'));
-      developer.log('Opened file explorer at: $directoryPath', name: 'FileExplorerUtil');
+      developer.log(
+        'Opened file explorer at: $directoryPath',
+        name: 'FileExplorerUtil',
+      );
     } else {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open file explorer')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open file explorer')),
+        );
       }
     }
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error opening file explorer: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error opening file explorer: $e')),
+      );
     }
-    developer.log('Error opening file explorer: $e', name: 'FileExplorerUtil', error: e);
+    developer.log(
+      'Error opening file explorer: $e',
+      name: 'FileExplorerUtil',
+      error: e,
+    );
   }
 }

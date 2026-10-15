@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../theme/app_theme.dart';
 
 class BlurrableQrCode extends StatefulWidget {
   final String revealedData;
@@ -50,7 +51,7 @@ class _BlurrableQrCodeState extends State<BlurrableQrCode> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withAlpha(51),
@@ -86,13 +87,13 @@ class _BlurrableQrCodeState extends State<BlurrableQrCode> {
                 child: IgnorePointer(
                   ignoring: _isRevealed,
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         width: widget.size,
                         height: widget.size,
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.white.withValues(alpha: 0.1),
                         child: Center(
                           child: ElevatedButton.icon(
                             onPressed: _toggleVisibility,

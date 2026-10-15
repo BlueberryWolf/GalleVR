@@ -23,7 +23,7 @@ class PhotoMetadataRepository {
   static const String _migrationDoneKey = 'gallevr_webp_migration_v2_done';
   static const String _sqliteMigrationDoneKey = 'gallevr_sqlite_migration_done';
 
-  // Regex to find VRChat filename pattern: VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT
+  /// Matches VRChat filenames: `VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT`.
   static final RegExp vrcFilenameRegex = RegExp(
     r'VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}(?:_\d+x\d+)?',
     caseSensitive: false,
@@ -37,7 +37,7 @@ class PhotoMetadataRepository {
   static SharedPreferences? _prefs;
   static Completer<void>? _initCompleter;
 
-  // Queue to prevent redundant processing of the same file
+  /// In-flight extractions, so the same file is never processed twice at once.
   static final Map<String, Future<PhotoMetadata?>> _processingQueue = {};
 
   Future<void> _initializeCache() async {
@@ -66,7 +66,6 @@ class PhotoMetadataRepository {
 
       _checkAndMigrateLegacyMetadata();
 
-      // Heal metadata status in the background:
       AppDatabase().database
           .then((db) async {
             await db.execute(
@@ -75,7 +74,6 @@ class PhotoMetadataRepository {
             await db.execute(
               'UPDATE photo_metadata SET is_non_vrcx = 0 WHERE is_non_vrcx = 1 AND (gallery_url IS NOT NULL OR world_name IS NOT NULL OR world_id IS NOT NULL)',
             );
-            // Notify UI to refresh and show newly visible photos
             PhotoEventService().notifyPhotoAdded('__HEAL_SYNC__');
           })
           .catchError((e) {
@@ -255,7 +253,10 @@ class PhotoMetadataRepository {
         );
         return restored;
       } catch (e) {
-        developer.log('Failed to parse metadata_json: $e', name: 'PhotoMetadataRepository');
+        developer.log(
+          'Failed to parse metadata_json: $e',
+          name: 'PhotoMetadataRepository',
+        );
       }
     }
 
@@ -410,7 +411,6 @@ class PhotoMetadataRepository {
     final photosDir = Directory(config.photosDirectory);
     if (!await photosDir.exists()) return;
 
-    int migratedCount = 0;
     final List<PhotoMetadata> toUpdate = [];
 
     final db = await AppDatabase().database;
@@ -450,7 +450,6 @@ class PhotoMetadataRepository {
           toUpdate.add(
             metadata.copyWith(localPath: pngPath, filename: possiblePngName),
           );
-          migratedCount++;
         }
       }
     }
@@ -492,8 +491,6 @@ class PhotoMetadataRepository {
       );
     }
   }
-
-  void _addToLookupCaches(PhotoMetadata metadata, String id) {}
 
   Future<void> syncWithBackend({bool force = false}) async {
     try {
@@ -626,7 +623,6 @@ class PhotoMetadataRepository {
       }
 
       await savePhotoMetadataBatch(matchedPhotos, isRemote: true);
-      // Update sync timestamp
       await _prefs?.setInt('last_backend_sync_time', now);
 
       PhotoEventService().notifyPhotoAdded('__CLOUD_SYNC_COMPLETE__');
@@ -652,8 +648,9 @@ class PhotoMetadataRepository {
       whereArgs: [filePath],
       limit: 1,
     );
-    if (pathMatches.isNotEmpty)
+    if (pathMatches.isNotEmpty) {
       return await _hydrateMetadata(db, pathMatches.first);
+    }
 
     final List<Map<String, dynamic>> filenameMatches = await db.query(
       'photo_metadata',
@@ -661,8 +658,9 @@ class PhotoMetadataRepository {
       whereArgs: [filename],
       limit: 1,
     );
-    if (filenameMatches.isNotEmpty)
+    if (filenameMatches.isNotEmpty) {
       return await _hydrateMetadata(db, filenameMatches.first);
+    }
 
     if (filename.toLowerCase().endsWith('.png')) {
       try {
@@ -684,8 +682,9 @@ class PhotoMetadataRepository {
       whereArgs: ['%$nameWithoutExt%'],
       limit: 1,
     );
-    if (fuzzyMatches.isNotEmpty)
+    if (fuzzyMatches.isNotEmpty) {
       return await _hydrateMetadata(db, fuzzyMatches.first);
+    }
 
     final match = vrcFilenameRegex.firstMatch(filename);
     if (match != null) {
@@ -696,8 +695,9 @@ class PhotoMetadataRepository {
         whereArgs: ['%$vrcBaseName%'],
         limit: 1,
       );
-      if (patternMatches.isNotEmpty)
+      if (patternMatches.isNotEmpty) {
         return await _hydrateMetadata(db, patternMatches.first);
+      }
 
       try {
         final config = AppServiceManager().config;
@@ -945,13 +945,11 @@ class PhotoMetadataRepository {
     return true;
   }
 
-  /// Extracts metadata in background worker
   Future<PhotoMetadata?> _processVrcxMetadataBackground(String filePath) async {
     final results = await _batchProcessMetadataBackground([filePath]);
     return results[filePath];
   }
 
-  /// Batch extracts metadata in background worker
   Future<Map<String, PhotoMetadata?>> _batchProcessMetadataBackground(
     List<String> filePaths,
   ) async {
@@ -1210,10 +1208,9 @@ class PhotoMetadataRepository {
     }
   }
 
-  // Set to track photo paths currently queued for log scanning
   static final Set<String> _scanningQueue = {};
 
-  /// Scans background log files for any photos in database marked as non-VRCX but not yet log checked
+  /// Recovers world and player data from VRChat logs for photos without VRCX metadata.
   Future<void> runRetroactiveLogScanner() async {
     await _initializeCache();
     final config = AppServiceManager().config;
@@ -1296,7 +1293,7 @@ class PhotoMetadataRepository {
 
       final db = await AppDatabase().database;
 
-      // Discard photos taken before the earliest log file on disk (VRChat clears old logs)
+      // Discard photos taken before the earliest log file on disk because VRChat clears old logs.
       try {
         final logsDir = Directory(config.logsDirectory);
         if (await logsDir.exists()) {
@@ -1451,7 +1448,6 @@ class PhotoMetadataRepository {
               name: 'PhotoMetadataRepository',
             );
             await savePhotoMetadataBatch(results);
-            // Notify the UI that metadata has loaded/changed
             PhotoEventService().notifyPhotoAdded('__LOG_RECOVER_COMPLETE__');
           }
 
@@ -1517,7 +1513,8 @@ Map<String, PhotoMetadata?> _batchExtractMetadataTask(
         }
         results[filePath] = metadata.copyWith(logChecked: true);
       } else {
-        final isResonitePath = resoniteDir != null &&
+        final isResonitePath =
+            resoniteDir != null &&
             resoniteDir.isNotEmpty &&
             path.isWithin(resoniteDir, filePath);
         results[filePath] = PhotoMetadata(
@@ -1567,7 +1564,6 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
     }
     photoTime ??= file.statSync().modified;
 
-    // Search term prefix
     final nameWithoutExt = path.basenameWithoutExtension(filename);
     final vrcBaseMatch = RegExp(
       r'VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}',
@@ -1583,7 +1579,6 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
     );
     searchMap[searchTerm] = entry;
 
-    // Keep track of the earliest photo time
     final threshold = photoTime.subtract(const Duration(minutes: 2));
     if (earliestThreshold == null || threshold.isBefore(earliestThreshold)) {
       earliestThreshold = threshold;
@@ -1621,7 +1616,6 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
 
   if (candidates.isEmpty) return recovered;
 
-  // Sort candidates ascending (oldest modified first)
   candidates.sort((a, b) => a.value.compareTo(b.value));
 
   final screenshotRegex = RegExp(
@@ -1632,7 +1626,7 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
   );
 
   for (final candidate in candidates) {
-    if (searchMap.isEmpty) break; // All photos processed!
+    if (searchMap.isEmpty) break;
 
     final logFile = candidate.key;
     List<String> lines = [];
@@ -1648,7 +1642,6 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
       r'^(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2})',
     );
 
-    // Find start time of this log session
     for (int i = 0; i < lines.length && i < 100; i++) {
       final m = timestampRegex.firstMatch(lines[i]);
       if (m != null) {
@@ -1661,7 +1654,6 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
       }
     }
 
-    // Find end time of this log session
     for (int i = lines.length - 1; i >= 0 && i >= lines.length - 100; i--) {
       final m = timestampRegex.firstMatch(lines[i]);
       if (m != null) {
@@ -1674,7 +1666,6 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
       }
     }
 
-    // Filter check to see if any photo could possibly be inside this log session duration
     bool hasAnyPotentialPhoto = false;
     for (final entry in searchMap.values) {
       final time = entry.photoTime;
@@ -1691,7 +1682,7 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
     }
 
     if (!hasAnyPotentialPhoto) {
-      continue; // Skip scanning the lines of this log entirely
+      continue;
     }
 
     for (int i = 0; i < lines.length; i++) {
@@ -1707,7 +1698,6 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
       final entry = searchMap[extractedBaseName];
       if (entry == null) continue;
 
-      // Found a match for this photo! Search backward for world join
       int worldJoinLineIndex = -1;
       for (int k = i; k >= 0; k--) {
         final backwardLine = lines[k];
@@ -1719,7 +1709,7 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
       }
 
       if (worldJoinLineIndex == -1) {
-        // Photo line found but no world join line exists in this log before it
+        // Photo line found but no world join line precedes it in this log.
         recovered.add(
           PhotoMetadata(
             takenDate: entry.photoTime.millisecondsSinceEpoch,
@@ -1733,7 +1723,6 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
         continue;
       }
 
-      // Parse room name
       String roomName = '';
       for (
         int j = (worldJoinLineIndex - 5 < 0 ? 0 : worldJoinLineIndex - 5);
@@ -1825,7 +1814,6 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
         worldInfo = WorldInfo(name: roomName, id: worldId);
       }
 
-      // Reconstruct players
       final playerMap = <String, String>{};
       for (int k = worldJoinLineIndex; k <= i; k++) {
         final playerLine = lines[k];

@@ -25,7 +25,7 @@ class _HomeScreenState extends State<HomeScreen>
   late int _currentIndex;
   bool _isSidebarCollapsed = false;
   final GlobalKey _stackKey = GlobalKey();
-  late final List<Widget> _screens;
+  final Set<int> _builtTabs = {};
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
 
     _currentIndex = widget.initialTabIndex;
+    _builtTabs.add(_currentIndex);
     _checkCurl();
 
     _navItems = [
@@ -80,8 +81,6 @@ class _HomeScreenState extends State<HomeScreen>
 
     _fadeController.value = 1.0;
 
-    _screens = _navItems.map((item) => item.screen).toList();
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WalkthroughDialog.showIfRequired(context);
     });
@@ -108,7 +107,12 @@ class _HomeScreenState extends State<HomeScreen>
           child: IndexedStack(
             key: _stackKey,
             index: _currentIndex,
-            children: _screens,
+            children: [
+              for (var i = 0; i < _navItems.length; i++)
+                _builtTabs.contains(i) || i == _currentIndex
+                    ? _navItems[i].screen
+                    : const SizedBox.shrink(),
+            ],
           ),
         ),
       ),
@@ -151,11 +155,10 @@ class _HomeScreenState extends State<HomeScreen>
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF7c2d12).withOpacity(0.15),
+        color: AppTheme.tint(AppTheme.warningColor, 0.12),
         border: Border(
           bottom: BorderSide(
-            color: const Color(0xFFea580c).withOpacity(0.2),
-            width: 1,
+            color: AppTheme.warningColor.withValues(alpha: 0.3),
           ),
         ),
       ),
@@ -163,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           const Icon(
             Icons.warning_amber_rounded,
-            color: Color(0xFFf97316),
+            color: AppTheme.warningColor,
             size: 18,
           ),
           const SizedBox(width: 12),
@@ -171,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: Text(
               'curl is not installed on your system. GalleVR will use a slower fallback uploader.',
               style: TextStyle(
-                color: Color(0xFFffedd5),
+                color: AppTheme.textColor,
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -202,7 +205,7 @@ class _HomeScreenState extends State<HomeScreen>
       height: 70,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceColor,
+        color: AppTheme.surfaceBase,
         border: Border(
           bottom: BorderSide(color: AppTheme.cardBorderColor, width: 1),
         ),
@@ -248,7 +251,11 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                       const SizedBox(width: 12),
                       _HelpButton(
-                        onTap: () => WalkthroughDialog.showIfRequired(context, force: true),
+                        onTap:
+                            () => WalkthroughDialog.showIfRequired(
+                              context,
+                              force: true,
+                            ),
                         tooltip: 'Show Walkthrough',
                       ),
                     ],
@@ -261,107 +268,69 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  static const Map<String, (Color, IconData, String)> _sectionHeaders = {
+    'Photos': (
+      AppTheme.primaryLightColor,
+      Icons.photo_library_rounded,
+      'Browse your VR photos',
+    ),
+    'Monitor': (
+      Color(0xFF22D3EE),
+      Icons.monitor_rounded,
+      'Track background activity',
+    ),
+    'Account': (
+      Color(0xFF4ADE80),
+      Icons.account_circle_rounded,
+      'Manage your account details',
+    ),
+    'Settings': (
+      Color(0xFF22D3EE),
+      Icons.settings_rounded,
+      'Customize your GalleVR experience',
+    ),
+  };
+
   Widget _buildHeaderTitle(bool isSmallScreen) {
     final label = _navItems[_currentIndex].label;
-
-    late final List<Color> gradientColors;
-    late final String coloredPart;
-
+    final section = _sectionHeaders[label];
     final textStyle = TextStyle(
       fontSize: isSmallScreen ? 20 : 24,
-      fontWeight: FontWeight.w900,
-      letterSpacing: -0.5,
-      color: Colors.white,
+      fontWeight: FontWeight.w800,
+      color: AppTheme.textColor,
     );
 
-    if (label == 'Photos') {
-      gradientColors = const [Color(0xFF3b82f6), Color(0xFF60a5fa)];
-      coloredPart = 'Photos';
-    } else if (label == 'Monitor') {
-      gradientColors = const [Color(0xFF22d3ee), Color(0xFF06b6d4)];
-      coloredPart = 'Monitor';
-    } else if (label == 'Account') {
-      gradientColors = const [Color(0xFF4ade80), Color(0xFF22c55e)];
-      coloredPart = 'Account';
-    } else if (label == 'Settings') {
-      gradientColors = const [Color(0xFF22d3ee), Color(0xFF06b6d4)];
-      coloredPart = 'Settings';
-    } else {
-      return Text(label, style: textStyle);
-    }
+    if (section == null) return Text(label, style: textStyle);
 
-    return RepaintBoundary(
-      child: RichText(
-        text: TextSpan(
-          style: textStyle,
-          children: [
-            const TextSpan(text: 'Your '),
-            WidgetSpan(
-              alignment: PlaceholderAlignment.baseline,
-              baseline: TextBaseline.alphabetic,
-              child: _GradientText(
-                coloredPart,
-                gradientColors: gradientColors,
-                style: textStyle,
-              ),
-            ),
-          ],
-        ),
+    return Text.rich(
+      TextSpan(
+        style: textStyle,
+        children: [
+          const TextSpan(text: 'Your '),
+          TextSpan(text: label, style: TextStyle(color: section.$1)),
+        ],
       ),
     );
   }
 
   Widget _buildHeaderSubtext() {
-    final label = _navItems[_currentIndex].label;
-
-    late final IconData subIcon;
-    late final List<Color> gradientColors;
-    late final String subtext;
-
-    if (label == 'Photos') {
-      subIcon = Icons.photo_library_rounded;
-      gradientColors = const [Color(0xFF3b82f6), Color(0xFF60a5fa)];
-      subtext = 'Browse your VR photos';
-    } else if (label == 'Monitor') {
-      subIcon = Icons.monitor_rounded;
-      gradientColors = const [Color(0xFF22d3ee), Color(0xFF06b6d4)];
-      subtext = 'Track background activity';
-    } else if (label == 'Account') {
-      subIcon = Icons.account_circle_rounded;
-      gradientColors = const [Color(0xFF4ade80), Color(0xFF22c55e)];
-      subtext = 'Manage your account details';
-    } else if (label == 'Settings') {
-      subIcon = Icons.settings_rounded;
-      gradientColors = const [Color(0xFF22d3ee), Color(0xFF06b6d4)];
-      subtext = 'Customize your GalleVR experience.';
-    } else {
-      return const SizedBox.shrink();
-    }
-
-    final textStyle = TextStyle(
-      fontSize: 12,
-      color: Colors.white.withOpacity(0.5),
-      fontWeight: FontWeight.w500,
-    );
+    final section = _sectionHeaders[_navItems[_currentIndex].label];
+    if (section == null) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.only(top: 2),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          ShaderMask(
-            blendMode: BlendMode.srcIn,
-            shaderCallback:
-                (bounds) => LinearGradient(
-                  colors: gradientColors,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ).createShader(bounds),
-            child: Icon(subIcon, size: 12),
-          ),
+          Icon(section.$2, size: 14, color: section.$1),
           const SizedBox(width: 6),
-          Text(subtext, style: textStyle),
+          Text(
+            section.$3,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppTheme.secondaryTextColor,
+            ),
+          ),
         ],
       ),
     );
@@ -372,22 +341,23 @@ class _HomeScreenState extends State<HomeScreen>
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
         onTap: () => _photosController.toggleSelectionMode(),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color:
                 isSelectionMode
-                    ? const Color(0xFFEF4444).withOpacity(0.1)
-                    : const Color(0xFF3B82F6).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
+                    ? const Color(0xFFEF4444).withValues(alpha: 0.1)
+                    : const Color(0xFF3B82F6).withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
             border: Border.all(
               color:
                   isSelectionMode
-                      ? const Color(0xFFEF4444).withOpacity(0.3)
-                      : const Color(0xFF3B82F6).withOpacity(0.3),
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.3)
+                      : const Color(0xFF3B82F6).withValues(alpha: 0.3),
               width: 1.5,
             ),
           ),
@@ -429,7 +399,10 @@ class _HomeScreenState extends State<HomeScreen>
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOutCubic,
         width: _isSidebarCollapsed ? 70 : 250,
-        color: AppTheme.surfaceColor,
+        decoration: const BoxDecoration(
+          color: AppTheme.surfaceBase,
+          border: Border(right: BorderSide(color: AppTheme.cardBorderColor)),
+        ),
         child: Column(
           children: [
             _buildSidebarHeader(),
@@ -440,7 +413,6 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
             _buildSidebarToggle(),
-            Container(width: 1, color: AppTheme.cardBorderColor),
           ],
         ),
       ),
@@ -451,7 +423,7 @@ class _HomeScreenState extends State<HomeScreen>
     return RepaintBoundary(
       child: Container(
         decoration: BoxDecoration(
-          color: AppTheme.surfaceColor,
+          color: AppTheme.surfaceBase,
           border: Border(
             top: BorderSide(color: AppTheme.cardBorderColor, width: 1),
           ),
@@ -469,15 +441,17 @@ class _HomeScreenState extends State<HomeScreen>
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
+                      mouseCursor: SystemMouseCursors.click,
                       onTap: () => _selectNavItem(index),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
                             item.icon,
-                            color: item.iconColor.withOpacity(
-                              isSelected ? 1.0 : 0.7,
-                            ),
+                            color:
+                                isSelected
+                                    ? item.iconColor
+                                    : AppTheme.secondaryTextColor,
                             size: 24,
                           ),
                           const SizedBox(height: 4),
@@ -487,12 +461,12 @@ class _HomeScreenState extends State<HomeScreen>
                               fontSize: 12,
                               fontWeight:
                                   isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
                               color:
                                   isSelected
-                                      ? Colors.white
-                                      : Colors.white.withOpacity(0.5),
+                                      ? AppTheme.textColor
+                                      : AppTheme.secondaryTextColor,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -580,7 +554,8 @@ class _HomeScreenState extends State<HomeScreen>
       child: Align(
         alignment: Alignment.centerLeft,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          mouseCursor: SystemMouseCursors.click,
+          borderRadius: BorderRadius.circular(AppTheme.radiusControl),
           onTap: _toggleSidebar,
           child: AnimatedRotation(
             turns: _isSidebarCollapsed ? 0.0 : 0.5,
@@ -601,76 +576,52 @@ class _HomeScreenState extends State<HomeScreen>
 
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: InkWell(
-          onTap: () => _selectNavItem(index),
-          borderRadius: BorderRadius.circular(12),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeOutCubic,
-            height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color:
-                  isSelected
-                      ? Colors.white.withOpacity(0.12)
-                      : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              border:
-                  isSelected
-                      ? Border.all(color: Colors.white.withOpacity(0.05))
-                      : null,
-            ),
-            child: Row(
-              children: [
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    if (isSelected)
-                      Positioned(
-                        left: -12,
-                        child: Container(
-                          width: 4,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: item.iconColor,
-                            borderRadius: const BorderRadius.horizontal(
-                              right: Radius.circular(4),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: item.iconColor.withOpacity(0.5),
-                                blurRadius: 10,
-                              ),
-                            ],
-                          ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            mouseCursor: SystemMouseCursors.click,
+            onTap: () => _selectNavItem(index),
+            hoverColor: AppTheme.buttonColor,
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOutCubic,
+              height: 48,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: isSelected ? AppTheme.buttonColor : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    item.icon,
+                    color:
+                        isSelected
+                            ? item.iconColor
+                            : AppTheme.secondaryTextColor,
+                    size: 22,
+                  ),
+                  if (!_isSidebarCollapsed) ...[
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        item.label,
+                        style: TextStyle(
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w500,
+                          color:
+                              isSelected
+                                  ? AppTheme.textColor
+                                  : AppTheme.secondaryTextColor,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    Icon(
-                      item.icon,
-                      color: item.iconColor.withOpacity(isSelected ? 1.0 : 0.7),
-                      size: 24,
                     ),
                   ],
-                ),
-                if (!_isSidebarCollapsed) ...[
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      item.label,
-                      style: TextStyle(
-                        fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.normal,
-                        color:
-                            isSelected
-                                ? Colors.white
-                                : Colors.white.withOpacity(0.5),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -690,6 +641,7 @@ class _HomeScreenState extends State<HomeScreen>
     _fadeController.reverse().then((_) {
       setState(() {
         _currentIndex = index;
+        _builtTabs.add(index);
       });
       _fadeController.forward();
     });
@@ -710,154 +662,24 @@ class _NavItem {
   });
 }
 
-class _HeaderActionButton extends StatelessWidget {
-  final IconData icon;
-  final String? label;
-  final VoidCallback onTap;
-
-  const _HeaderActionButton({
-    required this.icon,
-    this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: label != null ? 12 : 8,
-          vertical: 8,
-        ),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 18, color: Colors.white.withOpacity(0.8)),
-            if (label != null) ...[
-              const SizedBox(width: 8),
-              Text(
-                label!,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _GradientText extends StatelessWidget {
-  const _GradientText(
-    this.text, {
-    required this.gradientColors,
-    required this.style,
-  });
-
-  final String text;
-  final TextStyle style;
-  final List<Color> gradientColors;
-
-  @override
-  Widget build(BuildContext context) {
-    return ShaderMask(
-      blendMode: BlendMode.srcIn,
-      shaderCallback:
-          (bounds) => LinearGradient(
-            colors: gradientColors,
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
-      child: Text(text, style: style.copyWith(color: Colors.white)),
-    );
-  }
-}
-
-class _HelpButton extends StatefulWidget {
+class _HelpButton extends StatelessWidget {
   final VoidCallback onTap;
   final String tooltip;
 
-  const _HelpButton({
-    required this.onTap,
-    required this.tooltip,
-  });
-
-  @override
-  State<_HelpButton> createState() => _HelpButtonState();
-}
-
-class _HelpButtonState extends State<_HelpButton> {
-  bool _isHovered = false;
-  bool _isPressed = false;
+  const _HelpButton({required this.onTap, required this.tooltip});
 
   @override
   Widget build(BuildContext context) {
-    double scale = 1.0;
-    if (_isPressed) {
-      scale = 0.92;
-    } else if (_isHovered) {
-      scale = 1.05;
-    }
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: Tooltip(
-        message: widget.tooltip,
-        child: GestureDetector(
-          onTapDown: (_) => setState(() => _isPressed = true),
-          onTapUp: (_) => setState(() => _isPressed = false),
-          onTapCancel: () => setState(() => _isPressed = false),
-          onTap: widget.onTap,
-          child: AnimatedScale(
-            scale: scale,
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOutCubic,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(
-                  _isPressed ? 0.15 : (_isHovered ? 0.1 : 0.05),
-                ),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: Colors.white.withOpacity(_isHovered ? 0.2 : 0.1),
-                  width: 1,
-                ),
-                boxShadow: [
-                  if (_isHovered)
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                ],
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.help_outline_rounded,
-                  size: 20,
-                  color: _isHovered
-                      ? Colors.white
-                      : Colors.white.withOpacity(0.6),
-                ),
-              ),
-            ),
-          ),
-        ),
+    return IconButton(
+      onPressed: onTap,
+      tooltip: tooltip,
+      icon: const Icon(Icons.help_outline_rounded, size: 20),
+      style: IconButton.styleFrom(
+        fixedSize: const Size(44, 44),
+        backgroundColor: AppTheme.buttonColor,
+        hoverColor: AppTheme.buttonHoverColor,
+        foregroundColor: AppTheme.textColor,
+        side: const BorderSide(color: AppTheme.buttonBorderColor),
       ),
     );
   }

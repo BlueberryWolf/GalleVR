@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:path/path.dart' as path;
 
-/// Utility class for watching VRChat log files for screenshot events
 class LogFileWatcher {
   static const String _logPattern = 'output_log_';
   static final RegExp _screenshotRegex = RegExp(
@@ -25,10 +24,8 @@ class LogFileWatcher {
 
   LogFileWatcher(this._logsDirectory);
 
-  /// Stream of screenshot file paths detected from log entries
   Stream<String> get screenshotStream => _screenshotController.stream;
 
-  /// Start watching for screenshot events in the log files
   Future<void> startWatching() async {
     developer.log(
       'Starting log file watcher for directory: $_logsDirectory',
@@ -37,7 +34,6 @@ class LogFileWatcher {
 
     await stopWatching();
 
-    // Find the current log file
     await _findCurrentLogFile();
 
     if (_currentLogFile == null) {
@@ -65,24 +61,19 @@ class LogFileWatcher {
     try {
       final logsDir = Directory(_logsDirectory);
       if (await logsDir.exists()) {
-        _logsWatcherSubscription = logsDir
-            .watch()
-            .listen((event) {
-              if (event.type == FileSystemEvent.modify) {
-                if (event.path == _currentLogFile) {
-                  checkForUpdates();
-                }
-              } else if (event.type == FileSystemEvent.create) {
-                final fileName = path.basename(event.path);
-                if (fileName.startsWith(_logPattern)) {
-                  _checkForNewerLogFile();
-                }
-              }
-            });
-        developer.log(
-          'Logs directory watcher active',
-          name: 'LogFileWatcher',
-        );
+        _logsWatcherSubscription = logsDir.watch().listen((event) {
+          if (event.type == FileSystemEvent.modify) {
+            if (event.path == _currentLogFile) {
+              checkForUpdates();
+            }
+          } else if (event.type == FileSystemEvent.create) {
+            final fileName = path.basename(event.path);
+            if (fileName.startsWith(_logPattern)) {
+              _checkForNewerLogFile();
+            }
+          }
+        });
+        developer.log('Logs directory watcher active', name: 'LogFileWatcher');
       }
     } catch (e) {
       developer.log(
@@ -92,7 +83,6 @@ class LogFileWatcher {
     }
   }
 
-  /// Stop watching for screenshot events
   Future<void> stopWatching() async {
     _pollingTimer?.cancel();
     _pollingTimer = null;
@@ -107,13 +97,11 @@ class LogFileWatcher {
     developer.log('Stopped log file watcher', name: 'LogFileWatcher');
   }
 
-  /// Dispose of resources
   void dispose() {
     stopWatching();
     _screenshotController.close();
   }
 
-  /// Find the most recent log file in the logs directory
   Future<void> _findCurrentLogFile() async {
     try {
       final logsDir = Directory(_logsDirectory);
@@ -145,7 +133,7 @@ class LogFileWatcher {
       if (latestLogFile != null) {
         _currentLogFile = latestLogFile.path;
         _currentLogFileModified = latestModified;
-        // Start from the end of the file to only catch new entries
+        // Start from the end of the file so only new entries are read.
         final stat = await latestLogFile.stat();
         _lastPosition = stat.size;
         developer.log(
@@ -161,31 +149,28 @@ class LogFileWatcher {
     }
   }
 
-  /// Check for updates in the current log file
   Future<void> checkForUpdates() async {
     if (_currentLogFile == null) {
-      // Try to find a log file again
       await _findCurrentLogFile();
       return;
     }
 
     try {
       final logFile = File(_currentLogFile!);
-      if (!await logFile.exists()) {
+      final stat = await logFile.stat();
+      if (stat.type == FileSystemEntityType.notFound) {
         developer.log(
           'Log file no longer exists: $_currentLogFile',
           name: 'LogFileWatcher',
         );
-        // Try to find a new log file
         await _findCurrentLogFile();
         return;
       }
 
-      final stat = await logFile.stat();
       final currentSize = stat.size;
 
       if (currentSize < _lastPosition) {
-        // File was truncated or replaced, start from beginning
+        // The file was truncated or replaced, so start from the beginning.
         developer.log(
           'Log file was truncated or replaced, restarting from beginning',
           name: 'LogFileWatcher',
@@ -194,7 +179,6 @@ class LogFileWatcher {
       }
 
       if (currentSize > _lastPosition) {
-        // Read new content
         final randomAccessFile = await logFile.open(mode: FileMode.read);
         await randomAccessFile.setPosition(_lastPosition);
         final newBytes = await randomAccessFile.read(
@@ -205,7 +189,6 @@ class LogFileWatcher {
         final newContent = utf8.decode(newBytes, allowMalformed: true);
         _lastPosition = currentSize;
 
-        // Process new lines for screenshot events
         _processNewContent(newContent);
       }
     } catch (e) {
@@ -213,7 +196,6 @@ class LogFileWatcher {
         'Error checking for log updates: $e',
         name: 'LogFileWatcher',
       );
-      // Try to find a new log file on error
       await _findCurrentLogFile();
     }
   }
@@ -270,7 +252,6 @@ class LogFileWatcher {
     }
   }
 
-  /// Process new content from the log file for screenshot events
   void _processNewContent(String content) {
     final lines = content.split('\n');
 
@@ -279,7 +260,6 @@ class LogFileWatcher {
       if (match != null && match.groupCount >= 1) {
         final screenshotPath = match.group(1)?.trim();
         if (screenshotPath != null && screenshotPath.isNotEmpty) {
-          // Check if we've already processed this screenshot
           if (!_processedScreenshots.contains(screenshotPath)) {
             _processedScreenshots.add(screenshotPath);
             developer.log(

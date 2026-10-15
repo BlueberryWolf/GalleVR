@@ -82,7 +82,11 @@ class WindowsPlatformService implements PlatformService {
         throw Exception('Could not determine user profile directory');
       }
 
-      final String resonitePath = path.join(userProfile, 'Pictures', 'Resonite');
+      final String resonitePath = path.join(
+        userProfile,
+        'Pictures',
+        'Resonite',
+      );
       final Directory resoniteDir = Directory(resonitePath);
       if (!await resoniteDir.exists()) {
         await resoniteDir.create(recursive: true);

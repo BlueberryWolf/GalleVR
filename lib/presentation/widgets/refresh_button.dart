@@ -1,6 +1,5 @@
-import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 class RefreshButton extends StatefulWidget {
   final bool isLoading;
@@ -84,6 +83,10 @@ class _RefreshButtonState extends State<RefreshButton>
     }
 
     return MouseRegion(
+      cursor:
+          widget.isLoading
+              ? SystemMouseCursors.basic
+              : SystemMouseCursors.click,
       onEnter: (_) => _handleHoverChange(true),
       onExit: (_) => _handleHoverChange(false),
       child: Tooltip(
@@ -102,18 +105,18 @@ class _RefreshButtonState extends State<RefreshButton>
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(
-                  _isPressed ? 0.15 : (_isHovered ? 0.1 : 0.05),
+                color: Colors.white.withValues(
+                  alpha: _isPressed ? 0.15 : (_isHovered ? 0.1 : 0.05),
                 ),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 border: Border.all(
-                  color: Colors.white.withOpacity(_isHovered ? 0.2 : 0.1),
+                  color: Colors.white.withValues(alpha: _isHovered ? 0.2 : 0.1),
                   width: 1,
                 ),
                 boxShadow: [
                   if (_isHovered && !widget.isLoading)
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -128,7 +131,7 @@ class _RefreshButtonState extends State<RefreshButton>
                     color:
                         _isHovered || widget.isLoading
                             ? Colors.white
-                            : Colors.white.withOpacity(0.6),
+                            : Colors.white.withValues(alpha: 0.6),
                   ),
                 ),
               ),

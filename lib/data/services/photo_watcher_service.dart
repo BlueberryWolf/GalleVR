@@ -4,8 +4,6 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path/path.dart' as path;
 import 'dart:developer' as developer;
 
-import '../../core/platform/platform_service.dart';
-import '../../core/platform/platform_service_factory.dart';
 import '../../core/utils/log_file_watcher.dart';
 import '../../core/utils/resonite_dir_watcher.dart';
 import '../../core/utils/screenshot_utils.dart';
@@ -14,11 +12,8 @@ import '../repositories/config_repository.dart';
 import 'app_service_manager.dart';
 import 'photo_event_service.dart';
 import 'photo_watcher_task_handler.dart';
-import 'vrchat_service.dart';
 
 class PhotoWatcherService {
-  final PlatformService _platformService;
-
   final _photoStreamController = StreamController<String>.broadcast();
 
   Stream<String> get photoStream => _photoStreamController.stream;
@@ -35,9 +30,7 @@ class PhotoWatcherService {
 
   bool _useForegroundService = false;
 
-  PhotoWatcherService({PlatformService? platformService})
-    : _platformService =
-          platformService ?? PlatformServiceFactory.getPlatformService() {
+  PhotoWatcherService() {
     FlutterForegroundTask.addTaskDataCallback(_onReceiveTaskData);
   }
 
@@ -53,7 +46,7 @@ class PhotoWatcherService {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(5000),
+        eventAction: ForegroundTaskEventAction.nothing(),
         autoRunOnBoot: true,
         allowWakeLock: true,
         allowWifiLock: true,
@@ -192,9 +185,8 @@ class PhotoWatcherService {
       try {
         _resoniteDirWatcher = ResoniteDirWatcher(resoniteDir);
         await _resoniteDirWatcher!.startWatching();
-        _resoniteDirWatcherSubscription = _resoniteDirWatcher!.photoStream.listen(
-          (photoPath) => _handleResonitePhoto(photoPath, config),
-        );
+        _resoniteDirWatcherSubscription = _resoniteDirWatcher!.photoStream
+            .listen((photoPath) => _handleResonitePhoto(photoPath, config));
         developer.log(
           'Resonite photo watcher (polling) started on: $resoniteDir',
           name: 'PhotoWatcherService',
@@ -240,15 +232,16 @@ class PhotoWatcherService {
               _logFileWatcher = LogFileWatcher(logsDir);
               await _logFileWatcher!.startWatching();
 
-              _logWatcherSubscription = _logFileWatcher!.screenshotStream.listen(
-                (screenshotPath) =>
-                    _handleScreenshotFromLog(screenshotPath, config),
-                onError: (e) {
-                  final error = 'Error in log file watcher: $e';
-                  developer.log(error, name: 'PhotoWatcherService');
-                  PhotoEventService().notifyError('watcher', error);
-                },
-              );
+              _logWatcherSubscription = _logFileWatcher!.screenshotStream
+                  .listen(
+                    (screenshotPath) =>
+                        _handleScreenshotFromLog(screenshotPath, config),
+                    onError: (e) {
+                      final error = 'Error in log file watcher: $e';
+                      developer.log(error, name: 'PhotoWatcherService');
+                      PhotoEventService().notifyError('watcher', error);
+                    },
+                  );
 
               try {
                 final photosDir = Directory(config.photosDirectory);
@@ -323,9 +316,11 @@ class PhotoWatcherService {
     String screenshotPath,
     ConfigModel config,
   ) async {
-    String finalPath = ScreenshotUtils.translatePlatformPath(screenshotPath, config.photosDirectory);
+    String finalPath = ScreenshotUtils.translatePlatformPath(
+      screenshotPath,
+      config.photosDirectory,
+    );
 
-    // Verify the file exists and is a VRChat screenshot
     final file = File(finalPath);
     final ready = await ScreenshotUtils.waitForFileReady(file, maxAttempts: 25);
 
@@ -401,8 +396,14 @@ class PhotoWatcherService {
     if (!ready) return;
 
     _handledPhotos.add(photoPath);
-    developer.log('New Resonite screenshot detected: $photoPath', name: 'PhotoWatcherService');
-    PhotoEventService().notifyError('info', 'New Resonite screenshot detected: ${path.basename(photoPath)}');
+    developer.log(
+      'New Resonite screenshot detected: $photoPath',
+      name: 'PhotoWatcherService',
+    );
+    PhotoEventService().notifyError(
+      'info',
+      'New Resonite screenshot detected: ${path.basename(photoPath)}',
+    );
     _photoStreamController.add(photoPath);
   }
 

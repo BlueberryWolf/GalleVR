@@ -8,20 +8,17 @@ import 'package:gallevr/core/isolate/isolate_worker_pool.dart';
 import 'package:path/path.dart' as path;
 import 'package:gallevr/data/services/vrchat_service.dart';
 
-/// Service for extracting and converting VRCX metadata from image files
+/// Reads VRCX metadata embedded in screenshot files.
 class VrcxMetadataService {
   static const String _logName = 'VrcxMetadataService';
 
-  // Persistent caches to avoid repeated processing
   static final Set<String> _processedFiles = <String>{};
   static final Set<String> _nonVrcxFiles = <String>{};
   static final Map<String, PhotoMetadata> _metadataCache =
       <String, PhotoMetadata>{};
 
-  // File modification time cache to detect changes
   static final Map<String, int> _fileModTimeCache = <String, int>{};
 
-  /// Clears all caches
   void clearCache() {
     _processedFiles.clear();
     _nonVrcxFiles.clear();
@@ -29,14 +26,13 @@ class VrcxMetadataService {
     _fileModTimeCache.clear();
   }
 
-  /// Batch process multiple files for better performance
+  /// Extracts metadata for several files, skipping ones already processed and unchanged.
   Future<Map<String, PhotoMetadata?>> extractMetadataForFiles(
     List<String> imagePaths,
   ) async {
     final result = <String, PhotoMetadata?>{};
     final toProcess = <String>[];
 
-    // First pass: check caches and file modifications
     for (final imagePath in imagePaths) {
       final cachedResult = _getCachedResult(imagePath);
       if (cachedResult != null) {
@@ -46,7 +42,6 @@ class VrcxMetadataService {
       }
     }
 
-    // Second pass: process remaining files
     if (toProcess.isNotEmpty) {
       final futures = toProcess.map(
         (imagePath) => extractVrcxMetadata(
@@ -63,7 +58,7 @@ class VrcxMetadataService {
     return result;
   }
 
-  /// Metadata extraction with better caching
+  /// Extracts VRCX metadata from one image, using the cache when the file is unchanged.
   Future<PhotoMetadata?> extractVrcxMetadata(String imagePath) async {
     try {
       final file = File(imagePath);
@@ -113,15 +108,14 @@ class VrcxMetadataService {
       if (!ext.endsWith('.png') &&
           !ext.endsWith('.jpg') &&
           !ext.endsWith('.jpeg') &&
-          !ext.endsWith('.webp'))
+          !ext.endsWith('.webp')) {
         return null;
+      }
       final isPng = ext.endsWith('.png');
       String? jsonStr;
       if (isPng) {
         jsonStr = GalleVrNative().extractVrcMetadata(imagePath, ext);
-        if (jsonStr == null) {
-          jsonStr = GalleVrNative().extractResoniteMetadata(imagePath, ext);
-        }
+        jsonStr ??= GalleVrNative().extractResoniteMetadata(imagePath, ext);
       } else {
         jsonStr = GalleVrNative().extractResoniteMetadata(imagePath, ext);
       }
@@ -273,9 +267,6 @@ PhotoMetadata? _convertToGalleVrMetadata(
       final String? takenById =
           resData['takenById'] as String? ??
           (v1Data?['TakenBy'] as Map<String, dynamic>?)?['Id'] as String?;
-      final String? takenByName =
-          resData['takenByName'] as String? ??
-          (v1Data?['TakenBy'] as Map<String, dynamic>?)?['Name'] as String?;
 
       final players = <Player>[];
       final v2Players = resData['players'];
@@ -390,7 +381,6 @@ PhotoMetadata? _convertToGalleVrMetadata(
     final vrcxData = parsedJson['vrcx'] as Map<String, dynamic>?;
     final xmpData = parsedJson['xmp'] as Map<String, dynamic>?;
 
-    // Try to extract world from VRCX
     WorldInfo? vrcxWorld;
     if (vrcxData != null && vrcxData['world'] is Map<String, dynamic>) {
       final worldData = vrcxData['world'] as Map<String, dynamic>;
@@ -408,7 +398,6 @@ PhotoMetadata? _convertToGalleVrMetadata(
       }
     }
 
-    // Try to extract world from XMP
     WorldInfo? xmpWorld;
     if (xmpData != null) {
       final id = xmpData['worldId'] as String?;

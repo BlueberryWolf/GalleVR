@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 
-final RegExp _tagRegExp = RegExp(r'(<color[=\s][^>]*>|<\/color>)', caseSensitive: false);
-final RegExp _colorValueRegExp = RegExp(r'<color[=\s]\s*"?([^">]+)"?\s*>', caseSensitive: false);
+final RegExp _tagRegExp = RegExp(
+  r'(<color[=\s][^>]*>|<\/color>)',
+  caseSensitive: false,
+);
+final RegExp _colorValueRegExp = RegExp(
+  r'<color[=\s]\s*"?([^">]+)"?\s*>',
+  caseSensitive: false,
+);
 final RegExp _stripRegExp = RegExp(r'<[^>]*>');
 
 final Map<String, List<InlineSpan>> _parseCache = {};
@@ -20,10 +26,12 @@ List<InlineSpan> _getParsedSpans(String text) {
   for (final match in matches) {
     if (match.start > lastIndex) {
       final currentColor = colorStack.last;
-      spans.add(TextSpan(
-        text: text.substring(lastIndex, match.start),
-        style: currentColor != null ? TextStyle(color: currentColor) : null,
-      ));
+      spans.add(
+        TextSpan(
+          text: text.substring(lastIndex, match.start),
+          style: currentColor != null ? TextStyle(color: currentColor) : null,
+        ),
+      );
     }
 
     final tag = match.group(0)!;
@@ -107,10 +115,12 @@ List<InlineSpan> _getParsedSpans(String text) {
 
   if (lastIndex < text.length) {
     final currentColor = colorStack.last;
-    spans.add(TextSpan(
-      text: text.substring(lastIndex),
-      style: currentColor != null ? TextStyle(color: currentColor) : null,
-    ));
+    spans.add(
+      TextSpan(
+        text: text.substring(lastIndex),
+        style: currentColor != null ? TextStyle(color: currentColor) : null,
+      ),
+    );
   }
 
   if (_parseCache.length >= _maxCacheSize) {
@@ -126,13 +136,10 @@ InlineSpan parseResoniteTags(String text, TextStyle baseStyle) {
   if (!text.toLowerCase().contains('<color')) {
     return TextSpan(text: text, style: baseStyle);
   }
-  return TextSpan(
-    style: baseStyle,
-    children: _getParsedSpans(text),
-  );
+  return TextSpan(style: baseStyle, children: _getParsedSpans(text));
 }
 
-/// Helper to strip tags from a string to render as plain text.
+/// Removes Resonite rich-text tags so the text can render as plain text.
 String stripResoniteTags(String text) {
   return text.replaceAll(_stripRegExp, '');
 }

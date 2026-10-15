@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_theme.dart';
+import '../widgets/app_switch.dart';
 import '../../core/services/permission_service.dart';
 import '../../core/services/vrchat_registry_service.dart';
 import '../../core/platform/platform_service_factory.dart';
@@ -13,7 +14,6 @@ import 'home_screen.dart';
 import 'verification_screen.dart';
 import '../widgets/app_card.dart';
 
-// Onboarding screen shown on first app launch
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -40,15 +40,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   bool _isVRChatRunning = false;
   bool _justEnabledLogging = false;
 
-  // VRChat logging status (Non-Windows platforms)
   bool _isLogsDirectoryAvailable = false;
   bool _isCheckingLogsDirectory = false;
 
-  // Flow control
   bool _wantsToLinkAccount = true;
   String? _selectedPlatform;
 
-  // Windows settings
   bool _minimizeToTray = true;
   bool _startWithWindows = true;
 
@@ -56,8 +53,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   final PageController _pageController = PageController();
 
-  static const Color _brandPurple = Color(0xFF8B5CF6);
-  static const Color _brandMagenta = Color(0xFFEC4899);
+  static const Color _brandPurple = AppTheme.brandPurple;
 
   @override
   void initState() {
@@ -80,11 +76,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     _animationController.forward();
 
-    // Only check permissions on Android
     if (Platform.isAndroid) {
       _checkPermissions();
     } else {
-      // On Windows, permissions are always considered granted
       setState(() {
         _permissionsGranted = true;
       });
@@ -92,11 +86,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     _initializeVRChatService();
 
-    // Check VRChat logging status on Windows
     if (Platform.isWindows) {
       _checkVRChatLoggingStatus();
     } else {
-      // Check logs directory availability on non-Windows platforms
       _checkLogsDirectoryAvailability();
     }
 
@@ -128,7 +120,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _checkLogsDirectoryAvailability() async {
-    if (Platform.isWindows) return; // Only for non-Windows platforms
+    if (Platform.isWindows) return;
 
     developer.log(
       'Checking VRChat logs directory and file content',
@@ -473,9 +465,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       if (_wantsToLinkAccount) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (context) => VerificationScreen(
-              initialPlatform: _selectedPlatform,
-            ),
+            builder:
+                (context) =>
+                    VerificationScreen(initialPlatform: _selectedPlatform),
           ),
         );
       } else {
@@ -534,10 +526,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isSmallScreen = size.width < 600;
-    final isAndroid = Platform.isAndroid;
-
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       body: SafeArea(
@@ -608,30 +596,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     end: Offset.zero,
                   ).animate(_slideAnimation),
                   child: Center(
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          width: 160,
-                          height: 160,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.transparent,
-                            boxShadow: [
-                              BoxShadow(
-                                color: _brandPurple.withAlpha(48),
-                                blurRadius: 60,
-                                spreadRadius: 15,
-                              ),
-                            ],
-                          ),
-                        ),
-                        Image.asset(
-                          'assets/images/logo.png',
-                          height: 120,
-                          fit: BoxFit.contain,
-                        ),
-                      ],
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      height: 120,
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
@@ -653,29 +621,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         style: Theme.of(
                           context,
                         ).textTheme.displayMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w700,
                           color: Colors.white,
                           letterSpacing: -1.0,
                         ),
                         textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        height: 4,
-                        width: 48,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [_brandPurple, _brandMagenta],
-                          ),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
                       ),
                       const SizedBox(height: 20),
                       Text(
                         'Your VR photos, organized and accessible',
                         style: TextStyle(
                           fontSize: 16,
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           height: 1.5,
                           fontWeight: FontWeight.w500,
                         ),
@@ -758,7 +715,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         backgroundColor: _brandPurple,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.radiusCard,
+                          ),
                         ),
                         elevation: 0,
                       ),
@@ -769,7 +728,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             'Get Started'.toUpperCase(),
                             style: const TextStyle(
                               fontSize: 14,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w700,
                               letterSpacing: 1.5,
                             ),
                           ),
@@ -807,29 +766,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Text(
                 'Storage Permissions',
                 style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
                   letterSpacing: -1.0,
                 ),
                 textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Container(
-                height: 4,
-                width: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [_brandPurple, _brandMagenta],
-                  ),
-                  borderRadius: BorderRadius.circular(2),
-                ),
               ),
               const SizedBox(height: 20),
               Text(
                 'GalleVR needs access to your media files',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -851,9 +799,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         onPressed: _previousStep,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white30),
+                          side: const BorderSide(
+                            color: AppTheme.secondaryTextColor,
+                          ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusCard,
+                            ),
                           ),
                         ),
                         child: const Text('Back'),
@@ -870,11 +822,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           backgroundColor: _brandPurple,
                           foregroundColor: Colors.white,
                           disabledBackgroundColor: _brandPurple.withAlpha(77),
-                          disabledForegroundColor: Colors.white.withOpacity(
-                            0.5,
+                          disabledForegroundColor: Colors.white.withValues(
+                            alpha: 0.5,
                           ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusCard,
+                            ),
                           ),
                           elevation: 0,
                         ),
@@ -922,29 +876,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Text(
                 'Unlock the Full Experience',
                 style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
                   letterSpacing: -1.0,
                 ),
                 textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Container(
-                height: 4,
-                width: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [_brandPurple, _brandMagenta],
-                  ),
-                  borderRadius: BorderRadius.circular(2),
-                ),
               ),
               const SizedBox(height: 20),
               Text(
                 'GalleVR is your personal and social VR hub',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -963,8 +906,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.05),
-                            borderRadius: BorderRadius.circular(12),
+                            color: Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusControl,
+                            ),
                           ),
                           child: const Icon(
                             Icons.public_rounded,
@@ -978,7 +923,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             'Web & Social Features',
                             style: TextStyle(
                               fontSize: 18,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w700,
                               letterSpacing: 0.5,
                               color: Colors.white,
                             ),
@@ -992,7 +937,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       style: TextStyle(
                         fontSize: 14,
                         height: 1.5,
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -1016,7 +961,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       'Ready to link your VRChat account?',
                       style: TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                         color: Colors.white,
                       ),
                     ),
@@ -1026,7 +971,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       style: TextStyle(
                         fontSize: 12,
                         fontStyle: FontStyle.italic,
-                        color: Colors.white.withOpacity(0.5),
+                        color: AppTheme.secondaryTextColor,
                       ),
                     ),
                   ],
@@ -1044,7 +989,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     backgroundColor: _brandPurple,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                     ),
                     elevation: 0,
                   ),
@@ -1054,7 +999,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       Text(
                         'Link VRChat Account'.toUpperCase(),
                         style: const TextStyle(
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: 1.5,
                           fontSize: 14,
                         ),
@@ -1077,9 +1022,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         onPressed: _previousStep,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white30),
+                          side: const BorderSide(
+                            color: AppTheme.secondaryTextColor,
+                          ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusCard,
+                            ),
                           ),
                         ),
                         child: const Text('Back'),
@@ -1096,7 +1045,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 height: 48,
                 child: TextButton(
                   onPressed: _showSkipConnectionDialog,
-                  style: TextButton.styleFrom(foregroundColor: Colors.white54),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.secondaryTextColor,
+                  ),
                   child: const Text('Continue without Linking'),
                 ),
               ),
@@ -1126,29 +1077,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Text(
                 'VRChat Logging',
                 style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
                   letterSpacing: -1.0,
                 ),
                 textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Container(
-                height: 4,
-                width: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [_brandPurple, _brandMagenta],
-                  ),
-                  borderRadius: BorderRadius.circular(2),
-                ),
               ),
               const SizedBox(height: 20),
               Text(
                 'Enable full logging for photo metadata tagging',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1165,7 +1105,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: const Color.fromRGBO(255, 152, 0, 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                     border: Border.all(
                       color: const Color.fromRGBO(255, 152, 0, 0.3),
                     ),
@@ -1204,9 +1144,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         onPressed: _previousStep,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white30),
+                          side: const BorderSide(
+                            color: AppTheme.secondaryTextColor,
+                          ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusCard,
+                            ),
                           ),
                         ),
                         child: const Text('Back'),
@@ -1230,9 +1174,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           foregroundColor:
                               _isVRChatLoggingEnabled
                                   ? Colors.white
-                                  : Colors.white54,
+                                  : AppTheme.secondaryTextColor,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusCard,
+                            ),
                           ),
                           elevation: 0,
                         ),
@@ -1249,7 +1195,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 const SizedBox(height: 16),
                 const Text(
                   'Full logging is recommended for photo tagging',
-                  style: TextStyle(color: Colors.white38, fontSize: 12),
+                  style: TextStyle(
+                    color: AppTheme.secondaryTextColor,
+                    fontSize: 12,
+                  ),
                 ),
               ],
               const SizedBox(height: 32),
@@ -1266,7 +1215,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     return AppCard(
       padding: const EdgeInsets.all(24),
       borderColor:
-          _isVRChatLoggingEnabled ? Colors.green.withOpacity(0.2) : null,
+          _isVRChatLoggingEnabled ? Colors.green.withValues(alpha: 0.2) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1275,8 +1224,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: Icon(
                   _isVRChatLoggingEnabled
@@ -1292,7 +1241,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   'VRChat Full Logging',
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
                     color: Colors.white,
                   ),
@@ -1306,7 +1255,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             style: TextStyle(
               fontSize: 14,
               height: 1.5,
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 12),
@@ -1332,7 +1281,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   backgroundColor: _brandPurple,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
@@ -1374,7 +1323,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: const Color.fromRGBO(255, 152, 0, 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                     border: Border.all(
                       color: const Color.fromRGBO(255, 152, 0, 0.3),
                     ),
@@ -1447,8 +1396,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(12),
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
             ),
             child: Icon(icon, color: _brandPurple, size: 24),
           ),
@@ -1461,7 +1410,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   title,
                   style: const TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
                     color: Colors.white,
                   ),
@@ -1472,7 +1421,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   style: TextStyle(
                     fontSize: 14,
                     height: 1.4,
-                    color: Colors.white.withOpacity(0.6),
+                    color: AppTheme.secondaryTextColor,
                   ),
                 ),
               ],
@@ -1500,29 +1449,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Text(
                 'Windows Settings',
                 style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
                   letterSpacing: -1.0,
                 ),
                 textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Container(
-                height: 4,
-                width: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [_brandPurple, _brandMagenta],
-                  ),
-                  borderRadius: BorderRadius.circular(2),
-                ),
               ),
               const SizedBox(height: 20),
               Text(
                 'Configure how GalleVR behaves on your system',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1544,9 +1482,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         onPressed: _previousStep,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white30),
+                          side: const BorderSide(
+                            color: AppTheme.secondaryTextColor,
+                          ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusCard,
+                            ),
                           ),
                         ),
                         child: const Text('Back'),
@@ -1563,7 +1505,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           backgroundColor: _brandPurple,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusCard,
+                            ),
                           ),
                           elevation: 0,
                         ),
@@ -1595,8 +1539,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: const Icon(
                   Icons.settings_rounded,
@@ -1610,7 +1554,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   'Application Behavior',
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
                     color: Colors.white,
                   ),
@@ -1624,7 +1568,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             style: TextStyle(
               fontSize: 14,
               height: 1.5,
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 20),
@@ -1674,7 +1618,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     return AppCard(
       padding: const EdgeInsets.all(24),
-      borderColor: _permissionsGranted ? Colors.green.withOpacity(0.2) : null,
+      borderColor:
+          _permissionsGranted ? Colors.green.withValues(alpha: 0.2) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1683,8 +1628,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: Icon(
                   _permissionsGranted
@@ -1700,7 +1645,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   'Storage Permissions',
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
                     color: Colors.white,
                   ),
@@ -1714,7 +1659,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             style: TextStyle(
               fontSize: 14,
               height: 1.5,
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 20),
@@ -1727,7 +1672,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   backgroundColor: _brandPurple,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
@@ -1783,29 +1728,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Text(
                 'VRChat Logging',
                 style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
                   letterSpacing: -1.0,
                 ),
                 textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Container(
-                height: 4,
-                width: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [_brandPurple, _brandMagenta],
-                  ),
-                  borderRadius: BorderRadius.circular(2),
-                ),
               ),
               const SizedBox(height: 20),
               Text(
                 'Enable full logging for photo metadata tagging',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1822,7 +1756,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: const Color.fromRGBO(255, 152, 0, 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                     border: Border.all(
                       color: const Color.fromRGBO(255, 152, 0, 0.3),
                     ),
@@ -1863,9 +1797,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         onPressed: _previousStep,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white30),
+                          side: const BorderSide(
+                            color: AppTheme.secondaryTextColor,
+                          ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusCard,
+                            ),
                           ),
                         ),
                         child: const Text('Back'),
@@ -1889,9 +1827,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           foregroundColor:
                               _isLogsDirectoryAvailable
                                   ? Colors.white
-                                  : Colors.white54,
+                                  : AppTheme.secondaryTextColor,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusCard,
+                            ),
                           ),
                           elevation: 0,
                         ),
@@ -1909,7 +1849,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 const SizedBox(height: 16),
                 const Text(
                   'Full logging is recommended for photo tagging',
-                  style: TextStyle(color: Colors.white38, fontSize: 12),
+                  style: TextStyle(
+                    color: AppTheme.secondaryTextColor,
+                    fontSize: 12,
+                  ),
                 ),
               ],
               const SizedBox(height: 32),
@@ -1926,7 +1869,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     return AppCard(
       padding: const EdgeInsets.all(24),
       borderColor:
-          _isLogsDirectoryAvailable ? Colors.green.withOpacity(0.2) : null,
+          _isLogsDirectoryAvailable
+              ? Colors.green.withValues(alpha: 0.2)
+              : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1935,8 +1880,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: Icon(
                   _isLogsDirectoryAvailable
@@ -1954,7 +1899,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   'VRChat Full Logging',
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
                     color: Colors.white,
                   ),
@@ -1968,7 +1913,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             style: TextStyle(
               fontSize: 14,
               height: 1.5,
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 12),
@@ -1985,9 +1930,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.03),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
+              color: Colors.white.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2032,7 +1977,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       backgroundColor: _brandPurple,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.radiusControl,
+                        ),
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 8),
                     ),
@@ -2217,44 +2164,33 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             children: [
               SizedBox(height: size.height * 0.1),
               Container(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  shape: BoxShape.circle,
+                  color: AppTheme.tint(AppTheme.successColor, 0.15),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                 ),
                 child: const Icon(
-                  Icons.check_circle_outline_rounded,
-                  color: Colors.green,
-                  size: 80,
+                  Icons.check_rounded,
+                  color: AppTheme.successColor,
+                  size: 48,
                 ),
               ),
               const SizedBox(height: 32),
               Text(
                 'Setup Complete!',
                 style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
                   letterSpacing: -1.0,
                 ),
                 textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Container(
-                height: 4,
-                width: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Colors.green, Colors.teal],
-                  ),
-                  borderRadius: BorderRadius.circular(2),
-                ),
               ),
               const SizedBox(height: 24),
               Text(
                 'You\'re all set to start using GalleVR. Your VR memories are ready to be organized.',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -2265,9 +2201,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: const Row(
                     children: [
@@ -2293,7 +2231,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     backgroundColor: _brandPurple,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                     ),
                     elevation: 0,
                   ),
@@ -2306,7 +2244,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                 : 'Start Using GalleVR')
                             .toUpperCase(),
                         style: const TextStyle(
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: 1.5,
                           fontSize: 14,
                         ),
@@ -2326,7 +2264,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 onPressed: _previousStep,
                 child: Text(
                   'Back to Review Settings',
-                  style: TextStyle(color: Colors.white.withOpacity(0.4)),
+                  style: TextStyle(color: AppTheme.secondaryTextColor),
                 ),
               ),
               const SizedBox(height: 32),
@@ -2348,8 +2286,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
         onTap: onChanged != null ? () => onChanged(!value) : null,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: 8,
@@ -2372,18 +2311,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.38),
+                        color: AppTheme.secondaryTextColor,
                         fontSize: 12,
                       ),
                     ),
                   ],
                 ),
               ),
-              Switch(
-                value: value,
-                onChanged: onChanged,
-                activeColor: activeColor,
-              ),
+              AppSwitch(value: value, onChanged: onChanged),
             ],
           ),
         ),

@@ -13,12 +13,12 @@ class TOSModal extends StatefulWidget {
   final String title;
 
   const TOSModal({
-    Key? key,
+    super.key,
     required this.onAccept,
     required this.onDecline,
     this.showDeclineButton = true,
     this.title = 'Terms of Service',
-  }) : super(key: key);
+  });
 
   @override
   State<TOSModal> createState() => _TOSModalState();
@@ -81,7 +81,8 @@ class _TOSModalState extends State<TOSModal> {
       } else {
         setState(() {
           _isAccepting = false;
-          _errorMessage = 'Failed to accept Terms of Service. Please try again.';
+          _errorMessage =
+              'Failed to accept Terms of Service. Please try again.';
         });
       }
     } catch (e) {
@@ -100,22 +101,17 @@ class _TOSModalState extends State<TOSModal> {
 
     return Stack(
       children: [
-        // Dimmed and blurred background overlay
         Positioned.fill(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
             child: GestureDetector(
-              // Intercept all gestures to prevent interaction with background
-              onTap: () {}, // Empty callback to capture taps
-              behavior: HitTestBehavior.opaque, // Ensure it blocks all input
-              child: Container(
-                color: Colors.black.withOpacity(0.5), // Dim the background
-              ),
+              onTap: () {},
+              behavior: HitTestBehavior.opaque,
+              child: Container(color: Colors.black.withValues(alpha: 0.5)),
             ),
           ),
         ),
 
-        // The actual dialog
         Center(
           child: Material(
             color: Colors.transparent,
@@ -124,102 +120,93 @@ class _TOSModalState extends State<TOSModal> {
               height: size.height * 0.8,
               decoration: BoxDecoration(
                 color: AppTheme.surfaceColor,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppTheme.radiusCard),
               ),
               padding: const EdgeInsets.all(24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-            // Header
-            Text(
-              widget.title,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-
-            // Check for effectiveDate in content first (preferred)
-            if (_tosData.containsKey('content') &&
-                _tosData['content'] is Map &&
-                (_tosData['content'] as Map).containsKey('effectiveDate')) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Effective Date: ${_formatDate((_tosData['content'] as Map)['effectiveDate'])}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white.withOpacity(0.7),
-                ),
-              ),
-            ]
-            // Fallback to lastModified if effectiveDate is not available
-            else if (_tosData.containsKey('lastModified')) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Last Updated: ${_formatDate(_tosData['lastModified'])}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white.withOpacity(0.7),
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-            const Divider(color: Colors.white24),
-            const SizedBox(height: 16),
-
-            // Content
-            Expanded(
-              child: _buildContent(),
-            ),
-
-            // Error message
-            if (_errorMessage.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text(
-                _errorMessage,
-                style: const TextStyle(
-                  color: Colors.red,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-
-            // Actions
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (widget.showDeclineButton) ...[
-                  TextButton(
-                    onPressed: _isAccepting ? null : widget.onDecline,
-                    child: const Text(
-                      'Decline',
-                      style: TextStyle(color: Colors.red),
+                  Text(
+                    widget.title,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
-                  const SizedBox(width: 16),
-                ],
-                ElevatedButton(
-                  onPressed: _isAccepting ? null : _acceptTOS,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: _isAccepting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+
+                  if (_tosData.containsKey('content') &&
+                      _tosData['content'] is Map &&
+                      (_tosData['content'] as Map).containsKey(
+                        'effectiveDate',
+                      )) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Effective Date: ${_formatDate((_tosData['content'] as Map)['effectiveDate'])}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ] else if (_tosData.containsKey('lastModified')) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Last Updated: ${_formatDate(_tosData['lastModified'])}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                  const Divider(color: Colors.white24),
+                  const SizedBox(height: 16),
+
+                  Expanded(child: _buildContent()),
+
+                  if (_errorMessage.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      _errorMessage,
+                      style: const TextStyle(color: Colors.red, fontSize: 14),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (widget.showDeclineButton) ...[
+                        TextButton(
+                          onPressed: _isAccepting ? null : widget.onDecline,
+                          child: const Text(
+                            'Decline',
+                            style: TextStyle(color: Colors.red),
                           ),
-                        )
-                      : const Text('Accept'),
-                ),
-              ],
-            ),
+                        ),
+                        const SizedBox(width: 16),
+                      ],
+                      ElevatedButton(
+                        onPressed: _isAccepting ? null : _acceptTOS,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          foregroundColor: Colors.white,
+                        ),
+                        child:
+                            _isAccepting
+                                ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                : const Text('Accept'),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -231,9 +218,7 @@ class _TOSModalState extends State<TOSModal> {
 
   Widget _buildContent() {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_errorMessage.isNotEmpty && _tosData.isEmpty) {
@@ -241,11 +226,7 @@ class _TOSModalState extends State<TOSModal> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.error_outline,
-              color: Colors.red,
-              size: 48,
-            ),
+            const Icon(Icons.error_outline, color: Colors.red, size: 48),
             const SizedBox(height: 16),
             Text(
               _errorMessage,
@@ -262,21 +243,15 @@ class _TOSModalState extends State<TOSModal> {
       );
     }
 
-    // First, check if we have content directly in the TOS data
     if (_tosData.containsKey('content')) {
       final content = _tosData['content'];
 
-      // If content is a string, display it directly
       if (content is String) {
         return SingleChildScrollView(
-          child: Text(
-            content,
-            style: const TextStyle(color: Colors.white),
-          ),
+          child: Text(content, style: const TextStyle(color: Colors.white)),
         );
       }
 
-      // If content is a map with a message field, display that
       if (content is Map && content.containsKey('message')) {
         return SingleChildScrollView(
           child: Text(
@@ -286,8 +261,9 @@ class _TOSModalState extends State<TOSModal> {
         );
       }
 
-      // If content is a map with a content field (nested content)
-      if (content is Map && content.containsKey('content') && content['content'] is String) {
+      if (content is Map &&
+          content.containsKey('content') &&
+          content['content'] is String) {
         return SingleChildScrollView(
           child: Text(
             content['content'],
@@ -297,12 +273,11 @@ class _TOSModalState extends State<TOSModal> {
       }
     }
 
-    // If we don't have content directly, check if we have it nested in the response
     if (_tosData.containsKey('content') && _tosData['content'] is Map) {
       final contentMap = _tosData['content'] as Map;
 
-      // Check for direct content field in the content map
-      if (contentMap.containsKey('content') && contentMap['content'] is String) {
+      if (contentMap.containsKey('content') &&
+          contentMap['content'] is String) {
         return SingleChildScrollView(
           child: Text(
             contentMap['content'],
@@ -312,38 +287,28 @@ class _TOSModalState extends State<TOSModal> {
       }
     }
 
-    // If we still don't have content, check for other possible fields
     if (_tosData.containsKey('content') && _tosData['content'] is Map) {
       final contentMap = _tosData['content'] as Map;
 
-      // Try to extract the main content from various possible fields
       String mainContent = '';
 
-      // Check if there's a text field
       if (contentMap.containsKey('text') && contentMap['text'] is String) {
         mainContent = contentMap['text'];
-      }
-      // Check if there's a body field
-      else if (contentMap.containsKey('body') && contentMap['body'] is String) {
+      } else if (contentMap.containsKey('body') &&
+          contentMap['body'] is String) {
         mainContent = contentMap['body'];
-      }
-      // Check if there's a message field
-      else if (contentMap.containsKey('message') && contentMap['message'] is String) {
+      } else if (contentMap.containsKey('message') &&
+          contentMap['message'] is String) {
         mainContent = contentMap['message'];
       }
 
-      // If we found content, display it
       if (mainContent.isNotEmpty) {
         return SingleChildScrollView(
-          child: Text(
-            mainContent,
-            style: const TextStyle(color: Colors.white),
-          ),
+          child: Text(mainContent, style: const TextStyle(color: Colors.white)),
         );
       }
     }
 
-    // If we still don't have content, show a message
     if (_tosData.isEmpty || !_tosData.containsKey('content')) {
       return const Center(
         child: Text(
@@ -353,12 +318,9 @@ class _TOSModalState extends State<TOSModal> {
       );
     }
 
-    // As a fallback, try to display the content in a more readable format
     try {
-      // Get the content object from the TOS data
       final contentObj = _tosData['content'];
 
-      // Convert the content to a formatted string with proper indentation
       const JsonEncoder encoder = JsonEncoder.withIndent('  ');
       final String prettyJson = encoder.convert(contentObj);
 
@@ -373,7 +335,6 @@ class _TOSModalState extends State<TOSModal> {
         ),
       );
     } catch (e) {
-      // If all else fails, just convert the whole TOS data to string
       return SingleChildScrollView(
         child: Text(
           _tosData.toString(),
@@ -389,10 +350,19 @@ class _TOSModalState extends State<TOSModal> {
 
       final date = DateTime.parse(dateStr.toString());
 
-      // Format the date in a more readable format
       final months = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
       ];
 
       return '${months[date.month - 1]} ${date.day}, ${date.year}';

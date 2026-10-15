@@ -4,13 +4,13 @@ import 'package:path/path.dart' as path;
 import 'dart:io';
 import 'dart:developer' as developer;
 import '../../data/services/app_service_manager.dart';
-import '../../data/services/log_parser_service.dart';
-import '../../data/services/photo_processor_service.dart';
 import '../../data/services/photo_event_service.dart';
 import '../../data/services/vrchat_service.dart';
 import '../../data/models/config_model.dart';
 import '../../data/models/verification_models.dart';
+import '../theme/app_theme.dart';
 import '../widgets/app_card.dart';
+import '../widgets/app_switch.dart';
 
 class MonitorScreen extends StatefulWidget {
   const MonitorScreen({super.key});
@@ -19,20 +19,14 @@ class MonitorScreen extends StatefulWidget {
   State<MonitorScreen> createState() => _MonitorScreenState();
 }
 
-class _MonitorScreenState extends State<MonitorScreen>
-    with TickerProviderStateMixin {
+class _MonitorScreenState extends State<MonitorScreen> {
   final AppServiceManager _appServiceManager = AppServiceManager();
-  final LogParserService _logParserService = LogParserService();
-  final PhotoProcessorService _photoProcessorService = PhotoProcessorService();
   final PhotoEventService _photoEventService = PhotoEventService();
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
 
   ConfigModel? _config;
   AuthData? _authData;
   AuthData? _authDataSec;
   bool _isWatching = false;
-  bool _isLoading = true;
   bool _rebuildScheduled = false;
 
   bool get _hasVRC =>
@@ -52,6 +46,19 @@ class _MonitorScreenState extends State<MonitorScreen>
   }
 
   final List<_ProcessingEvent> _events = [];
+  final Map<String, bool> _dirExists = {};
+
+  bool _directoryExists(String directory) {
+    final known = _dirExists[directory];
+    if (known != null) return known;
+    _dirExists[directory] = true;
+    Directory(directory).exists().catchError((_) => false).then((exists) {
+      if (!mounted || exists) return;
+      setState(() => _dirExists[directory] = false);
+    });
+    return true;
+  }
+
   StreamSubscription<String>? _photoSubscription;
   StreamSubscription<ConfigModel>? _configSubscription;
   StreamSubscription<AuthData?>? _authSubscription;
@@ -60,15 +67,6 @@ class _MonitorScreenState extends State<MonitorScreen>
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
     _initializeEventsFromHistory();
 
     _loadConfig();
@@ -79,7 +77,6 @@ class _MonitorScreenState extends State<MonitorScreen>
 
   @override
   void dispose() {
-    _pulseController.dispose();
     _stopWatching();
     _configSubscription?.cancel();
     _authSubscription?.cancel();
@@ -131,15 +128,15 @@ class _MonitorScreenState extends State<MonitorScreen>
       final configChanged =
           _config?.photosDirectory != updatedConfig.photosDirectory ||
           _config?.logsDirectory != updatedConfig.logsDirectory ||
-          _config?.resonitePhotosDirectory != updatedConfig.resonitePhotosDirectory ||
+          _config?.resonitePhotosDirectory !=
+              updatedConfig.resonitePhotosDirectory ||
           _config?.uploadEnabled != updatedConfig.uploadEnabled;
 
       if (configChanged) {
         _config = updatedConfig;
+        _dirExists.clear();
 
-        if (mounted) {
-          setState(() {});
-        }
+        if (mounted) {}
 
         _updateWatcherStatus();
       }
@@ -147,7 +144,9 @@ class _MonitorScreenState extends State<MonitorScreen>
   }
 
   void _listenForAuthChanges() {
-    _authSubscription = _appServiceManager.authDataStream.listen((authData) async {
+    _authSubscription = _appServiceManager.authDataStream.listen((
+      authData,
+    ) async {
       final authDataSec = await VRChatService().loadAuthDataSecondary();
       if (mounted) {
         setState(() {
@@ -168,20 +167,21 @@ class _MonitorScreenState extends State<MonitorScreen>
   }
 
   Future<void> _loadConfig() async {
-    setState(() => _isLoading = true);
     try {
       final authDataSec = await VRChatService().loadAuthDataSecondary();
-      final config = _appServiceManager.config ?? await _appServiceManager.initialize().then((_) => _appServiceManager.config);
+      final config =
+          _appServiceManager.config ??
+          await _appServiceManager.initialize().then(
+            (_) => _appServiceManager.config,
+          );
       setState(() {
         _config = config ?? _appServiceManager.config;
         _authData = _appServiceManager.authData;
         _authDataSec = authDataSec;
-        _isLoading = false;
       });
       _updateWatcherStatus();
     } catch (e) {
       developer.log('Error loading config: $e', name: 'MonitorScreen');
-      setState(() => _isLoading = false);
     }
   }
 
@@ -207,7 +207,8 @@ class _MonitorScreenState extends State<MonitorScreen>
 
       String watchMsg;
       if (_hasResonite && hasResoniteDir && _hasVRC && hasVrcDir) {
-        watchMsg = 'Started watching VRChat logs and Resonite folder for new screenshots';
+        watchMsg =
+            'Started watching VRChat logs and Resonite folder for new screenshots';
       } else if (_hasResonite && hasResoniteDir) {
         watchMsg = 'Started watching Resonite folder for new screenshots';
       } else {
@@ -318,393 +319,199 @@ class _MonitorScreenState extends State<MonitorScreen>
     String missingMessage;
 
     if (_hasResonite && !_hasVRC) {
-      isConfigMissing = _config == null || _config!.resonitePhotosDirectory.isEmpty;
-      missingMessage = 'Please ensure Resonite Photos directory is set in the application settings.';
+      isConfigMissing =
+          _config == null || _config!.resonitePhotosDirectory.isEmpty;
+      missingMessage =
+          'Please ensure Resonite Photos directory is set in the application settings.';
     } else if (_hasVRC && !_hasResonite) {
-      isConfigMissing = _config == null ||
+      isConfigMissing =
+          _config == null ||
           _config!.photosDirectory.isEmpty ||
           _config!.logsDirectory.isEmpty;
-      missingMessage = 'Please ensure both VRChat Photos and Logs directories are set in the application settings.';
+      missingMessage =
+          'Please ensure both VRChat Photos and Logs directories are set in the application settings.';
     } else if (_hasResonite && _hasVRC) {
-      isConfigMissing = _config == null ||
+      isConfigMissing =
+          _config == null ||
           (_config!.resonitePhotosDirectory.isEmpty &&
-              (_config!.photosDirectory.isEmpty || _config!.logsDirectory.isEmpty));
-      missingMessage = 'Please ensure VRChat directories (Photos & Logs) or Resonite directory is set in the application settings.';
+              (_config!.photosDirectory.isEmpty ||
+                  _config!.logsDirectory.isEmpty));
+      missingMessage =
+          'Please ensure VRChat directories (Photos & Logs) or Resonite directory is set in the application settings.';
     } else {
-      isConfigMissing = _config == null ||
+      isConfigMissing =
+          _config == null ||
           _config!.photosDirectory.isEmpty ||
           _config!.logsDirectory.isEmpty;
-      missingMessage = 'Please ensure both VRChat Photos and Logs directories are set in the application settings.';
+      missingMessage =
+          'Please ensure both VRChat Photos and Logs directories are set in the application settings.';
     }
 
     if (isConfigMissing) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 48),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
                 Icons.settings_suggest_rounded,
-                size: 64,
-                color: Colors.white24,
+                size: 48,
+                color: AppTheme.secondaryTextColor,
               ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Configuration Incomplete',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Colors.white70,
-                fontWeight: FontWeight.bold,
+              const SizedBox(height: 16),
+              Text(
+                'Configuration Incomplete',
+                style: Theme.of(context).textTheme.headlineSmall,
               ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 48),
-              child: Text(
+              const SizedBox(height: 8),
+              Text(
                 missingMessage,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: Colors.white38),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppTheme.secondaryTextColor,
+                ),
                 textAlign: TextAlign.center,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
 
-    return Column(
-      children: [_buildStatusHeader(), Expanded(child: _buildEventList())],
-    );
-  }
-
-  Widget _buildStatusHeader() {
-    final statusColor =
-        _isWatching ? const Color(0xFF4ade80) : const Color(0xFFf87171);
-    final hasPhotosDir = _config != null && _config!.photosDirectory.isNotEmpty;
-    final hasLogsDir = _config != null && _config!.logsDirectory.isNotEmpty;
-    final hasResoniteDir = _config != null && _config!.resonitePhotosDirectory.isNotEmpty;
-    final showVRC = _hasVRC || !_hasResonite;
-    final showResonite = _hasResonite;
-
-    return Padding(
+    return ListView(
       padding: const EdgeInsets.all(16),
-      child: AppCard(
-        padding: const EdgeInsets.all(20),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            statusColor.withOpacity(0.15),
-            Colors.white.withOpacity(0.05),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Text(
-                      'Live Monitor',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                        fontSize: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: statusColor.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            _isWatching
-                                ? Icons.sync_rounded
-                                : Icons.sync_disabled_rounded,
-                            color: statusColor,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _isWatching ? 'ACTIVE' : 'STOPPED',
-                            style: TextStyle(
-                              color: statusColor,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                _buildModernButton(
-                  onPressed: _isWatching ? _stopWatching : _startWatching,
-                  label: _isWatching ? 'Stop' : 'Start',
-                  color: _isWatching ? Colors.redAccent : statusColor,
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            if (showVRC) ...[
-              _buildDirectoryStatusRow(
-                Icons.photo_library_rounded,
-                'VRChat Photos Path',
-                _config?.photosDirectory ?? 'Not set',
-                hasPhotosDir,
-              ),
-              const SizedBox(height: 16),
-              _buildDirectoryStatusRow(
-                Icons.article_rounded,
-                'VRChat Logs Path',
-                _config?.logsDirectory ?? 'Not set',
-                hasLogsDir,
-              ),
-            ],
-            if (showResonite) ...[
-              if (showVRC) const SizedBox(height: 16),
-              _buildDirectoryStatusRow(
-                Icons.photo_library_rounded,
-                'Resonite Photos Path',
-                _config?.resonitePhotosDirectory ?? 'Not set',
-                hasResoniteDir,
-              ),
-            ],
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                _buildInteractiveBadge(
-                  icon:
-                      _config?.uploadEnabled ?? false
-                          ? Icons.cloud_done_rounded
-                          : Icons.cloud_off_rounded,
-                  label:
-                      _config?.uploadEnabled ?? false
-                          ? 'Auto-Upload'
-                          : 'Local-Only',
-                  color:
-                      _config?.uploadEnabled ?? false
-                          ? const Color(0xFF60a5fa)
-                          : Colors.white30,
-                  onTap: () {
-                    if (_config != null) {
-                      final newConfig = _config!.copyWith(
-                        uploadEnabled: !_config!.uploadEnabled,
-                      );
-                      _appServiceManager.updateConfig(newConfig);
-                    }
-                  },
-                ),
-                const SizedBox(width: 12),
-                _buildSupporterStatus(),
-                const Spacer(),
-                if (Platform.isAndroid)
-                  const Text(
-                    'POLLING MODE',
-                    style: TextStyle(
-                      color: Colors.white12,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDirectoryStatusRow(
-    IconData icon,
-    String label,
-    String pathStr,
-    bool isSet,
-  ) {
-    bool exists = false;
-    if (isSet && pathStr != 'Not set') {
-      try {
-        exists = Directory(pathStr).existsSync();
-      } catch (_) {}
-    }
-
-    final color =
-        isSet
-            ? (exists ? Colors.greenAccent : Colors.orangeAccent)
-            : Colors.redAccent;
-
-    return Row(
       children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, size: 18, color: color.withOpacity(0.7)),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        _buildStatusCard(),
+        const SizedBox(height: 20),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Text(
-                    label.toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white24,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (isSet)
-                    Text(
-                      exists ? '● FOUND' : '● NOT FOUND',
-                      style: TextStyle(
-                        color: color.withOpacity(0.5),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                pathStr,
+              const Text(
+                'Activity',
                 style: TextStyle(
-                  color: isSet ? Colors.white70 : Colors.white24,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  overflow: TextOverflow.ellipsis,
+                  color: AppTheme.textColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${_events.length}',
+                style: const TextStyle(
+                  color: AppTheme.secondaryTextColor,
+                  fontSize: 13,
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _events.isEmpty ? null : _clearEvents,
+                icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                label: const Text('Clear'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.secondaryTextColor,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  minimumSize: Size.zero,
+                  textStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],
           ),
         ),
+        _buildEventList(),
       ],
     );
   }
 
-  Widget _buildInteractiveBadge({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.2)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+  void _clearEvents() {
+    _photoEventService.clearHistory();
+    setState(_events.clear);
+  }
+
+  Widget _buildStatusCard() {
+    final showVRC = _hasVRC || !_hasResonite;
+    final directories = [
+      if (showVRC) ('VRChat photos', _config?.photosDirectory ?? ''),
+      if (showVRC) ('VRChat logs', _config?.logsDirectory ?? ''),
+      if (_hasResonite)
+        ('Resonite photos', _config?.resonitePhotosDirectory ?? ''),
+    ];
+    final statusColor =
+        _isWatching ? AppTheme.successColor : AppTheme.secondaryTextColor;
+
+    return AppCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Icon(icon, size: 14, color: color),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
+              Icon(
+                _isWatching
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: statusColor,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _isWatching ? 'Watching for new photos' : 'Not watching',
+                  style: const TextStyle(
+                    color: AppTheme.textColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
+              ),
+              const Text(
+                'Auto-upload',
+                style: TextStyle(
+                  color: AppTheme.secondaryTextColor,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(width: 10),
+              AppSwitch(
+                value: _config?.uploadEnabled ?? false,
+                onChanged:
+                    _config == null
+                        ? null
+                        : (value) => _appServiceManager.updateConfig(
+                          _config!.copyWith(uploadEnabled: value),
+                        ),
+              ),
+              const SizedBox(width: 16),
+              OutlinedButton(
+                onPressed: _isWatching ? _stopWatching : _startWatching,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                ),
+                child: Text(_isWatching ? 'Stop' : 'Start'),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModernButton({
-    required VoidCallback onPressed,
-    required String label,
-    required Color color,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.3)),
-          ),
-          child: Text(
-            label.toUpperCase(),
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceBase,
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSupporterStatus() {
-    if (_authData == null) return const SizedBox.shrink();
-
-    final tier = _authData!.supporterTier;
-    final colorValue = tier.color as int?;
-    final color = colorValue != null ? Color(colorValue) : Colors.grey;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            tier == SupporterTier.none
-                ? Icons.person_rounded
-                : Icons.stars_rounded,
-            color: color,
-            size: 14,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            tier.name.toUpperCase(),
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w900,
-              fontSize: 11,
+            child: Column(
+              children: [
+                for (final (label, dir) in directories)
+                  _buildDirectoryRow(label, dir),
+              ],
             ),
           ),
         ],
@@ -712,109 +519,156 @@ class _MonitorScreenState extends State<MonitorScreen>
     );
   }
 
-  Widget _buildEventList() {
-    if (_events.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.history_rounded, size: 48, color: Colors.white10),
-            const SizedBox(height: 16),
+  Widget _buildDirectoryRow(String label, String directory) {
+    final exists = directory.isNotEmpty && _directoryExists(directory);
+
+    final problem =
+        directory.isEmpty
+            ? 'Not set'
+            : exists
+            ? null
+            : 'Not found';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppTheme.secondaryTextColor,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              directory.isEmpty ? '-' : directory,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: AppTheme.textColor, fontSize: 12),
+            ),
+          ),
+          Icon(
+            problem == null ? Icons.check_rounded : Icons.warning_amber_rounded,
+            size: 14,
+            color:
+                problem == null ? AppTheme.successColor : AppTheme.warningColor,
+          ),
+          if (problem != null) ...[
+            const SizedBox(width: 4),
             Text(
-              'Activity stream is empty',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyLarge?.copyWith(color: Colors.white24),
+              problem,
+              style: const TextStyle(
+                color: AppTheme.warningColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEventList() {
+    if (_events.isEmpty) {
+      return const AppCard(
+        padding: EdgeInsets.symmetric(vertical: 32),
+        child: Center(
+          child: Text(
+            'No activity yet',
+            style: TextStyle(color: AppTheme.secondaryTextColor, fontSize: 13),
+          ),
         ),
       );
     }
 
-    return RepaintBoundary(
-      child: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: _events.length,
-
-        addAutomaticKeepAlives: false,
-        addRepaintBoundaries: true,
-
-        cacheExtent: 300,
-        itemBuilder: (context, index) {
-          final event = _events[index];
-          return _buildEventItem(event);
-        },
+    return AppCard(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        children: [for (final event in _events) _buildEventItem(event)],
       ),
     );
   }
 
   Widget _buildEventItem(_ProcessingEvent event) {
-    IconData iconData;
-    Color iconColor;
+    final (iconData, color) = switch (event.type) {
+      _EventType.error => (Icons.error_outline_rounded, AppTheme.errorColor),
+      _EventType.success => (
+        Icons.check_circle_outline_rounded,
+        AppTheme.successColor,
+      ),
+      _EventType.upload => (
+        Icons.cloud_upload_outlined,
+        AppTheme.primaryLightColor,
+      ),
+      _EventType.photo => (Icons.photo_outlined, AppTheme.brandPurple),
+      _EventType.info => (
+        Icons.info_outline_rounded,
+        AppTheme.secondaryTextColor,
+      ),
+    };
 
-    switch (event.type) {
-      case _EventType.info:
-        iconData = Icons.info_outline_rounded;
-        iconColor = const Color(0xFF60a5fa);
-        break;
-      case _EventType.photo:
-        iconData = Icons.photo_rounded;
-        iconColor = const Color(0xFFf472b6);
-        break;
-      case _EventType.success:
-        iconData = Icons.check_circle_rounded;
-        iconColor = const Color(0xFF4ade80);
-        break;
-      case _EventType.error:
-        iconData = Icons.error_outline_rounded;
-        iconColor = const Color(0xFFf87171);
-        break;
-      case _EventType.upload:
-        iconData = Icons.cloud_upload_rounded;
-        iconColor = const Color(0xFF3b82f6);
-        break;
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: AppCard(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        borderRadius: 12,
-        child: Row(
-          children: [
-            Icon(iconData, color: iconColor.withOpacity(0.7), size: 18),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          mouseCursor: SystemMouseCursors.click,
+          borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+          hoverColor: AppTheme.cardHoverColor,
+          onTap:
+              event.photoPath != null
+                  ? () => _showPhotoPreview(event.photoPath!)
+                  : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Text(
+                  _formatTimestamp(event.timestamp),
+                  style: const TextStyle(
+                    color: AppTheme.secondaryTextColor,
+                    fontSize: 12,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.tint(color, 0.15),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusTag),
+                  ),
+                  child: Icon(iconData, color: color, size: 14),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
                     event.message,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color:
+                          event.type == _EventType.error
+                              ? AppTheme.errorColor
+                              : AppTheme.textColor,
                       fontSize: 13,
-                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _formatTimestamp(event.timestamp),
-                    style: const TextStyle(color: Colors.white30, fontSize: 11),
+                ),
+                if (event.photoPath != null)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 12),
+                    child: Icon(
+                      Icons.visibility_outlined,
+                      size: 16,
+                      color: AppTheme.secondaryTextColor,
+                    ),
                   ),
-                ],
-              ),
+              ],
             ),
-            if (event.photoPath != null) ...[
-              const SizedBox(width: 12),
-              IconButton(
-                icon: const Icon(Icons.visibility_rounded, size: 18),
-                onPressed: () => _showPhotoPreview(event.photoPath!),
-                color: Colors.white38,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -847,14 +701,12 @@ class _MonitorScreenState extends State<MonitorScreen>
                     File(photoPath),
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: Colors.grey[300],
-                        child: const Center(
-                          child: Icon(
-                            Icons.broken_image,
-                            color: Colors.grey,
-                            size: 64,
-                          ),
+                      return const Padding(
+                        padding: EdgeInsets.all(48),
+                        child: Icon(
+                          Icons.broken_image_rounded,
+                          color: AppTheme.secondaryTextColor,
+                          size: 48,
                         ),
                       );
                     },

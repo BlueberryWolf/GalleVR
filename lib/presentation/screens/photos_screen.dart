@@ -1,13 +1,16 @@
 import 'dart:io';
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import '../controllers/photos_controller.dart';
 import 'photos/widgets/photo_grid_item.dart';
 import 'photos/widgets/photo_detail_view.dart';
 import 'photos/photos_utils.dart';
+import '../../core/image/image_cache_service.dart';
 import '../../data/models/photo_metadata.dart';
 import 'mass_upload_screen.dart';
+import '../theme/app_theme.dart';
 
 class PhotosScreen extends StatefulWidget {
   final PhotosController controller;
@@ -100,10 +103,9 @@ class PhotosScreenState extends State<PhotosScreen> {
                       return false;
                     },
                     child: CustomScrollView(
+                      scrollCacheExtent: const ScrollCacheExtent.pixels(0.0),
                       controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
-                      cacheExtent:
-                          0, // Force aggressive disposal of off-screen items to save RAM
                       key: const PageStorageKey('photos_grid_scroll'),
                       slivers: [
                         SliverPadding(
@@ -143,21 +145,21 @@ class PhotosScreenState extends State<PhotosScreen> {
       bottom: hasSelection ? 24 : -100,
       child: Center(
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppTheme.radiusModal),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1B26).withOpacity(0.75),
-                borderRadius: BorderRadius.circular(20),
+                color: const Color(0xFF1A1B26).withValues(alpha: 0.75),
+                borderRadius: BorderRadius.circular(AppTheme.radiusModal),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   width: 1.5,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.4),
+                    color: Colors.black.withValues(alpha: 0.4),
                     blurRadius: 24,
                     offset: const Offset(0, 8),
                   ),
@@ -166,19 +168,20 @@ class PhotosScreenState extends State<PhotosScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Selections Count Badge
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF3B82F6).withOpacity(0.15),
+                      color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
                       border: Border.all(
-                        color: const Color(0xFF3B82F6).withOpacity(0.2),
+                        color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
                         width: 1,
                       ),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(
+                        AppTheme.radiusControl,
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -195,7 +198,7 @@ class PhotosScreenState extends State<PhotosScreen> {
                             '$count',
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 10,
+                              fontSize: 11,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -213,15 +216,13 @@ class PhotosScreenState extends State<PhotosScreen> {
                     ),
                   ),
 
-                  // Divider
                   Container(
                     height: 24,
                     width: 1,
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     margin: const EdgeInsets.symmetric(horizontal: 12),
                   ),
 
-                  // Actions
                   ElevatedButton.icon(
                     onPressed:
                         count == 0
@@ -244,20 +245,26 @@ class PhotosScreenState extends State<PhotosScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(
                         0xFF3B82F6,
-                      ).withOpacity(0.15),
+                      ).withValues(alpha: 0.15),
                       foregroundColor: const Color(0xFF60A5FA),
-                      disabledBackgroundColor: Colors.white.withOpacity(0.05),
+                      disabledBackgroundColor: Colors.white.withValues(
+                        alpha: 0.05,
+                      ),
                       disabledForegroundColor: Colors.white24,
                       elevation: 0,
                       side: BorderSide(
                         color:
                             count == 0
-                                ? Colors.white.withOpacity(0.1)
-                                : const Color(0xFF3B82F6).withOpacity(0.5),
+                                ? Colors.white.withValues(alpha: 0.1)
+                                : const Color(
+                                  0xFF3B82F6,
+                                ).withValues(alpha: 0.5),
                         width: 1.5,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.radiusControl,
+                        ),
                       ),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
@@ -266,20 +273,18 @@ class PhotosScreenState extends State<PhotosScreen> {
                     ),
                   ),
 
-                  // Divider
                   Container(
                     height: 24,
                     width: 1,
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     margin: const EdgeInsets.symmetric(horizontal: 12),
                   ),
 
-                  // Cancel / Close
                   IconButton(
                     onPressed: () => widget.controller.clearSelection(),
                     icon: const Icon(Icons.close_rounded, size: 20),
                     color: Colors.grey,
-                    hoverColor: Colors.white.withOpacity(0.1),
+                    hoverColor: Colors.white.withValues(alpha: 0.1),
                     padding: const EdgeInsets.all(8),
                     constraints: const BoxConstraints(),
                   ),
@@ -397,12 +402,28 @@ class _PhotoGridView extends StatelessWidget {
     return SliverLayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.crossAxisExtent;
-        int crossAxisCount = (width / 350).floor();
-        crossAxisCount = crossAxisCount.clamp(1, 6);
+        final crossAxisCount = (width / 350).floor().clamp(1, 6);
+        final tileWidth =
+            (width - _gridSpacing * (crossAxisCount - 1)) / crossAxisCount;
+        final tileHeight = tileWidth / _tileAspectRatio;
+        final visibleRows =
+            (constraints.viewportMainAxisExtent / (tileHeight + _gridSpacing))
+                .ceil() +
+            1;
+        final dpr = MediaQuery.devicePixelRatioOf(context);
+        final decodeWidth = ((tileWidth * dpr / 64).ceil() * 64).clamp(
+          64,
+          2048,
+        );
+        ImageCacheService.fitToVisible(
+          count: visibleRows * crossAxisCount,
+          bytesPerImage: decodeWidth * (decodeWidth / _tileAspectRatio) * 4,
+        );
 
         return _ThrottledGrid(
           key: const ValueKey('throttled_photo_grid'),
           crossAxisCount: crossAxisCount,
+          decodeWidth: decodeWidth,
           state: state,
           onOpenDetails: onOpenDetails,
           onShowOptions: onShowOptions,
@@ -412,8 +433,12 @@ class _PhotoGridView extends StatelessWidget {
   }
 }
 
+const double _gridSpacing = 12;
+const double _tileAspectRatio = 16 / 9;
+
 class _ThrottledGrid extends StatefulWidget {
   final int crossAxisCount;
+  final int decodeWidth;
   final PhotosState state;
   final Function(int) onOpenDetails;
   final Function(FileSystemEntity, PhotoMetadata?) onShowOptions;
@@ -421,6 +446,7 @@ class _ThrottledGrid extends StatefulWidget {
   const _ThrottledGrid({
     super.key,
     required this.crossAxisCount,
+    required this.decodeWidth,
     required this.state,
     required this.onOpenDetails,
     required this.onShowOptions,
@@ -436,9 +462,9 @@ class _ThrottledGridState extends State<_ThrottledGrid> {
     return SliverGrid(
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: widget.crossAxisCount,
-        childAspectRatio: 16 / 9,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
+        childAspectRatio: _tileAspectRatio,
+        crossAxisSpacing: _gridSpacing,
+        mainAxisSpacing: _gridSpacing,
       ),
       delegate: SliverChildBuilderDelegate(
         (context, index) {
@@ -475,6 +501,7 @@ class _ThrottledGridState extends State<_ThrottledGrid> {
             onOptionsPressed: () => widget.onShowOptions(photo, metadata),
             isSelected: isSelected,
             isSelectionMode: isSelectionMode,
+            decodeWidth: widget.decodeWidth,
           );
         },
         childCount:

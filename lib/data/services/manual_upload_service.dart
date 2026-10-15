@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:path/path.dart' as path;
 
@@ -9,7 +8,6 @@ import 'photo_processor_service.dart';
 import 'photo_upload_service.dart';
 import 'vrchat_service.dart';
 
-/// Service for manually uploading individual photos
 class ManualUploadService {
   final VRChatService _vrchatService;
   final PhotoMetadataRepository _photoMetadataRepository;
@@ -24,8 +22,7 @@ class ManualUploadService {
            photoMetadataRepository ?? PhotoMetadataRepository(),
        _photoUploadService = photoUploadService ?? PhotoUploadService();
 
-  /// Manually upload a photo with compression to WebP
-  /// Returns the gallery URL if successful, null otherwise
+  /// Compresses to WebP and uploads. Returns the gallery URL, or null on failure.
   Future<String?> uploadPhoto(
     String photoPath,
     ConfigModel config, {
@@ -52,16 +49,22 @@ class ManualUploadService {
         throw Exception('No metadata found for this photo.');
       }
 
-      final isResonitePhoto = (photoMetadata.application == 'Resonite') ||
+      final isResonitePhoto =
+          (photoMetadata.application == 'Resonite') ||
           (config.resonitePhotosDirectory.isNotEmpty &&
               path.isWithin(config.resonitePhotosDirectory, photoPath));
 
       final primaryAuth = await _vrchatService.loadAuthData();
       final secondaryAuth = await _vrchatService.loadAuthDataSecondary();
 
-      final uploadAuth = isResonitePhoto
-          ? (primaryAuth?.userId.startsWith('U-') == true ? primaryAuth : secondaryAuth)
-          : (primaryAuth?.userId.startsWith('U-') == false ? primaryAuth : secondaryAuth);
+      final uploadAuth =
+          isResonitePhoto
+              ? (primaryAuth?.userId.startsWith('U-') == true
+                  ? primaryAuth
+                  : secondaryAuth)
+              : (primaryAuth?.userId.startsWith('U-') == false
+                  ? primaryAuth
+                  : secondaryAuth);
 
       if (uploadAuth == null) {
         throw Exception(
@@ -69,7 +72,8 @@ class ManualUploadService {
         );
       }
 
-      final badges = uploadAuth.badges.map((b) => b.toString().toLowerCase()).toList();
+      final badges =
+          uploadAuth.badges.map((b) => b.toString().toLowerCase()).toList();
 
       onStatusUpdate?.call('Processing and compressing photo...');
       onProgress?.call(0.4);

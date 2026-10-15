@@ -16,7 +16,6 @@ import 'photo_event_service.dart';
 import 'tos_service.dart';
 import 'vrchat_service.dart';
 
-// Service for uploading photos to the server
 class PhotoUploadService {
   final VRChatService _vrchatService;
   final PhotoMetadataRepository _photoMetadataRepository;
@@ -59,7 +58,8 @@ class PhotoUploadService {
       PhotoMetadata photoMetadata =
           metadata ?? _createPhotoMetadata(photoPath, logMetadata);
 
-      final isResonitePhoto = photoMetadata.application == 'Resonite' ||
+      final isResonitePhoto =
+          photoMetadata.application == 'Resonite' ||
           (config.resonitePhotosDirectory.isNotEmpty &&
               path.isWithin(config.resonitePhotosDirectory, photoPath));
 
@@ -110,7 +110,6 @@ class PhotoUploadService {
         return false;
       }
 
-      // Check if user needs to accept TOS
       developer.log(
         'Checking TOS acceptance status before upload',
         name: 'PhotoUploadService',
@@ -128,18 +127,30 @@ class PhotoUploadService {
 
       if (isResonitePhoto) {
         final resoniteUserId = uploadAuth.userId;
-        if (photoMetadata.takenById != null && photoMetadata.takenById != resoniteUserId) {
-          final error = 'Photo taken by ${photoMetadata.takenById}, but logged in as $resoniteUserId. Skipping upload.';
+        if (photoMetadata.takenById != null &&
+            photoMetadata.takenById != resoniteUserId) {
+          final error =
+              'Photo taken by ${photoMetadata.takenById}, but logged in as $resoniteUserId. Skipping upload.';
           developer.log(error, name: 'PhotoUploadService');
-          PhotoEventService().notifyError('upload', error, photoPath: photoPath);
+          PhotoEventService().notifyError(
+            'upload',
+            error,
+            photoPath: photoPath,
+          );
           return false;
         }
 
-        // Preserve restriction: non-metadata Resonite photos are not allowed to be uploaded
-        if (photoMetadata.cameraManufacturer == null || photoMetadata.cameraManufacturer!.isEmpty) {
-          final error = 'Resonite screenshot detected (no CameraManufacturer metadata). Skipping upload.';
+        // Resonite photos without camera metadata are not allowed to upload.
+        if (photoMetadata.cameraManufacturer == null ||
+            photoMetadata.cameraManufacturer!.isEmpty) {
+          final error =
+              'Resonite screenshot detected (no CameraManufacturer metadata). Skipping upload.';
           developer.log(error, name: 'PhotoUploadService');
-          PhotoEventService().notifyError('upload', error, photoPath: photoPath);
+          PhotoEventService().notifyError(
+            'upload',
+            error,
+            photoPath: photoPath,
+          );
           return false;
         }
       }
@@ -188,7 +199,7 @@ class PhotoUploadService {
       final metadataJson = json.encode(photoMetadata.toJson());
       final metadataBase64 = base64.encode(utf8.encode(metadataJson));
 
-      // Attempt native curl upload on Windows/Linux for maximum speed and zero Dart heap overhead
+      // Native curl on Windows and Linux keeps the file off the Dart heap.
       if (Platform.isWindows || Platform.isLinux) {
         try {
           developer.log(
@@ -199,13 +210,18 @@ class PhotoUploadService {
               'https://api.gallevr.app/vrchat/photo/upload?user=${Uri.encodeComponent(uploadAuth.userId)}&type=webp';
 
           final curlArgs = [
-            '-s', // Silent mode
-            '-X', 'POST',
+            '-s',
+            '-X',
+            'POST',
             uploadUrlStr,
-            '-H', 'Content-Type: application/octet-stream',
-            '-H', 'Authorization: Bearer ${uploadAuth.accessKey}',
-            '-H', 'metadata: $metadataBase64',
-            '--data-binary', '@$photoPath',
+            '-H',
+            'Content-Type: application/octet-stream',
+            '-H',
+            'Authorization: Bearer ${uploadAuth.accessKey}',
+            '-H',
+            'metadata: $metadataBase64',
+            '--data-binary',
+            '@$photoPath',
           ];
 
           final result = await Process.run('curl', curlArgs);
@@ -244,7 +260,6 @@ class PhotoUploadService {
         }
       }
 
-      // Fallback path: standard Dart HTTP package upload
       final fileBytes = await file.readAsBytes();
       developer.log(
         'Read ${fileBytes.length} bytes from file for Dart HTTP fallback upload',

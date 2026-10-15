@@ -2,31 +2,54 @@ import 'package:flutter/material.dart';
 
 class AppTheme {
   static const Color primaryColor = Color(0xFF3B82F6);
-
   static const Color primaryLightColor = Color(0xFF60A5FA);
-
   static const Color primaryDarkColor = Color(0xFF2563EB);
-
   static const Color secondaryColor = Color(0xFF60A5FA);
 
-  static const Color backgroundColor = Color(0xFF0A0A0C);
+  static const Color brandPurple = Color(0xFFB884FC);
+  static const Color brandPurpleStrong = Color(0xFFA855F7);
+  static const Color brandPurpleDeep = Color(0xFF8B5CF6);
+  static const Color switchOffColor = Color(0xFF404040);
 
-  static const Color surfaceColor = Color(0xFF121214);
+  static const Color backgroundColor = Color(0xFF101016);
+  static const Color surfaceBase = Color(0xFF16161E);
+  static const Color surfaceColor = Color(0xFF1C1C24);
+  static const Color cardBackgroundColor = Color(0xFF1C1C24);
+  static const Color cardHoverColor = Color(0xFF23232D);
+  static const Color cardBorderColor = Color(0x14FFFFFF);
+  static const Color tileColor = Color(0xFF1A1A23);
 
-  static const Color cardBackgroundColor = Color(0x801E1E23);
-
-  static const Color cardBorderColor = Color(0x4D3C3C46);
+  static const Color buttonColor = Color(0xFF22222C);
+  static const Color buttonHoverColor = Color(0xFF2A2A36);
+  static const Color buttonBorderColor = Color(0x1AFFFFFF);
 
   static const Color errorColor = Color(0xFFEF4444);
+  static const Color successColor = Color(0xFF10B981);
+  static const Color warningColor = Color(0xFFF59E0B);
 
-  static const Color textColor = Color(0xFFE0E0E0);
+  static const Color textColor = Colors.white;
+  static const Color secondaryTextColor = Color(0xFF9CA3AF);
 
-  static const Color secondaryTextColor = Color(0xFFA0A0A0);
+  static const double radiusTag = 6;
+  static const double radiusControl = 12;
+  static const double radiusCard = 16;
+  static const double radiusModal = 20;
 
-  static ThemeData getLightTheme() {
+  static Color tint(Color color, [double amount = 0.2]) =>
+      Color.lerp(surfaceBase, color, amount)!;
+
+  static ThemeData getLightTheme() => getDarkTheme();
+
+  static ThemeData getDarkTheme() {
+    final controlShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(radiusControl),
+    );
+    const buttonPadding = EdgeInsets.symmetric(horizontal: 20, vertical: 14);
+
     return ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.light(
+      brightness: Brightness.dark,
+      colorScheme: const ColorScheme.dark(
         primary: primaryColor,
         secondary: secondaryColor,
         surface: surfaceColor,
@@ -36,75 +59,111 @@ class AppTheme {
         onSecondary: Colors.black,
         onSurface: textColor,
         onError: Colors.white,
-        brightness: Brightness.light,
       ),
-      hoverColor: Colors.black.withOpacity(0.05),
-      splashColor: Colors.black.withOpacity(0.05),
+      hoverColor: Colors.white.withAlpha(16),
+      splashColor: Colors.white.withAlpha(10),
       highlightColor: Colors.transparent,
-      appBarTheme: AppBarTheme(
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
+      scaffoldBackgroundColor: backgroundColor,
+      dividerColor: cardBorderColor,
+      dividerTheme: const DividerThemeData(
+        color: cardBorderColor,
+        thickness: 1,
+        space: 1,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: backgroundColor,
+        foregroundColor: textColor,
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
+        scrolledUnderElevation: 0,
       ),
       cardTheme: CardThemeData(
-        elevation: 4,
+        elevation: 0,
+        margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cardBorderColor, width: 1),
+          borderRadius: BorderRadius.circular(radiusCard),
+          side: const BorderSide(color: cardBorderColor),
         ),
         color: cardBackgroundColor,
-        shadowColor: Colors.black.withAlpha(100),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           foregroundColor: Colors.white,
-          backgroundColor: primaryColor,
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+          backgroundColor: tint(primaryColor, 0.35),
+          disabledBackgroundColor: buttonColor,
+          elevation: 0,
+          shape: controlShape.copyWith(
+            side: BorderSide(color: primaryColor.withAlpha(110)),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          padding: buttonPadding,
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          foregroundColor: Colors.white,
+          backgroundColor: tint(primaryColor, 0.35),
+          shape: controlShape,
+          padding: buttonPadding,
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: primaryColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          foregroundColor: primaryLightColor,
+          shape: controlShape,
+          padding: buttonPadding,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: primaryColor,
-          side: BorderSide(color: primaryColor, width: 1.5),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          foregroundColor: textColor,
+          backgroundColor: buttonColor,
+          side: const BorderSide(color: buttonBorderColor),
+          shape: controlShape,
+          padding: buttonPadding,
         ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(shape: controlShape),
       ),
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: cardBorderColor),
+          borderRadius: BorderRadius.circular(radiusControl),
+          borderSide: const BorderSide(color: buttonBorderColor),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: cardBorderColor),
+          borderRadius: BorderRadius.circular(radiusControl),
+          borderSide: const BorderSide(color: buttonBorderColor),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: primaryColor, width: 2),
+          borderRadius: BorderRadius.circular(radiusControl),
+          borderSide: const BorderSide(color: primaryColor, width: 2),
         ),
         filled: true,
-        fillColor: surfaceColor,
+        fillColor: surfaceBase,
+        hintStyle: const TextStyle(color: secondaryTextColor),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 20,
-          vertical: 16,
+          horizontal: 16,
+          vertical: 14,
         ),
+      ),
+      sliderTheme: const SliderThemeData(
+        trackHeight: 6,
+        activeTrackColor: brandPurpleStrong,
+        inactiveTrackColor: Color(0x1AFFFFFF),
+        disabledActiveTrackColor: Color(0x33FFFFFF),
+        disabledInactiveTrackColor: Color(0x1AFFFFFF),
+        thumbColor: Colors.white,
+        disabledThumbColor: secondaryTextColor,
+        overlayColor: Colors.transparent,
+        activeTickMarkColor: Colors.transparent,
+        inactiveTickMarkColor: Colors.transparent,
+        thumbShape: RoundSliderThumbShape(
+          enabledThumbRadius: 7,
+          elevation: 2,
+          pressedElevation: 4,
+        ),
+        overlayShape: RoundSliderOverlayShape(overlayRadius: 12),
+        trackShape: RoundedRectSliderTrackShape(),
+        showValueIndicator: ShowValueIndicator.never,
       ),
       textTheme: const TextTheme(
         displayLarge: TextStyle(
@@ -142,159 +201,50 @@ class AppTheme {
         bodySmall: TextStyle(fontSize: 12, color: secondaryTextColor),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        indicatorColor: primaryColor.withAlpha(50),
+        indicatorColor: tint(primaryColor, 0.25),
+        indicatorShape: controlShape,
         labelTextStyle: WidgetStateProperty.all(
-          const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        ),
-        backgroundColor: surfaceColor,
-        elevation: 0,
-        height: 70,
-      ),
-    );
-  }
-
-  static ThemeData getDarkTheme() {
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.dark(
-        primary: primaryColor,
-        secondary: secondaryColor,
-        surface: surfaceColor,
-        surfaceContainerLow: backgroundColor,
-        error: errorColor,
-        onPrimary: Colors.white,
-        onSecondary: Colors.black,
-        onSurface: textColor,
-        onError: Colors.white,
-        brightness: Brightness.dark,
-      ),
-      hoverColor: Colors.white.withOpacity(0.05),
-      splashColor: Colors.white.withOpacity(0.05),
-      highlightColor: Colors.transparent,
-      scaffoldBackgroundColor: backgroundColor,
-      appBarTheme: AppBarTheme(
-        backgroundColor: surfaceColor,
-        foregroundColor: textColor,
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
-      ),
-      cardTheme: CardThemeData(
-        elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cardBorderColor, width: 1),
-        ),
-        color: cardBackgroundColor,
-        shadowColor: Colors.black.withAlpha(100),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          foregroundColor: Colors.white,
-          backgroundColor: primaryColor,
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        ),
-      ),
-      textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: primaryLightColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: primaryLightColor,
-          side: BorderSide(color: primaryLightColor, width: 1.5),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: cardBorderColor),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: cardBorderColor),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: primaryColor, width: 2),
-        ),
-        filled: true,
-        fillColor: surfaceColor,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 20,
-          vertical: 16,
-        ),
-      ),
-      textTheme: TextTheme(
-        displayLarge: TextStyle(
-          fontSize: 32,
-          fontWeight: FontWeight.bold,
-          color: textColor,
-        ),
-        displayMedium: TextStyle(
-          fontSize: 28,
-          fontWeight: FontWeight.bold,
-          color: textColor,
-        ),
-        displaySmall: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-          color: textColor,
-        ),
-        headlineMedium: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: textColor,
-        ),
-        headlineSmall: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: textColor,
-        ),
-        titleLarge: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          color: textColor,
-        ),
-        bodyLarge: TextStyle(fontSize: 16, color: textColor),
-        bodyMedium: TextStyle(fontSize: 14, color: textColor),
-        bodySmall: TextStyle(fontSize: 12, color: secondaryTextColor),
-      ),
-      navigationBarTheme: NavigationBarThemeData(
-        indicatorColor: primaryColor.withAlpha(50),
-        labelTextStyle: WidgetStateProperty.all(
-          TextStyle(
+          const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w500,
             color: textColor,
           ),
         ),
-        backgroundColor: surfaceColor,
+        backgroundColor: surfaceBase,
         elevation: 0,
         height: 70,
         iconTheme: WidgetStateProperty.all(
-          IconThemeData(color: textColor, size: 24),
+          const IconThemeData(color: textColor, size: 24),
         ),
       ),
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: surfaceBase,
+        indicatorColor: tint(primaryColor, 0.25),
+        indicatorShape: controlShape,
+      ),
       dialogTheme: DialogThemeData(
-        backgroundColor: surfaceColor,
-        elevation: 8,
+        backgroundColor: cardBackgroundColor,
+        elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cardBorderColor, width: 1),
+          borderRadius: BorderRadius.circular(radiusModal),
+          side: const BorderSide(color: cardBorderColor),
         ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: buttonColor,
+        contentTextStyle: const TextStyle(color: textColor),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusControl),
+        ),
+      ),
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(
+          color: buttonColor,
+          borderRadius: BorderRadius.circular(radiusTag),
+          border: Border.all(color: buttonBorderColor),
+        ),
+        textStyle: const TextStyle(color: textColor, fontSize: 12),
       ),
     );
   }

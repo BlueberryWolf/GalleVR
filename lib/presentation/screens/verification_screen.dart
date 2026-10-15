@@ -2,7 +2,6 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gallevr/presentation/screens/home_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/models/verification_models.dart';
 import '../../data/services/vrchat_service.dart';
@@ -15,12 +14,15 @@ import '../widgets/step_indicator.dart';
 import '../widgets/tos_modal.dart';
 import 'onboarding_screen.dart';
 
-// Screen for VRChat verification
 class VerificationScreen extends StatefulWidget {
   final String? initialPlatform;
   final bool isLinkMode;
 
-  const VerificationScreen({super.key, this.initialPlatform, this.isLinkMode = false});
+  const VerificationScreen({
+    super.key,
+    this.initialPlatform,
+    this.isLinkMode = false,
+  });
 
   @override
   State<VerificationScreen> createState() => _VerificationScreenState();
@@ -99,13 +101,15 @@ class _VerificationScreenState extends State<VerificationScreen> {
         if (targetPlatform == 'resonite') {
           if (primaryAuth != null && primaryAuth.userId.startsWith('U-')) {
             authData = primaryAuth;
-          } else if (secondaryAuth != null && secondaryAuth.userId.startsWith('U-')) {
+          } else if (secondaryAuth != null &&
+              secondaryAuth.userId.startsWith('U-')) {
             authData = secondaryAuth;
           }
         } else {
           if (primaryAuth != null && !primaryAuth.userId.startsWith('U-')) {
             authData = primaryAuth;
-          } else if (secondaryAuth != null && !secondaryAuth.userId.startsWith('U-')) {
+          } else if (secondaryAuth != null &&
+              !secondaryAuth.userId.startsWith('U-')) {
             authData = secondaryAuth;
           }
         }
@@ -125,7 +129,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
           _statusMessage = 'Checking verification status...';
         });
 
-        // Check if the user is fully verified (has valid verification)
         final isVerified = await _vrchatService.checkVerificationStatus(
           authData,
         );
@@ -137,7 +140,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
             _galleryUrl = 'https://gallevr.app/?auth=${authData!.accessKey}';
           });
 
-          // Check if user needs to accept TOS if they're already verified
           await _checkTOSStatus();
         }
       }
@@ -272,7 +274,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
         await _markAsVerified(authData);
       } else {
         setState(() {
-          _errorMessage = 'Invalid or expired pairing code. Please check and try again.';
+          _errorMessage =
+              'Invalid or expired pairing code. Please check and try again.';
         });
       }
     } catch (e) {
@@ -325,9 +328,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
     if (_manualVerificationStep == 0) {
       if (_usernameController.text.isEmpty) {
         setState(() {
-          _errorMessage = isResonite
-              ? 'Please enter your Resonite username'
-              : 'Please enter your VRChat username';
+          _errorMessage =
+              isResonite
+                  ? 'Please enter your Resonite username'
+                  : 'Please enter your VRChat username';
         });
         return;
       }
@@ -347,7 +351,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
         if (verificationResult.success && verificationResult.authData != null) {
           if (widget.isLinkMode) {
-            await _vrchatService.saveAuthDataSecondary(verificationResult.authData!);
+            await _vrchatService.saveAuthDataSecondary(
+              verificationResult.authData!,
+            );
           } else {
             await _vrchatService.saveAuthData(verificationResult.authData!);
           }
@@ -394,9 +400,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
           });
         } else {
           setState(() {
-            _errorMessage = isResonite
-                ? 'Friend request not found. Please add GalleVR as a friend in Resonite and try again.'
-                : 'Friend request not found. Please add GalleVR as a friend in VRChat and try again.';
+            _errorMessage =
+                isResonite
+                    ? 'Friend request not found. Please add GalleVR as a friend in Resonite and try again.'
+                    : 'Friend request not found. Please add GalleVR as a friend in VRChat and try again.';
           });
         }
       } catch (e) {
@@ -434,9 +441,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
               await _markAsVerified(_authData!);
             } else {
               setState(() {
-                _errorMessage = isResonite
-                    ? 'Verification failed. Please make sure you\'ve sent the verification token to the Resonite bot and try again.'
-                    : 'Verification failed. Please make sure you\'ve set your VRChat status to the verification token and try again.';
+                _errorMessage =
+                    isResonite
+                        ? 'Verification failed. Please make sure you\'ve sent the verification token to the Resonite bot and try again.'
+                        : 'Verification failed. Please make sure you\'ve set your VRChat status to the verification token and try again.';
               });
             }
           }
@@ -471,13 +479,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
     try {
       final platform = _activePlatform ?? 'vrchat';
-      final account = await _vrchatService.lookupAccount(text, platform: platform);
+      final account = await _vrchatService.lookupAccount(
+        text,
+        platform: platform,
+      );
       setState(() {
         _lookedUpAccount = account;
         if (account == null) {
-          _errorMessage = platform == 'resonite'
-              ? 'No matching Resonite account found on API.'
-              : 'No matching VRChat account found on API.';
+          _errorMessage =
+              platform == 'resonite'
+                  ? 'No matching Resonite account found on API.'
+                  : 'No matching VRChat account found on API.';
         }
       });
     } catch (e) {
@@ -518,8 +530,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
     if (pickedDate != null) {
       setState(() {
         _selectedDate = pickedDate;
-        // Only check if over 13, but don't set _isAgeVerified yet
-        // We'll set it when the user clicks the verify button
         if (!_isOver13()) {
           _errorMessage = 'You must be at least 13 years old to use this app.';
         } else {
@@ -529,10 +539,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
     }
   }
 
-  /// Check if the user needs to accept the TOS
   Future<void> _checkTOSStatus() async {
     try {
-      // Check if user needs to accept TOS
       final needsToAcceptTOS = await _tosService.needsToAcceptTOS();
 
       if (needsToAcceptTOS && mounted) {
@@ -548,13 +556,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
     }
   }
 
-  /// Handle TOS acceptance
   void _handleTOSAccept() {
     setState(() {
       _showTOSModal = false;
     });
 
-    // Show success message
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Terms of Service accepted. You can now use the app.'),
@@ -563,13 +569,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
     );
   }
 
-  /// Handle TOS decline
   void _handleTOSDecline() {
     setState(() {
       _showTOSModal = false;
     });
 
-    // Show warning message
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
@@ -585,11 +589,13 @@ class _VerificationScreenState extends State<VerificationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_activePlatform == null
-            ? 'Link Account'
-            : _activePlatform == 'resonite'
-                ? 'Resonite Verification'
-                : 'VRChat Verification'),
+        title: Text(
+          _activePlatform == null
+              ? 'Link Account'
+              : _activePlatform == 'resonite'
+              ? 'Resonite Verification'
+              : 'VRChat Verification',
+        ),
         backgroundColor: AppTheme.backgroundColor,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -597,7 +603,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
             if (_activePlatform == 'resonite' && _selectedMethod != null) {
               setState(() {
                 _selectedMethod = null;
-                _activePlatform = widget.initialPlatform == null ? null : _activePlatform;
+                _activePlatform =
+                    widget.initialPlatform == null ? null : _activePlatform;
                 _errorMessage = '';
               });
             } else if (_selectedMethod != null) {
@@ -605,7 +612,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 _selectedMethod = null;
                 _errorMessage = '';
               });
-            } else if (_activePlatform != null && widget.initialPlatform == null) {
+            } else if (_activePlatform != null &&
+                widget.initialPlatform == null) {
               setState(() {
                 _activePlatform = null;
               });
@@ -623,7 +631,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
       ),
       body: Stack(
         children: [
-          // Main content
           _isVerified
               ? _buildVerifiedView()
               : Stack(
@@ -637,8 +644,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                           _buildPlatformPickerView()
                         else if (_selectedMethod == null)
                           _buildMethodSelectionLanding()
-                        else if (_selectedMethod ==
-                            VerificationMethod.pairCode)
+                        else if (_selectedMethod == VerificationMethod.pairCode)
                           _buildPairCodeVerificationView()
                         else if (_selectedMethod ==
                             VerificationMethod.automatic)
@@ -677,7 +683,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 ],
               ),
 
-          // TOS Modal
           if (_showTOSModal)
             TOSModal(
               onAccept: _handleTOSAccept,
@@ -703,20 +708,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
           Text(
             'Primary Platform',
             style: Theme.of(context).textTheme.displaySmall?.copyWith(
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
               color: Colors.white,
               letterSpacing: -1.0,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            height: 4,
-            width: 48,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
-              ),
-              borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 20),
@@ -733,13 +727,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
           _buildGradientActionCard(
             title: 'Instant Link Code',
-            description: 'Best option. If you followed onboarding on the website, just type the 6-digit code here.',
+            description:
+                'Best option. If you followed onboarding on the website, just type the 6-digit code here.',
             icon: Icons.flash_on_rounded,
             gradientColors: [const Color(0xFF3B82F6), const Color(0xFF06B6D4)],
             onTap: () {
               setState(() {
                 _selectedMethod = VerificationMethod.pairCode;
-                _activePlatform = 'vrchat'; // Default state to proceed
+                _activePlatform = 'vrchat';
                 _errorMessage = '';
               });
             },
@@ -748,7 +743,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
           _buildGradientActionCard(
             title: 'VRChat',
-            description: 'Link your VRChat account to organize and share your VRChat photos.',
+            description:
+                'Link your VRChat account to organize and share your VRChat photos.',
             imageAsset: 'assets/images/VRChat_logo.png',
             gradientColors: [const Color(0xFF8B5CF6), const Color(0xFF4C1D95)],
             onTap: () {
@@ -762,7 +758,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
           _buildGradientActionCard(
             title: 'Resonite',
-            description: 'Link your Resonite account using our verification bot.',
+            description:
+                'Link your Resonite account using our verification bot.',
             imageAsset: 'assets/images/resonite_logo.png',
             gradientColors: [const Color(0xFF00B4D8), const Color(0xFF0077B6)],
             onTap: () {
@@ -792,20 +789,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
           Text(
             'Link VRChat',
             style: Theme.of(context).textTheme.displayMedium?.copyWith(
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
               color: Colors.white,
               letterSpacing: -1.0,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            height: 4,
-            width: 48,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
-              ),
-              borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 20),
@@ -865,7 +851,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.blue.withAlpha(30),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: const Icon(
                   Icons.flash_on_rounded,
@@ -894,7 +880,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          
+
           if (_errorMessage.isNotEmpty)
             Container(
               padding: const EdgeInsets.all(12),
@@ -902,7 +888,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               decoration: BoxDecoration(
                 color: Colors.red.withAlpha(20),
                 border: Border.all(color: Colors.red.withAlpha(80)),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
               ),
               child: Row(
                 children: [
@@ -944,7 +930,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             },
           ),
           const SizedBox(height: 24),
-          
+
           SizedBox(
             width: double.infinity,
             height: 54,
@@ -954,28 +940,29 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 backgroundColor: Colors.blue[600],
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
               ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+              child:
+                  _isLoading
+                      ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                      : const Text(
+                        'Pair Now',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    )
-                  : const Text(
-                      'Pair Now',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
           Center(
             child: TextButton(
@@ -985,10 +972,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   _errorMessage = '';
                 });
               },
-              child: Text(
-                'Go Back',
-                style: TextStyle(color: Colors.grey[500]),
-              ),
+              child: Text('Go Back', style: TextStyle(color: Colors.grey[500])),
             ),
           ),
         ],
@@ -1007,29 +991,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        splashColor: Colors.white.withAlpha(50),
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
         child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: const Color(0xFF141417),
-            border: Border.all(
-              color: gradientColors.first.withAlpha(80),
-              width: 1,
-            ),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: gradientColors.map((c) => c.withAlpha(35)).toList(),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(120),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+            color: AppTheme.tileColor,
+            border: Border.all(color: AppTheme.cardBorderColor),
           ),
           child: Padding(
             padding: const EdgeInsets.all(24.0),
@@ -1040,17 +1009,29 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   height: 56,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: gradientColors),
-                    shape: BoxShape.circle,
+                    color: AppTheme.tint(gradientColors.first, 0.25),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                   ),
-                  child: imageAsset != null
-                      ? imageAsset.endsWith('.svg')
-                          ? Icon(Icons.hub_rounded, size: 28, color: Colors.white) // Native flutter SVG packages aren't imported here, fallback to nice icon for safety
-                          : Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Image.asset(imageAsset, fit: BoxFit.contain),
-                            )
-                      : Icon(icon ?? Icons.flash_on_rounded, size: 28, color: Colors.white),
+                  child:
+                      imageAsset != null
+                          ? imageAsset.endsWith('.svg')
+                              ? Icon(
+                                Icons.hub_rounded,
+                                size: 28,
+                                color: Colors.white,
+                              )
+                              : Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Image.asset(
+                                  imageAsset,
+                                  fit: BoxFit.contain,
+                                ),
+                              )
+                          : Icon(
+                            icon ?? Icons.flash_on_rounded,
+                            size: 28,
+                            color: Colors.white,
+                          ),
                 ),
                 const SizedBox(width: 20),
                 Expanded(
@@ -1111,7 +1092,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
@@ -1159,6 +1140,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             ),
             const SizedBox(height: 16),
             InkWell(
+              mouseCursor: SystemMouseCursors.click,
               onTap: _isLoading ? null : _showDatePicker,
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -1167,7 +1149,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 ),
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.white24),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: Row(
                   children: [
@@ -1185,7 +1167,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                         color:
                             _selectedDate != null
                                 ? Colors.white
-                                : Colors.white38,
+                                : AppTheme.secondaryTextColor,
                       ),
                     ),
                   ],
@@ -1230,10 +1212,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFf87171).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+                color: const Color(0xFFf87171).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 border: Border.all(
-                  color: const Color(0xFFf87171).withOpacity(0.3),
+                  color: const Color(0xFFf87171).withValues(alpha: 0.3),
                 ),
               ),
               child: Text(
@@ -1278,14 +1260,15 @@ class _VerificationScreenState extends State<VerificationScreen> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
         onTap: _isLoading ? null : onPressed,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.5), width: 1.5),
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+            border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1296,7 +1279,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 label.toUpperCase(),
                 style: TextStyle(
                   color: color,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   fontSize: 13,
                   letterSpacing: 1,
                 ),
@@ -1318,19 +1301,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
           Text(
             'Manual Verification',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
               letterSpacing: -0.2,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Container(
-            height: 3,
-            width: 32,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFEC4899), Color(0xFF7C3AED)],
-              ),
-              borderRadius: BorderRadius.circular(1.5),
             ),
           ),
           const SizedBox(height: 16),
@@ -1385,7 +1357,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   color: Theme.of(
                     context,
                   ).colorScheme.surfaceContainerHighest.withAlpha(100),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                   border: Border.all(
                     color: AppTheme.primaryColor.withAlpha(80),
                   ),
@@ -1446,7 +1418,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ),
             ],
 
-            // Date of birth input
             if (!_isAgeVerified) ...[
               const SizedBox(height: 24),
               const Divider(),
@@ -1461,6 +1432,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ),
               const SizedBox(height: 16),
               InkWell(
+                mouseCursor: SystemMouseCursors.click,
                 onTap: _showDatePicker,
                 child: InputDecorator(
                   decoration: const InputDecoration(
@@ -1499,13 +1471,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ],
             ],
           ] else if (_manualVerificationStep == 1) ...[
-            Text(isResonite ? 'Add GalleVR as a friend in Resonite:' : 'Add GalleVR as a friend in VRChat:'),
+            Text(
+              isResonite
+                  ? 'Add GalleVR as a friend in Resonite:'
+                  : 'Add GalleVR as a friend in VRChat:',
+            ),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor.withAlpha(25),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 border: Border.all(color: AppTheme.primaryColor),
               ),
               child: Row(
@@ -1523,10 +1499,16 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   IconButton(
                     icon: const Icon(Icons.copy),
                     onPressed: () {
-                      Clipboard.setData(ClipboardData(text: isResonite ? 'GalleVR' : 'GalleVR'));
+                      Clipboard.setData(
+                        ClipboardData(text: isResonite ? 'GalleVR' : 'GalleVR'),
+                      );
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(isResonite ? 'Copied "GalleVR" to clipboard' : 'Copied "GalleVR" to clipboard'),
+                          content: Text(
+                            isResonite
+                                ? 'Copied "GalleVR" to clipboard'
+                                : 'Copied "GalleVR" to clipboard',
+                          ),
                           duration: const Duration(seconds: 2),
                         ),
                       );
@@ -1537,24 +1519,50 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(isResonite ? 'Follow these steps in Resonite:' : 'Follow these steps in VRChat:'),
+            Text(
+              isResonite
+                  ? 'Follow these steps in Resonite:'
+                  : 'Follow these steps in VRChat:',
+            ),
             const SizedBox(height: 8),
             ListTile(
               leading: const CircleAvatar(child: Text('1')),
-              title: Text(isResonite ? 'Send a friend request to "GalleVR"' : 'Check your VRChat Notifications'),
+              title: Text(
+                isResonite
+                    ? 'Send a friend request to "GalleVR"'
+                    : 'Check your VRChat Notifications',
+              ),
               subtitle: Text(
-                isResonite ? 'Search for "GalleVR" in Resonite and add them.' : 'A friend request from "GalleVR" should be waiting for you.',
+                isResonite
+                    ? 'Search for "GalleVR" in Resonite and add them.'
+                    : 'A friend request from "GalleVR" should be waiting for you.',
               ),
             ),
             ListTile(
               leading: const CircleAvatar(child: Text('2')),
-              title: Text(isResonite ? 'Wait for bot to accept friend request' : 'Accept the friend request'),
-              subtitle: Text(isResonite ? 'The bot automatically accepts all friend requests within a few seconds.' : 'This allows us to verify your profile status.'),
+              title: Text(
+                isResonite
+                    ? 'Wait for bot to accept friend request'
+                    : 'Accept the friend request',
+              ),
+              subtitle: Text(
+                isResonite
+                    ? 'The bot automatically accepts all friend requests within a few seconds.'
+                    : 'This allows us to verify your profile status.',
+              ),
             ),
             ListTile(
               leading: const CircleAvatar(child: Text('3')),
-              title: Text(isResonite ? 'Click "Continue" below' : 'Click "Check Status" below'),
-              subtitle: Text(isResonite ? 'We\'ll progress to token message verification.' : 'We\'ll confirm once the friendship is active.'),
+              title: Text(
+                isResonite
+                    ? 'Click "Continue" below'
+                    : 'Click "Check Status" below',
+              ),
+              subtitle: Text(
+                isResonite
+                    ? 'We\'ll progress to token message verification.'
+                    : 'We\'ll confirm once the friendship is active.',
+              ),
             ),
             const SizedBox(height: 16),
             if (!isResonite)
@@ -1567,13 +1575,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 ),
               ),
           ] else if (_manualVerificationStep == 2) ...[
-            Text(isResonite ? 'Send the verification token to the Resonite bot:' : 'Set your VRChat status to the verification token:'),
+            Text(
+              isResonite
+                  ? 'Send the verification token to the Resonite bot:'
+                  : 'Set your VRChat status to the verification token:',
+            ),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor.withAlpha(25),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 border: Border.all(color: AppTheme.primaryColor),
               ),
               child: Row(
@@ -1611,15 +1623,27 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(isResonite ? 'Follow these steps in Resonite:' : 'Follow these steps in VRChat:'),
+            Text(
+              isResonite
+                  ? 'Follow these steps in Resonite:'
+                  : 'Follow these steps in VRChat:',
+            ),
             const SizedBox(height: 8),
             ListTile(
               leading: const CircleAvatar(child: Text('1')),
-              title: Text(isResonite ? 'Open chat with GalleVR in Resonite' : 'In VRChat, go to your Profile and edit your status'),
+              title: Text(
+                isResonite
+                    ? 'Open chat with GalleVR in Resonite'
+                    : 'In VRChat, go to your Profile and edit your status',
+              ),
             ),
             ListTile(
               leading: const CircleAvatar(child: Text('2')),
-              title: Text(isResonite ? 'Send the token text exactly as a message' : 'Paste the verification token as your status'),
+              title: Text(
+                isResonite
+                    ? 'Send the token text exactly as a message'
+                    : 'Paste the verification token as your status',
+              ),
             ),
             ListTile(
               leading: const CircleAvatar(child: Text('3')),
@@ -1636,7 +1660,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
             const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.check_circle_outline),
-              title: Text(isResonite ? 'You\'ve added GalleVR as a friend' : 'You\'ve added GalleVR as a friend'),
+              title: Text(
+                isResonite
+                    ? 'You\'ve added GalleVR as a friend'
+                    : 'You\'ve added GalleVR as a friend',
+              ),
               dense: true,
             ),
             ListTile(
@@ -1677,7 +1705,6 @@ class _VerificationScreenState extends State<VerificationScreen> {
                             _isLoading)
                         ? null
                         : () {
-                          // Only set _isAgeVerified to true if the user is over 13, we're on step 0, and not already verified
                           if (_manualVerificationStep == 0 &&
                               !_isAgeVerified &&
                               _selectedDate != null &&
@@ -1715,9 +1742,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         _authData?.displayName ??
         'User';
 
-    final avatarUrl =
-        _lookedUpAccount?['avatarUrl'] ??
-        _authData?.avatarUrl;
+    final avatarUrl = _lookedUpAccount?['avatarUrl'] ?? _authData?.avatarUrl;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1728,10 +1753,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
           height: isWide ? 120 : 80,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: const Color(0xFF4ade80).withOpacity(0.1),
+            color: const Color(0xFF4ade80).withValues(alpha: 0.1),
             shape: BoxShape.circle,
             border: Border.all(
-              color: const Color(0xFF4ade80).withOpacity(0.3),
+              color: const Color(0xFF4ade80).withValues(alpha: 0.3),
               width: 2,
             ),
           ),
@@ -1825,8 +1850,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(
+                        AppTheme.radiusControl,
+                      ),
                     ),
                     child: const Icon(
                       Icons.qr_code_scanner_rounded,
@@ -1850,7 +1877,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                       Text(
                         'Scan to view your gallery on your phone',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
+                          color: AppTheme.secondaryTextColor,
                           fontSize: 13,
                         ),
                       ),
@@ -1896,18 +1923,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           decoration: BoxDecoration(
-            color: (onPressed == null ? Colors.white10 : color).withOpacity(
-              0.1,
+            color: (onPressed == null ? Colors.white10 : color).withValues(
+              alpha: 0.1,
             ),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
             border: Border.all(
-              color: (onPressed == null ? Colors.white10 : color).withOpacity(
-                0.2,
+              color: (onPressed == null ? Colors.white10 : color).withValues(
+                alpha: 0.2,
               ),
             ),
           ),
@@ -1925,7 +1953,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 style: TextStyle(
                   color: onPressed == null ? Colors.white24 : color,
                   fontSize: 13,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 1.5,
                 ),
               ),

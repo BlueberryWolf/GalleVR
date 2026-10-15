@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
-import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as path;
@@ -9,7 +8,6 @@ import 'package:path/path.dart' as path;
 import '../models/config_model.dart';
 import '../repositories/config_repository.dart';
 import '../../core/image/image_cache_service.dart';
-import '../../core/services/permission_service.dart';
 import '../../core/services/windows_service.dart';
 import '../../core/services/linux_service.dart';
 import '../../core/services/update_service.dart';
@@ -19,24 +17,19 @@ import 'photo_event_service.dart';
 import 'photo_processor_service.dart';
 import 'log_parser_service.dart';
 import 'vrchat_service.dart';
-import '../repositories/photo_metadata_repository.dart';
 import '../../core/isolate/isolate_worker_pool.dart';
 import '../models/verification_models.dart';
 import '../database/app_database.dart';
 import '../../core/platform/platform_service_factory.dart';
 
-// Singleton service manager for the application
-// Manages global services that should run throughout the app lifecycle
+/// Owns the services that run for the whole app lifecycle.
 class AppServiceManager {
-  // Singleton instance
   static final AppServiceManager _instance = AppServiceManager._internal();
 
-  // Factory constructor to return the singleton instance
   factory AppServiceManager() {
     return _instance;
   }
 
-  // Private constructor for singleton
   AppServiceManager._internal() {
     authDataStream.listen((authData) async {
       if (authData != null && authData.userId.startsWith('U-')) {
@@ -63,70 +56,50 @@ class AppServiceManager {
     });
   }
 
-  // Flag to track if services have been initialized
   bool _isInitialized = false;
 
-  // Config repository
   final ConfigRepository _configRepository = ConfigRepository();
 
-  // Photo watcher service
   final PhotoWatcherService photoWatcherService = PhotoWatcherService();
 
-  // Photo event service - used by other services
   final PhotoEventService photoEventService = PhotoEventService();
 
-  // Image cache service
   final ImageCacheService _imageCacheService = ImageCacheService();
 
-  // Sound service
   final SoundService soundService = SoundService();
 
   late final PhotoProcessorService _photoProcessorService =
       PhotoProcessorService();
   late final LogParserService _logParserService = LogParserService();
 
-  // Permanent subscription to the photo stream
   StreamSubscription<String>? _photoProcessingSubscription;
 
-  // VRChat service
   final VRChatService _vrchatService = VRChatService();
 
-  // Windows service for system tray and auto-start
   WindowsService? _windowsService;
   WindowsService get windowsService => _windowsService ??= WindowsService();
 
-  // Linux service for system tray
   LinuxService? _linuxService;
   LinuxService get linuxService => _linuxService ??= LinuxService();
 
-  // Update service for checking new versions
   final UpdateService _updateService = UpdateService();
 
-  // Stream controller for config changes
   final _configStreamController = StreamController<ConfigModel>.broadcast();
 
-  // Stream of configuration changes
   Stream<ConfigModel> get configStream => _configStreamController.stream;
 
-  // Current configuration
   ConfigModel? _config;
 
-  // Get the current configuration
   ConfigModel? get config => _config;
 
-  // Stream controller for auth data changes
   final _authDataStreamController = StreamController<AuthData?>.broadcast();
 
-  // Stream of auth data changes
   Stream<AuthData?> get authDataStream => _authDataStreamController.stream;
 
-  // Current auth data
   AuthData? _authData;
 
-  // Get the current auth data
   AuthData? get authData => _authData;
 
-  // Set the auth data and notify if changed
   void _setAuthData(AuthData? newData) {
     if (_authData == newData) return;
     _authData = newData;
@@ -134,21 +107,10 @@ class AppServiceManager {
     refreshWatcher();
   }
 
-  // Track if a TOS modal is currently being shown
-  bool _isTOSModalVisible = false;
+  bool isTOSModalVisible = false;
 
-  // Check if a TOS modal is currently visible
-  bool get isTOSModalVisible => _isTOSModalVisible;
-
-  // Set the TOS modal visibility
-  set isTOSModalVisible(bool value) {
-    _isTOSModalVisible = value;
-  }
-
-  // Key for storing onboarding completion status
   static const String _onboardingCompleteKey = 'onboarding_complete';
 
-  // Check if onboarding has been completed
   Future<bool> isOnboardingComplete() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -162,7 +124,6 @@ class AppServiceManager {
     }
   }
 
-  // Mark onboarding as complete
   Future<void> markOnboardingComplete() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -175,16 +136,12 @@ class AppServiceManager {
     }
   }
 
-  // Check verification status and log out if invalid
   Future<void> checkVerificationStatus() async {
     try {
-      // Initialize VRChat service if needed
       await _vrchatService.initialize();
 
-      // Check if there's saved verification data
       final authData = await _vrchatService.loadAuthData();
       if (authData != null) {
-        // Check if the verification is still valid
         final isVerified = await _vrchatService.checkVerificationStatus(
           authData,
         );
@@ -194,7 +151,6 @@ class AppServiceManager {
             'Verification is invalid, logging out user',
             name: 'AppServiceManager',
           );
-          // Clear auth data if verification is invalid
           await _vrchatService.logout();
           _setAuthData(null);
         } else {
@@ -228,7 +184,6 @@ class AppServiceManager {
     }
   }
 
-  // Initialize
   Future<void> initialize() async {
     if (_isInitialized) return;
 
@@ -239,7 +194,6 @@ class AppServiceManager {
         AppDatabase().database,
       ]).timeout(const Duration(seconds: 5), onTimeout: () => []);
 
-      // Start the rest in the background
       _initializeBackgroundTasks();
 
       _isInitialized = true;
@@ -253,22 +207,6 @@ class AppServiceManager {
 
   Future<void> _initializeBackgroundTasks() async {
     try {
-      await Future.wait([
-        IsolateWorkerPool().initialize(),
-        _imageCacheService.initialize(),
-        soundService.initialize(),
-      ]).timeout(const Duration(seconds: 10), onTimeout: () => []);
-
-      PaintingBinding.instance.imageCache.maximumSizeBytes =
-          50 * 1024 * 1024; // 50MB
-      PaintingBinding.instance.imageCache.maximumSize = 50;
-
-      // Load initial auth data
-      final loadedAuth = await _vrchatService.loadAuthData();
-      _setAuthData(loadedAuth);
-
-      await checkVerificationStatus();
-
       if (_config != null) {
         if (Platform.isWindows) {
           windowsService.onCloseRequest = () async {
@@ -286,17 +224,22 @@ class AppServiceManager {
         }
       }
 
-      // Update service
-      if (Platform.isWindows || Platform.isAndroid) {
-        await _updateService.initialize();
-        Future.delayed(const Duration(seconds: 2), () {
-          _updateService.forceCheckForUpdates();
-        });
-      }
-
-      // Start watching for photos
       if (_config != null && await _shouldStartWatcher(_config!)) {
         await _startPhotoWatcher();
+      }
+
+      await Future.wait([
+        _imageCacheService.initialize(),
+        soundService.initialize(),
+      ]).timeout(const Duration(seconds: 10), onTimeout: () => []);
+
+      await checkVerificationStatus();
+
+      if (Platform.isWindows || Platform.isAndroid) {
+        Future.delayed(const Duration(seconds: 5), () async {
+          await _updateService.initialize();
+          await _updateService.forceCheckForUpdates();
+        });
       }
     } catch (e) {
       developer.log(
@@ -311,7 +254,6 @@ class AppServiceManager {
         (config.photosDirectory.isNotEmpty && config.logsDirectory.isNotEmpty);
   }
 
-  // Start the photo watcher service and wire up the permanent processing subscription
   Future<void> _startPhotoWatcher() async {
     if (_config == null) return;
 
@@ -336,7 +278,6 @@ class AppServiceManager {
     }
   }
 
-  // Process a photo in the background
   Future<void> _processPhotoInBackground(String photoPath) async {
     if (_config == null) return;
     try {
@@ -375,11 +316,9 @@ class AppServiceManager {
     }
   }
 
-  // Update configuration and restart services if needed
   Future<void> updateConfig(ConfigModel config) async {
     final authData = await _vrchatService.loadAuthData();
     _setAuthData(authData);
-    final isResonite = authData?.userId.startsWith('U-') == true;
 
     final bool photosDirectoryChanged =
         _config?.photosDirectory != config.photosDirectory;
@@ -390,14 +329,11 @@ class AppServiceManager {
     final bool startWithWindowsChanged =
         _config?.startWithWindows != config.startWithWindows;
 
-    // Update the config
     _config = config;
 
-    // Update Windows-specific settings if needed
     if (Platform.isWindows) {
       windowsService.updateMinimizeToTray(config.minimizeToTray);
 
-      // Update auto-start setting
       if (startWithWindowsChanged) {
         await windowsService.setStartWithWindows(config.startWithWindows);
       }
@@ -409,7 +345,6 @@ class AppServiceManager {
         logsDirectoryChanged ||
         resonitePhotosDirectoryChanged;
 
-    // Restart photo watcher if important filesystem paths changed
     if (dirChanged) {
       await _photoProcessingSubscription?.cancel();
       _photoProcessingSubscription = null;
@@ -420,24 +355,18 @@ class AppServiceManager {
       }
     }
 
-    // Notify listeners about the config change
     _configStreamController.add(config);
   }
 
-  // Handle window close event
-  // Returns true if the app should be minimized to tray instead of closed
+  /// Returns true when the window was minimized to tray instead of closed.
   Future<bool> handleWindowClose({bool forceExit = false}) async {
     if (Platform.isWindows) {
       if (forceExit) {
-        // Force exit the app
-        // Dispose all services first to ensure clean shutdown
         await dispose();
 
-        // Exit the application
         await windowsService.exitApplication();
-        return false; // This line will never be reached
+        return false; // unreachable: exitApplication ends the process
       } else if (_config != null && _config!.minimizeToTray) {
-        // Minimize to tray if enabled
         return await windowsService.handleWindowClose();
       }
     } else if (Platform.isLinux) {
@@ -452,7 +381,6 @@ class AppServiceManager {
     return false;
   }
 
-  // Dispose all services
   Future<void> dispose() async {
     try {
       IsolateWorkerPool().dispose();
@@ -464,7 +392,6 @@ class AppServiceManager {
     }
 
     try {
-      // Stop foreground tasks first
       await FlutterForegroundTask.stopService();
     } catch (e) {
       developer.log(
@@ -501,7 +428,6 @@ class AppServiceManager {
       );
     }
 
-    // Dispose platform services
     if (Platform.isWindows) {
       try {
         _windowsService?.dispose();
@@ -541,7 +467,6 @@ class AppServiceManager {
       );
     }
 
-    // Dispose update service
     try {
       await _updateService.dispose();
     } catch (e) {

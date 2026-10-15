@@ -16,7 +16,8 @@ class ResoniteDirWatcher {
       StreamController<String>.broadcast();
 
   StreamSubscription<FileSystemEvent>? _rootSubscription;
-  final Map<String, StreamSubscription<FileSystemEvent>> _subdirSubscriptions = {};
+  final Map<String, StreamSubscription<FileSystemEvent>> _subdirSubscriptions =
+      {};
   final Set<String> _seenFiles = {};
 
   ResoniteDirWatcher(this._directory);
@@ -28,33 +29,46 @@ class ResoniteDirWatcher {
 
     final root = Directory(_directory);
     if (!await root.exists()) {
-      developer.log('ResoniteDirWatcher: directory does not exist: $_directory', name: 'ResoniteDirWatcher');
+      developer.log(
+        'ResoniteDirWatcher: directory does not exist: $_directory',
+        name: 'ResoniteDirWatcher',
+      );
       return;
     }
 
-    // Seed existing files so we don't re-process on startup.
-    await _seedExistingFiles(root);
-
-    // Watch each existing subdirectory.
     await for (final entity in root.list(followLinks: false)) {
       if (entity is Directory) {
         await _watchSubdir(entity.path);
       }
     }
 
-    // Watch the root for new subdirectories.
-    _rootSubscription = root.watch(events: FileSystemEvent.create).listen((event) async {
-      if (event is FileSystemCreateEvent && FileSystemEntity.isDirectorySync(event.path)) {
-        developer.log('ResoniteDirWatcher: new subdirectory: ${event.path}', name: 'ResoniteDirWatcher');
-        await _watchSubdir(event.path);
-      } else {
-        _onFileEvent(event.path);
-      }
-    }, onError: (e) {
-      developer.log('ResoniteDirWatcher: root watcher error: $e', name: 'ResoniteDirWatcher');
-    });
+    _rootSubscription = root
+        .watch(events: FileSystemEvent.create)
+        .listen(
+          (event) async {
+            if (event is FileSystemCreateEvent &&
+                FileSystemEntity.isDirectorySync(event.path)) {
+              developer.log(
+                'ResoniteDirWatcher: new subdirectory: ${event.path}',
+                name: 'ResoniteDirWatcher',
+              );
+              await _watchSubdir(event.path);
+            } else {
+              _onFileEvent(event.path);
+            }
+          },
+          onError: (e) {
+            developer.log(
+              'ResoniteDirWatcher: root watcher error: $e',
+              name: 'ResoniteDirWatcher',
+            );
+          },
+        );
 
-    developer.log('ResoniteDirWatcher: watching $_directory + ${_subdirSubscriptions.length} subdirs', name: 'ResoniteDirWatcher');
+    developer.log(
+      'ResoniteDirWatcher: watching $_directory + ${_subdirSubscriptions.length} subdirs',
+      name: 'ResoniteDirWatcher',
+    );
   }
 
   Future<void> _watchSubdir(String dirPath) async {
@@ -62,13 +76,25 @@ class ResoniteDirWatcher {
     try {
       final sub = Directory(dirPath)
           .watch(events: FileSystemEvent.create)
-          .listen((event) => _onFileEvent(event.path), onError: (e) {
-        developer.log('ResoniteDirWatcher: subdir watcher error ($dirPath): $e', name: 'ResoniteDirWatcher');
-      });
+          .listen(
+            (event) => _onFileEvent(event.path),
+            onError: (e) {
+              developer.log(
+                'ResoniteDirWatcher: subdir watcher error ($dirPath): $e',
+                name: 'ResoniteDirWatcher',
+              );
+            },
+          );
       _subdirSubscriptions[dirPath] = sub;
-      developer.log('ResoniteDirWatcher: watching subdir $dirPath', name: 'ResoniteDirWatcher');
+      developer.log(
+        'ResoniteDirWatcher: watching subdir $dirPath',
+        name: 'ResoniteDirWatcher',
+      );
     } catch (e) {
-      developer.log('ResoniteDirWatcher: failed to watch subdir $dirPath: $e', name: 'ResoniteDirWatcher');
+      developer.log(
+        'ResoniteDirWatcher: failed to watch subdir $dirPath: $e',
+        name: 'ResoniteDirWatcher',
+      );
     }
   }
 
@@ -77,22 +103,11 @@ class ResoniteDirWatcher {
     if (!_allowedExtensions.contains(ext)) return;
     if (_seenFiles.contains(filePath)) return;
     _seenFiles.add(filePath);
-    developer.log('ResoniteDirWatcher: new photo: $filePath', name: 'ResoniteDirWatcher');
+    developer.log(
+      'ResoniteDirWatcher: new photo: $filePath',
+      name: 'ResoniteDirWatcher',
+    );
     _photoController.add(filePath);
-  }
-
-  Future<void> _seedExistingFiles(Directory root) async {
-    try {
-      await for (final entity in root.list(recursive: true, followLinks: false)) {
-        if (entity is File &&
-            _allowedExtensions.contains(path.extension(entity.path).toLowerCase())) {
-          _seenFiles.add(entity.path);
-        }
-      }
-      developer.log('ResoniteDirWatcher: seeded ${_seenFiles.length} existing files', name: 'ResoniteDirWatcher');
-    } catch (e) {
-      developer.log('ResoniteDirWatcher: seed error: $e', name: 'ResoniteDirWatcher');
-    }
   }
 
   Future<void> stopWatching() async {

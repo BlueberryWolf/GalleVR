@@ -1,47 +1,29 @@
 import 'package:equatable/equatable.dart';
 
-// Verification method enum
 enum VerificationMethod {
-  // Automatic verification using VRChat login
+  /// Automatic verification using VRChat login.
   automatic,
 
-  // Manual verification by adding GalleVR as a friend
+  /// Manual verification by adding GalleVR as a friend.
   manual,
 
-  // Link via instantaneous numerical pair code from existing web session
+  /// Link via instantaneous numerical pair code from existing web session.
   pairCode,
 }
 
-// Verification status enum
-enum VerificationStatus {
-  // Not verified
-  notVerified,
+enum VerificationStatus { notVerified, inProgress, verified, failed }
 
-  // Verification in progress
-  inProgress,
-
-  // Verification successful
-  verified,
-
-  // Verification failed
-  failed,
-}
-
-// Response from the verification API
 class VerificationResponse extends Equatable {
-  // Verification token to be added to user's bio
+  /// Token the user adds to their VRChat bio.
   final String token;
 
-  // Access key for the GalleVR API
   final String accessKey;
 
-  // User ID
   final String userId;
 
-  // Whether the user is verified as over 13 years old
+  /// Whether the user is verified as over 13 years old.
   final bool ageVerified;
 
-  // Default constructor
   const VerificationResponse({
     required this.token,
     required this.accessKey,
@@ -49,7 +31,6 @@ class VerificationResponse extends Equatable {
     this.ageVerified = false,
   });
 
-  // Create a VerificationResponse from JSON
   factory VerificationResponse.fromJson(Map<String, dynamic> json) {
     return VerificationResponse(
       token: json['token'] as String,
@@ -59,7 +40,6 @@ class VerificationResponse extends Equatable {
     );
   }
 
-  // Convert VerificationResponse to JSON
   Map<String, dynamic> toJson() {
     return {
       'token': token,
@@ -73,24 +53,19 @@ class VerificationResponse extends Equatable {
   List<Object?> get props => [token, accessKey, userId, ageVerified];
 }
 
-// Authentication data for GalleVR
 class AuthData extends Equatable {
-  // Access key for the GalleVR API
   final String accessKey;
 
-  // User ID
   final String userId;
 
-  // Whether the user is verified as over 13 years old
+  /// Whether the user is verified as over 13 years old.
   final bool ageVerified;
 
-  // List of badge IDs for the user
   final List<String> badges;
 
   final String? displayName;
   final String? avatarUrl;
 
-  // Default constructor
   const AuthData({
     required this.accessKey,
     required this.userId,
@@ -100,7 +75,6 @@ class AuthData extends Equatable {
     this.avatarUrl,
   });
 
-  // Create an AuthData from JSON
   factory AuthData.fromJson(Map<String, dynamic> json) {
     return AuthData(
       accessKey: json['accessKey'] as String,
@@ -116,7 +90,6 @@ class AuthData extends Equatable {
     );
   }
 
-  // Convert AuthData to JSON
   Map<String, dynamic> toJson() {
     return {
       'accessKey': accessKey,
@@ -138,21 +111,18 @@ class AuthData extends Equatable {
     avatarUrl,
   ];
 
-  /// Returns the highest supporter tier based on user badges
+  /// Highest supporter tier among the user's badges.
   SupporterTier get supporterTier {
     final lowerBadges = badges.map((b) => b.toLowerCase()).toList();
 
-    // Mega Tier
     if (lowerBadges.contains('mega_supporter')) {
       return SupporterTier.megaSupporter;
     }
 
-    // Super Tier
     if (lowerBadges.contains('super_supporter')) {
       return SupporterTier.superSupporter;
     }
 
-    // Standard Supporter
     if (lowerBadges.contains('supporter') || lowerBadges.contains('donator')) {
       return SupporterTier.supporter;
     }
@@ -160,7 +130,6 @@ class AuthData extends Equatable {
     return SupporterTier.none;
   }
 
-  /// Returns true if the user has editor or higher permissions
   bool get isEditor {
     final lowerBadges = badges.map((b) => b.toLowerCase()).toList();
     return lowerBadges.contains('editor') ||
@@ -200,27 +169,21 @@ extension SupporterTierExtension on SupporterTier {
   }
 }
 
-// Result of a verification attempt
 class VerificationResult extends Equatable {
-  // Whether the verification was successful
   final bool success;
 
-  // Error message if verification failed
   final String? errorMessage;
 
-  // Authentication data if verification was successful
   final AuthData? authData;
 
-  // Verification status
   final VerificationStatus status;
 
-  // Verification token for manual verification
+  /// Token the user adds to their VRChat bio.
   final String? verificationToken;
 
-  // Whether the user is verified as over 13 years old
+  /// Whether the user is verified as over 13 years old.
   final bool ageVerified;
 
-  // Default constructor
   const VerificationResult({
     required this.success,
     this.errorMessage,
@@ -230,7 +193,6 @@ class VerificationResult extends Equatable {
     this.ageVerified = false,
   });
 
-  // Create a success result
   factory VerificationResult.success(
     AuthData authData, {
     String? verificationToken,
@@ -244,7 +206,6 @@ class VerificationResult extends Equatable {
     );
   }
 
-  // Create a failure result
   factory VerificationResult.failure(String errorMessage) {
     return VerificationResult(
       success: false,
@@ -253,7 +214,6 @@ class VerificationResult extends Equatable {
     );
   }
 
-  // Create an in-progress result
   factory VerificationResult.inProgress() {
     return const VerificationResult(
       success: false,

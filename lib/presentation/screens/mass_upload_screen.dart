@@ -1,15 +1,11 @@
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as path;
-import 'dart:developer' as developer;
 
 import '../../data/repositories/config_repository.dart';
-import '../../data/models/config_model.dart';
 import '../../data/services/mass_upload_service.dart';
 import '../../data/services/manual_upload_service.dart';
-import '../../data/services/vrchat_service.dart';
 import '../../data/repositories/photo_metadata_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cached_image.dart';
@@ -33,7 +29,6 @@ class _MassUploadScreenState extends State<MassUploadScreen>
   final MassUploadService _massUploadService = MassUploadService();
   final ManualUploadService _manualUploadService = ManualUploadService();
   final ConfigRepository _configRepository = ConfigRepository();
-  final VRChatService _vrchatService = VRChatService();
 
   final List<FileTask> _tasks = [];
   bool _isProcessing = false;
@@ -133,12 +128,6 @@ class _MassUploadScreenState extends State<MassUploadScreen>
     if (_isProcessing || _tasks.isEmpty) return;
 
     final config = await _configRepository.loadConfig();
-    if (config == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to load configuration')),
-      );
-      return;
-    }
 
     setState(() {
       _isProcessing = true;
@@ -243,7 +232,6 @@ class _MassUploadScreenState extends State<MassUploadScreen>
       backgroundColor: AppTheme.backgroundColor,
       body: Stack(
         children: [
-          const _MeshBackground(),
           SafeArea(
             child: Column(
               children: [
@@ -267,10 +255,10 @@ class _MassUploadScreenState extends State<MassUploadScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             border: Border(
               bottom: BorderSide(
-                color: AppTheme.cardBorderColor.withOpacity(0.5),
+                color: AppTheme.cardBorderColor.withValues(alpha: 0.5),
               ),
             ),
           ),
@@ -317,21 +305,14 @@ class _MassUploadScreenState extends State<MassUploadScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(32),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryColor.withOpacity(0.2),
-                  blurRadius: 40,
-                  spreadRadius: 10,
-                ),
-              ],
+              color: AppTheme.tint(AppTheme.primaryColor, 0.15),
+              borderRadius: BorderRadius.circular(AppTheme.radiusCard),
             ),
             child: Icon(
               Icons.cloud_upload_rounded,
-              size: 80,
+              size: 48,
               color: AppTheme.primaryColor,
             ),
           ),
@@ -341,7 +322,7 @@ class _MassUploadScreenState extends State<MassUploadScreen>
             style: const TextStyle(
               color: Colors.white,
               fontSize: 28,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 12),
@@ -351,7 +332,7 @@ class _MassUploadScreenState extends State<MassUploadScreen>
                 : 'Batch process and upload edited photos.\nSelect PNGs from your computer to begin.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.5),
+              color: AppTheme.secondaryTextColor,
               fontSize: 16,
               height: 1.5,
             ),
@@ -380,18 +361,20 @@ class _MassUploadScreenState extends State<MassUploadScreen>
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
         child: Container(
           padding: EdgeInsets.symmetric(
             horizontal: large ? 32 : 20,
             vertical: large ? 16 : 12,
           ),
           decoration: BoxDecoration(
-            color: outlined ? Colors.transparent : color.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(12),
+            color:
+                outlined ? Colors.transparent : color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
             border: Border.all(
-              color: color.withOpacity(outlined ? 0.3 : 0.5),
+              color: color.withValues(alpha: outlined ? 0.3 : 0.5),
               width: 1.5,
             ),
           ),
@@ -404,7 +387,7 @@ class _MassUploadScreenState extends State<MassUploadScreen>
                 label.toUpperCase(),
                 style: TextStyle(
                   color: color,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   fontSize: large ? 15 : 12,
                   letterSpacing: 1,
                 ),
@@ -491,7 +474,7 @@ class _MassUploadScreenState extends State<MassUploadScreen>
   ) {
     return Column(
       children: [
-        Icon(icon, color: color.withOpacity(0.5), size: 20),
+        Icon(icon, color: color.withValues(alpha: 0.5), size: 20),
         const SizedBox(height: 8),
         Text(
           value,
@@ -503,7 +486,7 @@ class _MassUploadScreenState extends State<MassUploadScreen>
         ),
         Text(
           label,
-          style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.4)),
+          style: TextStyle(fontSize: 12, color: AppTheme.secondaryTextColor),
         ),
       ],
     );
@@ -515,8 +498,10 @@ class _MassUploadScreenState extends State<MassUploadScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.4),
-        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
+        color: Colors.black.withValues(alpha: 0.4),
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -530,7 +515,7 @@ class _MassUploadScreenState extends State<MassUploadScreen>
                       _summaryController.reverse();
                     }),
             label: 'Clear',
-            color: Colors.white38,
+            color: AppTheme.secondaryTextColor,
             icon: Icons.delete_sweep_rounded,
             outlined: true,
           ),
@@ -560,10 +545,10 @@ class _TaskTile extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         borderColor:
             task.status == TaskStatus.completed
-                ? const Color(0xFF4ade80).withOpacity(0.3)
+                ? const Color(0xFF4ade80).withValues(alpha: 0.3)
                 : task.status == TaskStatus.failed
-                ? const Color(0xFFf87171).withOpacity(0.3)
-                : Colors.white.withOpacity(0.05),
+                ? const Color(0xFFf87171).withValues(alpha: 0.3)
+                : Colors.white.withValues(alpha: 0.05),
         child: Row(
           children: [
             _buildLeading(context),
@@ -594,7 +579,7 @@ class _TaskTile extends StatelessWidget {
                                 ? const Color(0xFFf87171)
                                 : !task.hasMetadata
                                 ? Colors.orangeAccent
-                                : Colors.white54,
+                                : AppTheme.secondaryTextColor,
                         fontSize: 12,
                       ),
                     )
@@ -608,7 +593,7 @@ class _TaskTile extends StatelessWidget {
                           size: 12,
                           color:
                               task.hasMetadata
-                                  ? Colors.white38
+                                  ? AppTheme.secondaryTextColor
                                   : Colors.orangeAccent,
                         ),
                         const SizedBox(width: 6),
@@ -619,8 +604,10 @@ class _TaskTile extends StatelessWidget {
                           style: TextStyle(
                             color:
                                 task.hasMetadata
-                                    ? Colors.white38
-                                    : Colors.orangeAccent.withOpacity(0.9),
+                                    ? AppTheme.secondaryTextColor
+                                    : Colors.orangeAccent.withValues(
+                                      alpha: 0.9,
+                                    ),
                             fontSize: 11,
                             fontWeight:
                                 task.hasMetadata
@@ -672,18 +659,18 @@ class _TaskTile extends StatelessWidget {
           width: 100,
           height: 56,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
             border: Border.all(color: Colors.white10),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
             child: CachedImage(
               filePath: task.path,
               fit: BoxFit.cover,
@@ -711,7 +698,7 @@ class _TaskTile extends StatelessWidget {
             width: size,
             height: size,
             decoration: BoxDecoration(
-              color: Colors.orangeAccent.withOpacity(small ? 1.0 : 0.1),
+              color: Colors.orangeAccent.withValues(alpha: small ? 1.0 : 0.1),
               shape: BoxShape.circle,
               border:
                   small
@@ -772,7 +759,7 @@ class _TaskTile extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: Colors.greenAccent.withOpacity(small ? 1.0 : 0.1),
+            color: Colors.greenAccent.withValues(alpha: small ? 1.0 : 0.1),
             shape: BoxShape.circle,
             border:
                 small
@@ -790,7 +777,7 @@ class _TaskTile extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: Colors.redAccent.withOpacity(small ? 1.0 : 0.1),
+            color: Colors.redAccent.withValues(alpha: small ? 1.0 : 0.1),
             shape: BoxShape.circle,
             border:
                 small
@@ -834,15 +821,18 @@ class _TaskTile extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                   ),
                   child: const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Example:',
-                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.secondaryTextColor,
+                        ),
                       ),
                       SizedBox(height: 4),
                       Text(
@@ -869,64 +859,6 @@ class _TaskTile extends StatelessWidget {
   }
 }
 
-class _MeshBackground extends StatelessWidget {
-  const _MeshBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(child: Container(color: AppTheme.backgroundColor)),
-        Positioned(
-          top: -150,
-          right: -50,
-          child: _MeshCircle(
-            color: AppTheme.primaryColor.withOpacity(0.15),
-            size: 450,
-          ),
-        ),
-        Positioned(
-          bottom: -200,
-          left: -100,
-          child: _MeshCircle(
-            color: const Color(0xFF8B5CF6).withOpacity(0.12),
-            size: 600,
-          ),
-        ),
-        Positioned(
-          top: 300,
-          left: -200,
-          child: _MeshCircle(
-            color: const Color(0xFF3B82F6).withOpacity(0.08),
-            size: 500,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MeshCircle extends StatelessWidget {
-  final Color color;
-  final double size;
-  const _MeshCircle({required this.color, required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [color, color.withOpacity(0)],
-          stops: const [0.3, 1.0],
-        ),
-      ),
-    );
-  }
-}
-
 enum TaskStatus { pending, processing, completed, failed }
 
 class FileTask {
@@ -938,6 +870,6 @@ class FileTask {
   FileTask({
     required this.path,
     this.status = TaskStatus.pending,
-    this.hasMetadata = true, // Assume true until checked
+    this.hasMetadata = true,
   });
 }

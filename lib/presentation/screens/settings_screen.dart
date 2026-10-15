@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:file_picker/file_picker.dart';
 import 'dart:developer' as developer;
 import 'package:path/path.dart' as path;
@@ -20,6 +21,7 @@ import '../../data/models/verification_models.dart';
 import '../widgets/tos_modal.dart';
 import '../widgets/app_card.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_switch.dart';
 import 'mass_upload_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -42,13 +44,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ConfigModel? _config;
   AuthData? _authData;
   AuthData? _authDataSec;
-  bool _isLoading = true;
-  String _appVersion = '1.0.0'; // Default version
+  String _appVersion = '1.0.0';
   bool _updateAvailable = false;
   String? _latestVersion;
   bool _showTOSModal = false;
 
-  // Stream subscription for update status
   late StreamSubscription<bool>? _updateSubscription;
   StreamSubscription<AuthData?>? _authSubscription;
 
@@ -62,7 +62,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadConfig();
     _loadAppVersion();
 
-    // Listen for update status changes
     _updateSubscription = _updateService.updateAvailableStream.listen((
       hasUpdate,
     ) {
@@ -74,7 +73,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     });
 
-    // Listen for config changes from other parts of the app
     AppServiceManager().configStream.listen((updatedConfig) {
       if (mounted) {
         setState(() {
@@ -83,7 +81,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     });
 
-    // Listen for auth changes from other parts of the app
     _authSubscription = AppServiceManager().authDataStream.listen((
       updatedAuth,
     ) async {
@@ -113,8 +110,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// Check for updates
-  /// Now uses forceCheckForUpdates to ensure update check happens every time
   Future<void> _checkForUpdates() async {
     try {
       developer.log('Manually checking for updates...', name: 'SettingsScreen');
@@ -134,9 +129,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// Check for updates with UI feedback
   Future<void> _checkForUpdatesWithFeedback() async {
-    // Show loading indicator
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -146,10 +139,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
 
-    // Check for updates
     await _checkForUpdates();
 
-    // Show result
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -188,10 +179,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadConfig() async {
-    setState(() {
-      _isLoading = true;
-    });
-
     try {
       developer.log('Loading config...', name: 'SettingsScreen');
       final config = await _configRepository.loadConfig();
@@ -204,7 +191,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _config = config;
         _authData = authData;
         _authDataSec = authDataSec;
-        _isLoading = false;
       });
     } catch (e) {
       developer.log(
@@ -212,9 +198,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         name: 'SettingsScreen',
         error: e,
       );
-      setState(() {
-        _isLoading = false;
-      });
     }
   }
 
@@ -266,19 +249,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _showTOSModal = false;
     });
 
-    // Reset the global flag
     AppServiceManager().isTOSModalVisible = false;
 
-    // Enable uploading
     final updatedConfig = _config!.copyWith(uploadEnabled: true);
     await _saveConfig(updatedConfig);
 
-    // Make sure the UI is updated
     setState(() {
       _config = updatedConfig;
     });
 
-    // Show success message
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -297,10 +276,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _showTOSModal = false;
     });
 
-    // Reset the global flag
     AppServiceManager().isTOSModalVisible = false;
 
-    // Show warning message
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
@@ -319,7 +296,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           _buildSettingsForm(),
 
-          // TOS Modal
           if (_showTOSModal)
             TOSModal(
               onAccept: _handleTOSAccept,
@@ -341,24 +317,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
     final sectionSpacing = isSmallScreen ? 12.0 : 16.0;
 
-    // Calculate item count based on platform
     final int itemCount = Platform.isWindows ? 12 : 10;
 
     return Theme(
       data: Theme.of(context).copyWith(
         listTileTheme: ListTileThemeData(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
           ),
         ),
       ),
       child: RepaintBoundary(
         child: ListView.builder(
+          scrollCacheExtent: const ScrollCacheExtent.pixels(500.0),
           controller: _scrollController,
           padding: edgeInsets,
           addAutomaticKeepAlives: false,
           addRepaintBoundaries: true,
-          cacheExtent: 500,
           itemCount: itemCount,
           itemBuilder: (context, index) {
             switch (index) {
@@ -412,8 +387,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return RepaintBoundary(
       child: AppCard(
-        color: const Color(0xFF8b5cf6).withOpacity(0.1),
-        borderColor: const Color(0xFF8b5cf6).withOpacity(0.2),
+        color: const Color(0xFF8b5cf6).withValues(alpha: 0.1),
+        borderColor: const Color(0xFF8b5cf6).withValues(alpha: 0.2),
         padding: padding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -431,7 +406,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(
                     color: Color(0xFFa78bfa),
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -440,6 +415,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Material(
               color: Colors.transparent,
               child: InkWell(
+                mouseCursor: SystemMouseCursors.click,
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -447,7 +423,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   );
                 },
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -458,12 +434,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF8b5cf6).withOpacity(0.2),
-                          shape: BoxShape.circle,
+                          color: AppTheme.tint(AppTheme.brandPurple, 0.2),
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.radiusControl,
+                          ),
                         ),
                         child: const Icon(
                           Icons.cloud_upload_rounded,
-                          color: Colors.white,
+                          color: AppTheme.brandPurple,
                           size: 20,
                         ),
                       ),
@@ -482,7 +460,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Text(
                               'Upload edited photos in bulk',
                               style: TextStyle(
-                                color: Colors.white38,
+                                color: AppTheme.secondaryTextColor,
                                 fontSize: 12,
                               ),
                             ),
@@ -508,10 +486,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final padding =
         isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
     final spacing = isSmallScreen ? 16.0 : 20.0;
-    
-    final hasVRC = (_authData != null && !_authData!.userId.startsWith('U-')) ||
+
+    final hasVRC =
+        (_authData != null && !_authData!.userId.startsWith('U-')) ||
         (_authDataSec != null && !_authDataSec!.userId.startsWith('U-'));
-    final hasResonite = (_authData != null && _authData!.userId.startsWith('U-')) ||
+    final hasResonite =
+        (_authData != null && _authData!.userId.startsWith('U-')) ||
         (_authDataSec != null && _authDataSec!.userId.startsWith('U-'));
     final showVRC = hasVRC || (!hasVRC && !hasResonite);
     final showResonite = hasResonite;
@@ -557,9 +537,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           isSmallScreen: isSmallScreen,
           onChanged: (value) {
             if (value != null) {
-              _saveConfig(
-                _config!.copyWith(resonitePhotosDirectory: value),
-              );
+              _saveConfig(_config!.copyWith(resonitePhotosDirectory: value));
             }
           },
         ),
@@ -585,7 +563,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -618,7 +596,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -641,7 +619,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Text(
                         '${_config!.compressionDelay.toStringAsFixed(1)} seconds',
                         style: const TextStyle(
-                          color: Colors.white38,
+                          color: AppTheme.secondaryTextColor,
                           fontSize: 12,
                         ),
                       ),
@@ -649,24 +627,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(width: 24),
                   Expanded(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        activeTrackColor: accentColor,
-                        inactiveTrackColor: accentColor.withOpacity(0.2),
-                        thumbColor: accentColor,
-                        overlayColor: accentColor.withOpacity(0.1),
-                      ),
-                      child: Slider(
-                        value: _config!.compressionDelay,
-                        min: 0.1,
-                        max: 5.0,
-                        divisions: 49,
-                        onChanged: (value) {
-                          _saveConfig(
-                            _config!.copyWith(compressionDelay: value),
-                          );
-                        },
-                      ),
+                    child: Slider(
+                      value: _config!.compressionDelay,
+                      min: 0.1,
+                      max: 5.0,
+                      divisions: 49,
+                      onChanged: (value) {
+                        _saveConfig(_config!.copyWith(compressionDelay: value));
+                      },
                     ),
                   ),
                 ],
@@ -702,7 +670,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -732,21 +700,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   Expanded(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        activeTrackColor: accentColor,
-                        inactiveTrackColor: accentColor.withOpacity(0.2),
-                        thumbColor: accentColor,
-                      ),
-                      child: Slider(
-                        value: _config!.soundVolume,
-                        onChanged:
-                            _config!.soundEnabled
-                                ? (v) => _saveConfig(
-                                  _config!.copyWith(soundVolume: v),
-                                )
-                                : null,
-                      ),
+                    child: Slider(
+                      value: _config!.soundVolume,
+                      onChanged:
+                          _config!.soundEnabled
+                              ? (v) =>
+                                  _saveConfig(_config!.copyWith(soundVolume: v))
+                              : null,
                     ),
                   ),
                 ],
@@ -778,7 +738,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -791,8 +751,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: _config!.uploadEnabled,
               onChanged: (value) async {
                 if (value) {
-                  final hasVRC = (_authData != null && !_authData!.userId.startsWith('U-')) ||
-                      (_authDataSec != null && !_authDataSec!.userId.startsWith('U-'));
+                  final hasVRC =
+                      (_authData != null &&
+                          !_authData!.userId.startsWith('U-')) ||
+                      (_authDataSec != null &&
+                          !_authDataSec!.userId.startsWith('U-'));
                   if (hasVRC && Platform.isWindows) {
                     try {
                       final isLoggingEnabled =
@@ -870,33 +833,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
             SizedBox(height: spacing),
 
-            // Version and update status in a single component
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color:
                     _updateAvailable
-                        ? Colors.amber.withOpacity(0.1)
-                        : Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(12),
+                        ? Colors.amber.withValues(alpha: 0.1)
+                        : Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 border: Border.all(
                   color:
                       _updateAvailable
-                          ? Colors.amber.withOpacity(0.3)
-                          : Colors.white.withOpacity(0.08),
+                          ? Colors.amber.withValues(alpha: 0.3)
+                          : Colors.white.withValues(alpha: 0.08),
                 ),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Left side - App info
                   Expanded(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -954,7 +915,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
 
-                  // Right side - Buttons
                   if (_updateAvailable && _latestVersion != null) ...[
                     TextButton(
                       onPressed: () async {
@@ -999,7 +959,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             const SizedBox(height: 16),
 
-            // Platform information
             _buildCustomInfoRow(
               dense: isSmallScreen,
               title: 'Platform',
@@ -1018,8 +977,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required bool isSmallScreen,
     required Function(String?) onChanged,
   }) {
-    final double spacing = isSmallScreen ? 8 : 16;
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Column(
@@ -1040,8 +997,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                     border: Border.all(color: Colors.white10),
                   ),
                   child: Text(
@@ -1072,8 +1029,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(
+                        AppTheme.radiusControl,
+                      ),
                       border: Border.all(color: Colors.white10),
                     ),
                     child: Text(
@@ -1108,18 +1067,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            color: (onPressed == null ? Colors.white10 : color).withOpacity(
-              0.1,
+            color: (onPressed == null ? Colors.white10 : color).withValues(
+              alpha: 0.1,
             ),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
             border: Border.all(
-              color: (onPressed == null ? Colors.white10 : color).withOpacity(
-                0.2,
+              color: (onPressed == null ? Colors.white10 : color).withValues(
+                alpha: 0.2,
               ),
             ),
           ),
@@ -1129,7 +1089,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: TextStyle(
                 color: onPressed == null ? Colors.white24 : color,
                 fontSize: 11,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w700,
                 letterSpacing: 1.2,
               ),
             ),
@@ -1363,7 +1323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -1432,8 +1392,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
         onTap: onChanged != null ? () => onChanged(!value) : null,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: 8,
@@ -1456,18 +1417,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Text(
                       subtitle,
                       style: const TextStyle(
-                        color: Colors.white38,
+                        color: AppTheme.secondaryTextColor,
                         fontSize: 12,
                       ),
                     ),
                   ],
                 ),
               ),
-              Switch(
-                value: value,
-                onChanged: onChanged,
-                activeColor: activeColor,
-              ),
+              AppSwitch(value: value, onChanged: onChanged),
             ],
           ),
         ),
@@ -1484,8 +1441,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
         onTap: () {},
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: 8,
@@ -1493,7 +1451,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           child: Row(
             children: [
-              Icon(leading, color: Colors.white54, size: 24),
+              Icon(leading, color: AppTheme.secondaryTextColor, size: 24),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(

@@ -120,15 +120,13 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
 
     return Stack(
       children: [
-        // Backdrop Blur overlay
         Positioned.fill(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-            child: Container(color: Colors.black.withOpacity(0.6)),
+            child: Container(color: Colors.black.withValues(alpha: 0.6)),
           ),
         ),
 
-        // Dialog Panel
         Center(
           child: Material(
             color: Colors.transparent,
@@ -137,11 +135,11 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
               height: 480,
               decoration: BoxDecoration(
                 color: AppTheme.surfaceColor,
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(AppTheme.radiusModal),
                 border: Border.all(color: AppTheme.cardBorderColor, width: 1),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -149,7 +147,6 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
               ),
               child: Column(
                 children: [
-                  // PageView for slides
                   Expanded(
                     child: PageView.builder(
                       controller: _pageController,
@@ -165,7 +162,6 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
                     ),
                   ),
 
-                  // Bottom Action bar
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
@@ -182,19 +178,17 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // Skip Button
                         TextButton(
                           onPressed: _finish,
                           child: Text(
                             'Skip',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
+                              color: AppTheme.secondaryTextColor,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
 
-                        // Progress Indicator
                         Row(
                           children: List.generate(
                             _slides.length,
@@ -207,21 +201,22 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
                                 color:
                                     _currentPage == index
                                         ? AppTheme.primaryColor
-                                        : Colors.white.withOpacity(0.2),
+                                        : Colors.white.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(3),
                               ),
                             ),
                           ),
                         ),
 
-                        // Next/Finish Button
                         ElevatedButton(
                           onPressed: _nextPage,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryColor,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(
+                                AppTheme.radiusControl,
+                              ),
                             ),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 20,
@@ -253,27 +248,21 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Icon Container
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: slide.iconColor.withOpacity(0.1),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: slide.iconColor.withOpacity(0.2),
-                width: 1.5,
-              ),
+              color: AppTheme.tint(slide.iconColor, 0.15),
+              borderRadius: BorderRadius.circular(AppTheme.radiusCard),
             ),
             child: Icon(slide.icon, size: 40, color: slide.iconColor),
           ),
           const SizedBox(height: 24),
 
-          // Slide Title
           Text(
             slide.title,
             style: const TextStyle(
               fontSize: 22,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
               color: Colors.white,
               letterSpacing: -0.5,
             ),
@@ -281,7 +270,6 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
           ),
           const SizedBox(height: 16),
 
-          // Slide Content
           Expanded(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -290,7 +278,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
                 style: TextStyle(
                   fontSize: 14,
                   height: 1.6,
-                  color: Colors.white.withOpacity(0.85),
+                  color: Colors.white.withValues(alpha: 0.85),
                   fontWeight: FontWeight.w500,
                 ),
                 textAlign: TextAlign.center,

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:developer' as developer;
 
-/// Service to monitor internet connectivity status across platforms
+/// Polls DNS to detect whether the internet is reachable.
 class ConnectivityService {
   static final ConnectivityService _instance = ConnectivityService._internal();
   factory ConnectivityService() => _instance;
@@ -16,24 +16,39 @@ class ConnectivityService {
 
   Timer? _timer;
   bool _isChecking = false;
+  bool _monitoring = false;
 
-  /// Starts monitoring internet connection periodically
+  void _scheduleNext() {
+    _timer?.cancel();
+    if (!_monitoring) return;
+    _timer = Timer(
+      _hasConnection
+          ? const Duration(seconds: 60)
+          : const Duration(seconds: 10),
+      () => _checkConnection().whenComplete(_scheduleNext),
+    );
+  }
+
   void startMonitoring() {
     _timer?.cancel();
-    _checkConnection();
-    _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _checkConnection();
-    });
-    developer.log('Connectivity monitoring started', name: 'ConnectivityService');
+    _monitoring = true;
+    _checkConnection().whenComplete(_scheduleNext);
+    developer.log(
+      'Connectivity monitoring started',
+      name: 'ConnectivityService',
+    );
   }
 
-  /// Stops monitoring internet connection
   void stopMonitoring() {
+    _monitoring = false;
     _timer?.cancel();
-    developer.log('Connectivity monitoring stopped', name: 'ConnectivityService');
+    _timer = null;
+    developer.log(
+      'Connectivity monitoring stopped',
+      name: 'ConnectivityService',
+    );
   }
 
-  /// Force a manual check of the connection
   Future<bool> checkConnectionManually() async {
     return await _checkConnection();
   }
@@ -44,23 +59,25 @@ class ConnectivityService {
 
     bool isConnected = false;
     try {
-      // Perform DNS lookups for multiple robust hosts to avoid false negatives.
+      // Several hosts avoid false negatives when one is blocked or down.
       final hosts = ['vrchat.com', 'google.com', 'cloudflare.com'];
-      
+
       for (final host in hosts) {
         try {
-          final result = await InternetAddress.lookup(host)
-              .timeout(const Duration(seconds: 4));
+          final result = await InternetAddress.lookup(
+            host,
+          ).timeout(const Duration(seconds: 4));
           if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
             isConnected = true;
             break;
           }
-        } catch (_) {
-          // Continue to next host if this one fails
-        }
+        } catch (_) {}
       }
     } catch (e) {
-      developer.log('Error checking connection: $e', name: 'ConnectivityService');
+      developer.log(
+        'Error checking connection: $e',
+        name: 'ConnectivityService',
+      );
       isConnected = false;
     } finally {
       _isChecking = false;

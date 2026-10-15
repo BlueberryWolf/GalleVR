@@ -7,18 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../data/models/photo_metadata.dart';
 import '../theme/app_theme.dart';
 
-// A widget that displays photo metadata in a panel
 class PhotoMetadataPanel extends StatelessWidget {
-  // The photo metadata to display
   final PhotoMetadata? metadata;
 
-  // Whether the panel is open
   final bool isOpen;
 
-  // Callback when the panel is closed
   final VoidCallback onClose;
 
-  // Default constructor
   const PhotoMetadataPanel({
     super.key,
     required this.metadata,
@@ -28,7 +23,6 @@ class PhotoMetadataPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     return Material(
       color: Colors.transparent,
       child: ClipRRect(
@@ -38,54 +32,53 @@ class PhotoMetadataPanel extends StatelessWidget {
             width: 300,
             height: double.infinity,
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.7),
-            border: Border(
-              left: BorderSide(
-                color: Colors.white.withOpacity(0.1),
-                width: 1,
-              ),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.5),
-                blurRadius: 40,
-                offset: const Offset(-10, 0),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header with close button
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Photo Info',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    _HeaderCloseButton(onPressed: onClose),
-                  ],
+              color: Colors.black.withValues(alpha: 0.7),
+              border: Border(
+                left: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  width: 1,
                 ),
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 40,
+                  offset: const Offset(-10, 0),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Photo Info',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.8),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      _HeaderCloseButton(onPressed: onClose),
+                    ],
+                  ),
+                ),
 
-              // Content
-              Expanded(
-                child: metadata == null
-                    ? _buildNoMetadataMessage()
-                    : _buildMetadataContent(context),
-              ),
-            ],
+                Expanded(
+                  child:
+                      metadata == null
+                          ? _buildNoMetadataMessage()
+                          : _buildMetadataContent(context),
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    ),
     );
   }
 
@@ -96,14 +89,14 @@ class PhotoMetadataPanel extends StatelessWidget {
         children: [
           Icon(
             Icons.info_outline_rounded,
-            color: Colors.white.withOpacity(0.15),
+            color: Colors.white.withValues(alpha: 0.15),
             size: 64,
           ),
           const SizedBox(height: 16),
           Text(
             'No metadata available',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.25),
+              color: Colors.white.withValues(alpha: 0.25),
               fontSize: 16,
               fontWeight: FontWeight.w600,
             ),
@@ -117,7 +110,6 @@ class PhotoMetadataPanel extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
       children: [
-        // World info
         if (metadata?.world != null) ...[
           _buildSectionHeader('WORLD'),
           _InteractiveMetadataItem(
@@ -125,11 +117,10 @@ class PhotoMetadataPanel extends StatelessWidget {
             child: _buildWorldContent(context, metadata!.world!),
           ),
           const SizedBox(height: 12),
-          Divider(color: Colors.white.withOpacity(0.1)),
+          Divider(color: Colors.white.withValues(alpha: 0.1)),
           const SizedBox(height: 12),
         ],
 
-        // Players list
         if (metadata?.players.isNotEmpty == true) ...[
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -138,13 +129,13 @@ class PhotoMetadataPanel extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: Text(
                   '${metadata!.players.length}',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
+                    color: AppTheme.secondaryTextColor,
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
@@ -153,14 +144,15 @@ class PhotoMetadataPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          ...metadata!.players.map((player) => _InteractiveMetadataItem(
-            onTap: () => _launchVRChatUserUrl(player.id),
-            child: _buildPlayerContent(player),
-            margin: const EdgeInsets.only(bottom: 4),
-          )),
+          ...metadata!.players.map(
+            (player) => _InteractiveMetadataItem(
+              onTap: () => _launchVRChatUserUrl(player.id),
+              margin: const EdgeInsets.only(bottom: 4),
+              child: _buildPlayerContent(player),
+            ),
+          ),
         ],
 
-        // No metadata message
         if (metadata?.world == null && metadata?.players.isEmpty == true)
           _buildNoMetadataMessage(),
       ],
@@ -173,7 +165,7 @@ class PhotoMetadataPanel extends StatelessWidget {
       child: Text(
         title,
         style: TextStyle(
-          color: Colors.white.withOpacity(0.6),
+          color: AppTheme.secondaryTextColor,
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
@@ -186,7 +178,7 @@ class PhotoMetadataPanel extends StatelessWidget {
       children: [
         Icon(
           Icons.public_rounded,
-          color: Colors.white.withOpacity(0.7),
+          color: Colors.white.withValues(alpha: 0.7),
           size: 18,
         ),
         const SizedBox(width: 10),
@@ -211,7 +203,7 @@ class PhotoMetadataPanel extends StatelessWidget {
         ),
         Icon(
           Icons.arrow_forward_ios_rounded,
-          color: Colors.white.withOpacity(0.4),
+          color: AppTheme.secondaryTextColor,
           size: 12,
         ),
       ],
@@ -223,7 +215,7 @@ class PhotoMetadataPanel extends StatelessWidget {
       children: [
         Icon(
           Icons.person_outline_rounded,
-          color: Colors.white.withOpacity(0.7),
+          color: Colors.white.withValues(alpha: 0.7),
           size: 18,
         ),
         const SizedBox(width: 10),
@@ -241,7 +233,7 @@ class PhotoMetadataPanel extends StatelessWidget {
         ),
         Icon(
           Icons.arrow_forward_ios_rounded,
-          color: Colors.white.withOpacity(0.4),
+          color: AppTheme.secondaryTextColor,
           size: 12,
         ),
       ],
@@ -259,7 +251,11 @@ class PhotoMetadataPanel extends StatelessWidget {
         await launchUrl(url, mode: LaunchMode.externalApplication);
       }
     } catch (e) {
-      developer.log('Error launching world url: $e', name: 'PhotoMetadataPanel', error: e);
+      developer.log(
+        'Error launching world url: $e',
+        name: 'PhotoMetadataPanel',
+        error: e,
+      );
     }
   }
 
@@ -274,7 +270,11 @@ class PhotoMetadataPanel extends StatelessWidget {
         await launchUrl(url, mode: LaunchMode.externalApplication);
       }
     } catch (e) {
-      developer.log('Error launching user url: $e', name: 'PhotoMetadataPanel', error: e);
+      developer.log(
+        'Error launching user url: $e',
+        name: 'PhotoMetadataPanel',
+        error: e,
+      );
     }
   }
 }
@@ -291,7 +291,8 @@ class _InteractiveMetadataItem extends StatefulWidget {
   });
 
   @override
-  State<_InteractiveMetadataItem> createState() => _InteractiveMetadataItemState();
+  State<_InteractiveMetadataItem> createState() =>
+      _InteractiveMetadataItemState();
 }
 
 class _InteractiveMetadataItemState extends State<_InteractiveMetadataItem> {
@@ -306,12 +307,16 @@ class _InteractiveMetadataItemState extends State<_InteractiveMetadataItem> {
         duration: const Duration(milliseconds: 150),
         margin: widget.margin,
         decoration: BoxDecoration(
-          color: _isHovered ? Colors.white.withOpacity(0.05) : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
+          color:
+              _isHovered
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppTheme.radiusTag),
         ),
         child: InkWell(
+          mouseCursor: SystemMouseCursors.click,
           onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(AppTheme.radiusTag),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
             child: widget.child,
@@ -344,7 +349,10 @@ class _HeaderCloseButtonState extends State<_HeaderCloseButton> {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: _isHovered ? Colors.white.withOpacity(0.1) : Colors.transparent,
+            color:
+                _isHovered
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.transparent,
             shape: BoxShape.circle,
           ),
           child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),

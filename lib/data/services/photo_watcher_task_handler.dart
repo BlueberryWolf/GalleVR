@@ -4,46 +4,33 @@ import 'dart:developer' as developer;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path/path.dart' as path;
 
-import '../../core/platform/platform_service.dart';
-import '../../core/platform/platform_service_factory.dart';
 import '../../core/utils/log_file_watcher.dart';
 import '../../core/utils/screenshot_utils.dart';
 import '../models/config_model.dart';
 import '../repositories/config_repository.dart';
 
-// Top-level callback function for the foreground task
 @pragma('vm:entry-point')
 void startPhotoWatcherCallback() {
   FlutterForegroundTask.setTaskHandler(PhotoWatcherTaskHandler());
 }
 
-// Task handler for watching photos in a foreground service
 class PhotoWatcherTaskHandler extends TaskHandler {
-  // Platform service for platform-specific operations
-  final PlatformService _platformService = PlatformServiceFactory.getPlatformService();
-
-  // Config repository to load configuration
   final ConfigRepository _configRepository = ConfigRepository();
 
-  // Current configuration
   ConfigModel? _config;
 
-  // Set of handled photos to avoid duplicates
   final Set<String> _handledPhotos = {};
 
-  // Timer for polling on Android (since file system events are not available sadly)
+  /// Android has no file system events, so photos are polled.
   Timer? _pollingTimer;
 
-  // Stream subscription for file system events on platforms that support it
   StreamSubscription<FileSystemEvent>? _watcherSubscription;
 
-  // Log file watcher and subscription for monitoring VRChat logs
   LogFileWatcher? _logFileWatcher;
   StreamSubscription<String>? _logWatcherSubscription;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
-    // Load configuration
     _config = await _configRepository.loadConfig();
 
     if (_config == null) {
@@ -54,47 +41,52 @@ class PhotoWatcherTaskHandler extends TaskHandler {
     final photosDir = _config!.photosDirectory;
 
     if (logsDir.isEmpty) {
-      developer.log('Logs directory is not set', name: 'PhotoWatcherTaskHandler');
+      developer.log(
+        'Logs directory is not set',
+        name: 'PhotoWatcherTaskHandler',
+      );
       FlutterForegroundTask.sendDataToMain({
-        'error': 'Watcher stopped: Logs directory is not set in configuration.'
+        'error': 'Watcher stopped: Logs directory is not set in configuration.',
       });
       return;
     }
 
     if (photosDir.isEmpty) {
-      developer.log('Photos directory is not set', name: 'PhotoWatcherTaskHandler');
+      developer.log(
+        'Photos directory is not set',
+        name: 'PhotoWatcherTaskHandler',
+      );
       FlutterForegroundTask.sendDataToMain({
-        'error': 'Watcher stopped: Photos directory is not set in configuration.'
+        'error':
+            'Watcher stopped: Photos directory is not set in configuration.',
       });
       return;
     }
 
-    // Ensure the logs directory exists
     final directory = Directory(logsDir);
     if (!await directory.exists()) {
       final errorMsg = 'Logs directory does not exist: $logsDir';
       developer.log(errorMsg, name: 'PhotoWatcherTaskHandler');
       FlutterForegroundTask.sendDataToMain({
-        'error': 'Cannot find logs directory. Please check your settings.\nPath: $logsDir'
+        'error':
+            'Cannot find logs directory. Please check your settings.\nPath: $logsDir',
       });
       return;
     }
 
-    // Ensure the photos directory exists
     final photosDirectory = Directory(photosDir);
     if (!await photosDirectory.exists()) {
       final errorMsg = 'Photos directory does not exist: $photosDir';
       developer.log(errorMsg, name: 'PhotoWatcherTaskHandler');
       FlutterForegroundTask.sendDataToMain({
-        'error': 'Cannot find VRChat photos directory. Please check your settings.\nPath: $photosDir'
+        'error':
+            'Cannot find VRChat photos directory. Please check your settings.\nPath: $photosDir',
       });
       return;
     }
 
-    // Start watching the log files
     await _startWatching(_config!);
 
-    // Update notification with current status
     FlutterForegroundTask.updateService(
       notificationTitle: 'GalleVR Photo Watcher',
       notificationText: 'Monitoring VRChat logs for new photos...',
@@ -138,14 +130,11 @@ class PhotoWatcherTaskHandler extends TaskHandler {
     }
   }
 
-  // Handle configuration updates from the main isolate
   void _handleConfigUpdate(Map<String, dynamic> data) async {
     if (data.containsKey('config')) {
-      // Load the updated configuration
       _config = await _configRepository.loadConfig();
 
       if (_config != null) {
-        // Restart watching with the new configuration
         await _watcherSubscription?.cancel();
         _watcherSubscription = null;
 
@@ -168,7 +157,6 @@ class PhotoWatcherTaskHandler extends TaskHandler {
     }
   }
 
-  // Start watching for new screenshots from log files
   Future<void> _startWatching(ConfigModel config) async {
     final logsDir = config.logsDirectory;
     if (logsDir.isEmpty) {
@@ -182,38 +170,49 @@ class PhotoWatcherTaskHandler extends TaskHandler {
       _logWatcherSubscription = _logFileWatcher!.screenshotStream.listen(
         (screenshotPath) => _handleScreenshotFromLog(screenshotPath, config),
         onError: (e) {
-          developer.log('Error in log file watcher stream: $e', name: 'PhotoWatcherTaskHandler');
+          developer.log(
+            'Error in log file watcher stream: $e',
+            name: 'PhotoWatcherTaskHandler',
+          );
           FlutterForegroundTask.sendDataToMain({
-            'error': 'Monitoring Error: Failed to read log updates.'
+            'error': 'Monitoring Error: Failed to read log updates.',
           });
-        }
+        },
       );
 
-      developer.log('Log file watcher started successfully', name: 'PhotoWatcherTaskHandler');
+      developer.log(
+        'Log file watcher started successfully',
+        name: 'PhotoWatcherTaskHandler',
+      );
       FlutterForegroundTask.sendDataToMain({
-        'status': 'Monitoring started successfully'
+        'status': 'Monitoring started successfully',
       });
     } catch (e) {
-      developer.log('Error starting log file watcher: $e', name: 'PhotoWatcherTaskHandler');
+      developer.log(
+        'Error starting log file watcher: $e',
+        name: 'PhotoWatcherTaskHandler',
+      );
       FlutterForegroundTask.sendDataToMain({
-        'error': 'Failed to start log monitor: $e'
+        'error': 'Failed to start log monitor: $e',
       });
     }
   }
 
-  // Handle screenshot detected from log file
   void _handleScreenshotFromLog(String screenshotPath, ConfigModel config) {
-    String finalPath = ScreenshotUtils.translatePlatformPath(screenshotPath, config.photosDirectory);
+    String finalPath = ScreenshotUtils.translatePlatformPath(
+      screenshotPath,
+      config.photosDirectory,
+    );
 
-    // Verify the file exists and is a VRChat screenshot
     final file = File(finalPath);
     if (!file.existsSync()) {
-      final errorMsg = 'Screenshot detected in log but file not found at: $finalPath';
+      final errorMsg =
+          'Screenshot detected in log but file not found at: $finalPath';
       developer.log(errorMsg, name: 'PhotoWatcherTaskHandler');
-      
-      // Notify user about the missing file
+
       FlutterForegroundTask.sendDataToMain({
-        'error': 'New photo detected but file is inaccessible. Check storage permissions.\nFile: ${path.basename(finalPath)}'
+        'error':
+            'New photo detected but file is inaccessible. Check storage permissions.\nFile: ${path.basename(finalPath)}',
       });
       return;
     }
@@ -239,8 +238,8 @@ class PhotoWatcherTaskHandler extends TaskHandler {
       try {
         final updatedConfig = config.copyWith(photosDirectory: screenshotDir);
         _config = updatedConfig;
-        
-        // Delegate configuration alignment and saving to the main isolate to avoid concurrent writes
+
+        // The main isolate saves config, so writes never race.
         FlutterForegroundTask.sendDataToMain({
           'action': 'configAligned',
           'photosDirectory': screenshotDir,

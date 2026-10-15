@@ -1,36 +1,25 @@
-// Model for world information from VRChat logs
 class WorldInfo {
-  // World name
   final String name;
 
-  // World ID
   final String id;
 
-  // Instance ID
   final String? instanceId;
 
-  // Access type (public, friends+, etc.)
+  /// Access type (public, friends+, etc.).
   final String? accessType;
 
-  // Region
   final String? region;
 
-  // Owner ID
   final String? ownerId;
 
-  // Group ID
   final String? groupId;
 
-  // Group access type
   final String? groupAccessType;
 
-  // Whether users can request invites
   final bool? canRequestInvite;
 
-  // Whether the instance is invite only
   final bool? inviteOnly;
 
-  // Default constructor
   WorldInfo({
     required this.name,
     required this.id,
@@ -44,7 +33,6 @@ class WorldInfo {
     this.inviteOnly,
   });
 
-  // Create a WorldInfo from JSON
   factory WorldInfo.fromJson(Map<String, dynamic> json) {
     return WorldInfo(
       name: json['name'] as String? ?? 'Unknown World',
@@ -60,7 +48,6 @@ class WorldInfo {
     );
   }
 
-  // Convert WorldInfo to JSON
   Map<String, dynamic> toJson() {
     return {
       'name': name,
@@ -77,21 +64,17 @@ class WorldInfo {
   }
 }
 
-// Model for player information from VRChat logs
 class Player {
-  // Player ID
   final String id;
 
-  // Player display name
   final String name;
 
-  // Player head position (for Resonite spatial tagging)
+  /// Player head position (for Resonite spatial tagging).
   final String? headPosition;
 
-  // Player head orientation (for Resonite spatial tagging)
+  /// Player head orientation (for Resonite spatial tagging).
   final String? headOrientation;
 
-  // Default constructor
   Player({
     required this.id,
     required this.name,
@@ -99,7 +82,6 @@ class Player {
     this.headOrientation,
   });
 
-  // Create a Player from JSON
   factory Player.fromJson(Map<String, dynamic> json) {
     return Player(
       id: json['id'] as String? ?? 'unknown_id',
@@ -109,7 +91,6 @@ class Player {
     );
   }
 
-  // Convert Player to JSON
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -120,18 +101,13 @@ class Player {
   }
 }
 
-// Model for metadata extracted from VRChat logs
 class LogMetadata {
-  // World information
   final WorldInfo? world;
 
-  // List of players in the world
   final List<Player> players;
 
-  // Default constructor
   LogMetadata({this.world, this.players = const []});
 
-  // Create a LogMetadata from JSON
   factory LogMetadata.fromJson(Map<String, dynamic> json) {
     return LogMetadata(
       world:
@@ -146,7 +122,6 @@ class LogMetadata {
     );
   }
 
-  // Convert LogMetadata to JSON
   Map<String, dynamic> toJson() {
     return {
       if (world != null) 'world': world!.toJson(),

@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:developer' as developer;
 import 'package:path/path.dart' as path;
 import 'package:pasteboard/pasteboard.dart';
 import '../../../../data/models/photo_metadata.dart';
@@ -11,7 +10,6 @@ import '../../../../data/models/config_model.dart';
 import '../../../../data/repositories/photo_metadata_repository.dart';
 import '../../../../data/repositories/config_repository.dart';
 import '../../../../data/services/manual_upload_service.dart';
-import '../../../../data/services/photo_event_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/cached_image.dart';
 import '../../../widgets/photo_metadata_panel.dart';
@@ -117,6 +115,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
       if (mounted && galleryUrl != null) {
         await _loadCurrentMetadata();
         widget.onMetadataUpdated?.call();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Uploaded successfully!'),
@@ -286,7 +285,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                 right: 0,
                 child: Center(
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(32),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
@@ -295,10 +294,12 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                           vertical: 16,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(32),
+                          color: Colors.black.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.radiusCard,
+                          ),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.1),
+                            color: Colors.white.withValues(alpha: 0.1),
                           ),
                         ),
                         child: Column(
@@ -441,8 +442,9 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
-            IconButton(
-              icon: const _CircleIcon(icon: Icons.arrow_back_rounded),
+            _OverlayIconButton(
+              icon: Icons.arrow_back_rounded,
+              tooltip: 'Back',
               onPressed: () => Navigator.pop(context),
             ),
             const SizedBox(width: 12),
@@ -466,7 +468,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                     Text(
                       dateStr,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
+                        color: AppTheme.secondaryTextColor,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -489,15 +491,15 @@ class _ActionPod extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(AppTheme.radiusControl),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            color: Colors.black.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: children),
         ),
@@ -532,8 +534,9 @@ class _PodButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
+          mouseCursor: SystemMouseCursors.click,
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppTheme.radiusControl),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             padding: EdgeInsets.symmetric(horizontal: label != null ? 14 : 10),
@@ -541,9 +544,9 @@ class _PodButton extends StatelessWidget {
             decoration: BoxDecoration(
               color:
                   isActive
-                      ? (activeColor ?? Colors.white.withOpacity(0.12))
+                      ? (activeColor ?? Colors.white.withValues(alpha: 0.12))
                       : Colors.transparent,
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -556,7 +559,7 @@ class _PodButton extends StatelessWidget {
                       color:
                           isActive
                               ? Colors.white
-                              : Colors.white.withOpacity(0.8),
+                              : Colors.white.withValues(alpha: 0.8),
                       size: 20,
                     ),
                     if (badge != null && badge! > 0)
@@ -589,7 +592,7 @@ class _PodButton extends StatelessWidget {
                       color:
                           isActive
                               ? Colors.white
-                              : Colors.white.withOpacity(0.8),
+                              : Colors.white.withValues(alpha: 0.8),
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -604,42 +607,48 @@ class _PodButton extends StatelessWidget {
   }
 }
 
-class _CircleIcon extends StatelessWidget {
+class _OverlayIconButton extends StatefulWidget {
   final IconData icon;
-  final Color? color;
-  final int? badge;
+  final String tooltip;
+  final VoidCallback onPressed;
 
-  const _CircleIcon({required this.icon, this.color, this.badge});
+  const _OverlayIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  State<_OverlayIconButton> createState() => _OverlayIconButtonState();
+}
+
+class _OverlayIconButtonState extends State<_OverlayIconButton> {
+  bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: (color ?? Colors.black).withAlpha(150),
-        shape: BoxShape.circle,
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Icon(icon, color: Colors.white, size: 20),
-          if (badge != null && badge! > 0)
-            Positioned(
-              top: -4,
-              right: -4,
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  '$badge',
-                  style: const TextStyle(fontSize: 8, color: Colors.white),
-                ),
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.onPressed,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.black.withAlpha(_isHovered ? 200 : 150),
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+              border: Border.all(
+                color: Colors.white.withAlpha(_isHovered ? 40 : 20),
               ),
             ),
-        ],
+            child: Icon(widget.icon, color: Colors.white, size: 20),
+          ),
+        ),
       ),
     );
   }
@@ -676,13 +685,13 @@ class _NavigationRegionState extends State<_NavigationRegion> {
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F0F0F).withOpacity(0.45),
+                    color: const Color(0xFF0F0F0F).withValues(alpha: 0.45),
                     shape: BoxShape.circle,
                     border: Border.all(
                       color:
                           _isHovered
-                              ? Colors.white.withOpacity(0.15)
-                              : Colors.white.withOpacity(0.08),
+                              ? Colors.white.withValues(alpha: 0.15)
+                              : Colors.white.withValues(alpha: 0.08),
                     ),
                     boxShadow: const [
                       BoxShadow(
@@ -699,7 +708,7 @@ class _NavigationRegionState extends State<_NavigationRegion> {
                     decoration: BoxDecoration(
                       color:
                           _isHovered
-                              ? Colors.white.withOpacity(0.1)
+                              ? Colors.white.withValues(alpha: 0.1)
                               : Colors.transparent,
                       shape: BoxShape.circle,
                     ),

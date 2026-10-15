@@ -1,4 +1,5 @@
 import 'dart:developer' as developer;
+import 'core/image/image_cache_service.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -15,7 +16,6 @@ import 'presentation/widgets/app_wrapper.dart';
 import 'core/services/windows_service.dart';
 import 'core/services/linux_service.dart';
 
-// Command line arguments
 class AppArgs {
   static const String startMinimized = '--start-minimized';
 
@@ -26,15 +26,14 @@ class AppArgs {
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  ImageCacheService.applyMemoryLimits();
   FlutterForegroundTask.initCommunicationPort();
 
-  // Ensure single instance on Windows
   if (Platform.isWindows) {
     await WindowsSingleInstance.ensureSingleInstance(
       args,
       "GalleVR-app",
       onSecondWindow: (args) {
-        // When a second instance is launched, bring the existing window to front
         developer.log(
           'Second instance detected with args: $args',
           name: 'GalleVRApp',
@@ -75,8 +74,8 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
   bool _isLoading = true;
   bool _showOnboarding = true;
 
-  // Local visibility notifier for Android
   final ValueNotifier<bool> _mobileHidden = ValueNotifier<bool>(false);
+  final FocusNode _keyboardFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -84,13 +83,11 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _initializeApp();
 
-    // The window visibility is now handled at the native level
-    // If the app is starting minimized, show a notification after a delay
     if ((Platform.isWindows || Platform.isLinux) &&
         AppArgs.hasStartMinimized(widget.args)) {
       developer.log('App configured to start minimized', name: 'GalleVRApp');
 
-      // Show a notification after a delay to ensure the app is fully initialized
+      // Wait for startup to finish before showing the tray notification.
       Future.delayed(Duration(seconds: 2), () async {
         try {
           if (Platform.isWindows) {
@@ -141,9 +138,7 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
           'Mobile app resumed: Restoring UI tree and re-establishing caches...',
           name: 'GalleVRApp',
         );
-        PaintingBinding.instance.imageCache.maximumSize = 1000;
-        PaintingBinding.instance.imageCache.maximumSizeBytes =
-            100 << 20; // 100 MB
+        ImageCacheService.applyMemoryLimits();
         _mobileHidden.value = false;
       }
     }
@@ -176,7 +171,6 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    // Create the main app content
     if (_isLoading) {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -219,7 +213,6 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
     Widget home =
         _showOnboarding ? const OnboardingScreen() : const HomeScreen();
 
-    // Identify the active visibility notifier based on environment
     final ValueListenable<bool> visibilityNotifier =
         Platform.isWindows
             ? WindowsService().isHidden
@@ -241,7 +234,7 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
 
           return AppWrapper(
             child: KeyboardListener(
-              focusNode: FocusNode(),
+              focusNode: _keyboardFocusNode,
               autofocus: true,
               onKeyEvent: (keyEvent) async {
                 if (keyEvent is KeyDownEvent) {
@@ -312,48 +305,8 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _keyboardFocusNode.dispose();
+    _mobileHidden.dispose();
     super.dispose();
-  }
-}
-
-class _LoadingScreen extends StatelessWidget {
-  const _LoadingScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.transparent,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withAlpha(38),
-                    blurRadius: 30,
-                    spreadRadius: 5,
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Image.asset(
-                  'assets/images/square.png',
-                  width: 80,
-                  height: 80,
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const CircularProgressIndicator(),
-          ],
-        ),
-      ),
-    );
   }
 }

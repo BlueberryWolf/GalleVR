@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:flutter/painting.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -13,6 +14,29 @@ class ImageCacheService {
   }
 
   ImageCacheService._internal();
+
+  static const int _defaultMaxImages = 24;
+  static const int _defaultMaxBytes = 16 << 20;
+
+  static void applyMemoryLimits() {
+    PaintingBinding.instance.imageCache
+      ..maximumSize = _defaultMaxImages
+      ..maximumSizeBytes = _defaultMaxBytes;
+  }
+
+  static void fitToVisible({
+    required int count,
+    required double bytesPerImage,
+  }) {
+    final cache = PaintingBinding.instance.imageCache;
+    final maxBytes = (count * bytesPerImage).ceil();
+    if (cache.maximumSize == count && cache.maximumSizeBytes == maxBytes) {
+      return;
+    }
+    cache
+      ..maximumSize = count
+      ..maximumSizeBytes = maxBytes;
+  }
 
   Directory? _cacheDir;
 

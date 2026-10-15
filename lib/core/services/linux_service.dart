@@ -1,19 +1,17 @@
 import 'dart:async';
+import '../image/image_cache_service.dart';
 import 'dart:developer' as developer;
 import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/foundation.dart';
 
 import 'notification_service.dart';
 
-/// Service for Linux-specific functionality
 class LinuxService {
   static const String _windowChannelName = 'gallevr/window';
   final MethodChannel _windowChannel = const MethodChannel(_windowChannelName);
@@ -25,10 +23,9 @@ class LinuxService {
   bool _isInitialized = false;
   bool _minimizeToTray = true;
 
-  // State broadcaster indicating if the UI window is hidden
+  /// True while the window is hidden, so the widget tree can be torn down.
   final ValueNotifier<bool> isHidden = ValueNotifier<bool>(false);
 
-  // Singleton instance
   static final LinuxService _instance = LinuxService._internal();
 
   factory LinuxService() {
@@ -37,7 +34,6 @@ class LinuxService {
 
   LinuxService._internal();
 
-  /// Initialize the Linux service
   Future<void> initialize({
     required bool minimizeToTray,
     String? appTitle,
@@ -47,7 +43,6 @@ class LinuxService {
     try {
       _minimizeToTray = minimizeToTray;
 
-      // Initialize notification service
       try {
         await _notificationService.initialize();
         developer.log('Notification service initialized', name: 'LinuxService');
@@ -58,10 +53,8 @@ class LinuxService {
         );
       }
 
-      // Initialize system tray
       await _initSystemTray(appTitle ?? 'GalleVR');
 
-      // Set up window event channel handler
       _setupWindowEventChannel();
 
       _isInitialized = true;
@@ -85,7 +78,6 @@ class LinuxService {
 
       await _systemTray.initSystemTray(title: appTitle, iconPath: iconPath);
 
-      // Create system tray menu
       final menu = Menu();
       await menu.buildFrom([
         MenuItemLabel(
@@ -111,7 +103,6 @@ class LinuxService {
 
       await _systemTray.setContextMenu(menu);
 
-      // Handle system tray events
       _systemTray.registerSystemTrayEventHandler((eventName) {
         developer.log('System tray event: $eventName', name: 'LinuxService');
         if (eventName == kSystemTrayEventClick) {
@@ -176,8 +167,7 @@ class LinuxService {
     _appWindow.show();
     isHidden.value = false;
 
-    PaintingBinding.instance.imageCache.maximumSize = 1000;
-    PaintingBinding.instance.imageCache.maximumSizeBytes = 100 << 20; // 100 MB
+    ImageCacheService.applyMemoryLimits();
   }
 
   Future<void> hideWindow({bool showNotification = false}) async {
@@ -267,9 +257,7 @@ class LinuxService {
           'Window restored: Restoring UI tree...',
           name: 'LinuxService',
         );
-        PaintingBinding.instance.imageCache.maximumSize = 1000;
-        PaintingBinding.instance.imageCache.maximumSizeBytes =
-            100 << 20; // 100 MB
+        ImageCacheService.applyMemoryLimits();
         isHidden.value = false;
       }
 

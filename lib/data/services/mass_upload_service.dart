@@ -51,16 +51,22 @@ class MassUploadService {
         );
       }
 
-      final isResonitePhoto = (metadata.application == 'Resonite') ||
+      final isResonitePhoto =
+          (metadata.application == 'Resonite') ||
           (config.resonitePhotosDirectory.isNotEmpty &&
               path.isWithin(config.resonitePhotosDirectory, filePath));
 
       final authData = await _vrchatService.loadAuthData();
       final secondaryAuth = await _vrchatService.loadAuthDataSecondary();
 
-      final uploadAuth = isResonitePhoto
-          ? (authData?.userId.startsWith('U-') == true ? authData : secondaryAuth)
-          : (authData?.userId.startsWith('U-') == false ? authData : secondaryAuth);
+      final uploadAuth =
+          isResonitePhoto
+              ? (authData?.userId.startsWith('U-') == true
+                  ? authData
+                  : secondaryAuth)
+              : (authData?.userId.startsWith('U-') == false
+                  ? authData
+                  : secondaryAuth);
 
       if (uploadAuth == null) {
         return MassUploadResult.error(
@@ -68,7 +74,8 @@ class MassUploadService {
         );
       }
 
-      final badges = uploadAuth.badges.map((b) => b.toString().toLowerCase()).toList();
+      final badges =
+          uploadAuth.badges.map((b) => b.toString().toLowerCase()).toList();
 
       final webpPath = await PhotoProcessorService().compressPhotoToWebP(
         filePath,
@@ -90,7 +97,9 @@ class MassUploadService {
       );
 
       if (success) {
-        final updated = await _photoMetadataRepository.getPhotoMetadataForFile(filePath);
+        final updated = await _photoMetadataRepository.getPhotoMetadataForFile(
+          filePath,
+        );
         return MassUploadResult.success(updated ?? metadata);
       } else {
         return MassUploadResult.error('Upload failed');

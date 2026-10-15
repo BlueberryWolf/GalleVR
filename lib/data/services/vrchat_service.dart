@@ -15,13 +15,12 @@ import '../models/photo_metadata.dart';
 import '../models/log_metadata.dart';
 import '../../core/isolate/isolate_worker_pool.dart';
 
-// Service for interacting with the VRChat API
 class VRChatService {
   late final VrchatDart _api;
 
   bool _isInitialized = false;
 
-  // Cache for verification checks (5-minute TTL)
+  /// Cached for 5 minutes.
   static final Map<String, bool> _cachedIsVerifiedMap = {};
   static final Map<String, DateTime> _lastVerificationCheckMap = {};
 
@@ -1185,7 +1184,6 @@ List<PhotoMetadata> _parsePhotosTask(String jsonBody) {
           }
 
           final photoId = json['id'] as String?;
-          final userId = json['userId'] as String?;
           String? resolvedUrl = json['url'] as String?;
 
           if (photoId != null) {

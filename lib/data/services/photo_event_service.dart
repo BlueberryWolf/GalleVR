@@ -1,71 +1,54 @@
 import 'dart:async';
 
-// Class to represent an error event with detailed information
 class PhotoErrorEvent {
-  // The error type
   final String type;
 
-  // The error message
   final String message;
 
-  // The related photo path, if any
   final String? photoPath;
 
-  // The timestamp of the event
   final DateTime timestamp;
 
-  // Constructor
   PhotoErrorEvent({
     required this.type,
     required this.message,
     this.photoPath,
     DateTime? timestamp,
-  }) : this.timestamp = timestamp ?? DateTime.now();
+  }) : timestamp = timestamp ?? DateTime.now();
 }
 
-// Service for broadcasting photo-related events across the app
 class PhotoEventService {
-  // Singleton instance
   static final PhotoEventService _instance = PhotoEventService._internal();
 
-  // Factory constructor to return the singleton instance
   factory PhotoEventService() {
     return _instance;
   }
 
-  // Private constructor for singleton
   PhotoEventService._internal();
 
-  // History of the last 100 events to prevent desync when UI is unmounted (minimized)
+  /// Last 100 events, so the monitor can catch up after being unmounted.
   final List<PhotoErrorEvent> _history = [];
 
-  // Public getter to retrieve history
   List<PhotoErrorEvent> get history => List.unmodifiable(_history);
 
-  // Stream controller for photo added events
+  void clearHistory() => _history.clear();
+
   final _photoAddedController = StreamController<String>.broadcast();
 
-  // Stream controller for error events
   final _errorController = StreamController<PhotoErrorEvent>.broadcast();
 
-  // Stream controller for photo uploaded events
   final _photoUploadedController = StreamController<String>.broadcast();
 
-  // Stream of photo added events
   Stream<String> get photoAdded => _photoAddedController.stream;
 
-  // Stream of photo uploaded events
   Stream<String> get photoUploaded => _photoUploadedController.stream;
 
-  // Stream of error events
   Stream<PhotoErrorEvent> get errors => _errorController.stream;
 
-  // Notify that a new photo has been added
   void notifyPhotoAdded(String photoPath) {
     _photoAddedController.add(photoPath);
   }
 
-  // Notify about an error
   void notifyError(String type, String message, {String? photoPath}) {
     final event = PhotoErrorEvent(
       type: type,
@@ -73,7 +56,6 @@ class PhotoEventService {
       photoPath: photoPath,
     );
 
-    // Save to persistent history
     _history.insert(0, event);
     if (_history.length > 100) {
       _history.removeLast();
@@ -82,12 +64,10 @@ class PhotoEventService {
     _errorController.add(event);
   }
 
-  // Notify that a photo has been uploaded successfully
   void notifyPhotoUploaded(String photoPath) {
     _photoUploadedController.add(photoPath);
   }
 
-  // Dispose resources
   void dispose() {
     _photoAddedController.close();
     _photoUploadedController.close();

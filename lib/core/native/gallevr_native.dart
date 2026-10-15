@@ -4,7 +4,6 @@ import 'package:ffi/ffi.dart';
 import 'package:path/path.dart' as path;
 import 'dart:developer' as developer;
 
-// FFI signatures
 typedef ExtractVrcxMetadataNative =
     ffi.Pointer<Utf8> Function(ffi.Pointer<Utf8> filePath);
 typedef ExtractVrcxMetadataDart =

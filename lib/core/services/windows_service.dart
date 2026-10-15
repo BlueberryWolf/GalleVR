@@ -1,10 +1,10 @@
 import 'dart:async';
+import '../image/image_cache_service.dart';
 import 'dart:developer' as developer;
 import 'dart:ffi';
 import 'dart:io';
 
-import 'package:flutter/services.dart'
-    show MethodChannel, BasicMessageChannel, StringCodec;
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:win32_registry/win32_registry.dart';
@@ -13,7 +13,6 @@ import 'package:flutter/foundation.dart';
 
 import 'notification_service.dart';
 
-/// Service for Windows-specific functionality
 class WindowsService {
   static const String _startupRegistryPath =
       r'Software\Microsoft\Windows\CurrentVersion\Run';
@@ -29,26 +28,22 @@ class WindowsService {
   bool _isInitialized = false;
   bool _minimizeToTray = true;
 
-  // State broadcaster indicating if the UI window is hidden (for widget tree virtualization)
+  /// True while the window is hidden, so the widget tree can be torn down.
   final ValueNotifier<bool> isHidden = ValueNotifier<bool>(false);
 
-  // Callback to handle clean exit when minimizeToTray is disabled
+  /// Called on close when minimize to tray is off.
   Future<void> Function()? onCloseRequest;
 
-  // Singleton instance
   static final WindowsService _instance = WindowsService._internal();
 
-  // Factory constructor to return the singleton instance
   factory WindowsService() {
     return _instance;
   }
 
-  // Private constructor
   WindowsService._internal() {
     _setupWindowEventChannel();
   }
 
-  /// Initialize the Windows service
   Future<void> initialize({
     required bool minimizeToTray,
     String? appTitle,
@@ -58,7 +53,6 @@ class WindowsService {
     try {
       _minimizeToTray = minimizeToTray;
 
-      // Initialize notification service for Windows
       if (Platform.isWindows) {
         try {
           await _notificationService.initialize();
@@ -74,10 +68,8 @@ class WindowsService {
         }
       }
 
-      // Initialize system tray
       await _initSystemTray(appTitle ?? 'GalleVR');
 
-      // Sync minimize to tray setting with native C++ runner
       await _windowChannel.invokeMethod('updateMinimizeToTray', minimizeToTray);
 
       _isInitialized = true;
@@ -90,10 +82,8 @@ class WindowsService {
     }
   }
 
-  /// Initialize the system tray
   Future<void> _initSystemTray(String appTitle) async {
     try {
-      // Set up system tray icon and menu
       final iconPath =
           Platform.isWindows
               ? 'assets/images/app_icon.ico'
@@ -106,7 +96,6 @@ class WindowsService {
 
       await _systemTray.initSystemTray(title: appTitle, iconPath: iconPath);
 
-      // Create system tray menu
       final menu = Menu();
       await menu.buildFrom([
         MenuItemLabel(
@@ -121,7 +110,6 @@ class WindowsService {
         MenuItemLabel(
           label: 'Exit',
           onClicked: (menuItem) {
-            // Clean up before exiting
             developer.log(
               'Exiting application from system tray',
               name: 'WindowsService',
@@ -131,31 +119,27 @@ class WindowsService {
         ),
       ]);
 
-      // Set system tray menu
       await _systemTray.setContextMenu(menu);
 
-      // Set tooltip to indicate the app is running
       await _systemTray.setToolTip('GalleVR is running');
 
-      // Handle system tray events
       _systemTray.registerSystemTrayEventHandler((eventName) {
         developer.log('System tray event: $eventName', name: 'WindowsService');
         if (eventName == kSystemTrayEventClick) {
-          // Left click shows the app on Windows, context menu on macOS
+          // Left click shows the app on Windows, the context menu on macOS.
           if (Platform.isWindows) {
             showWindow();
           } else {
             _systemTray.popUpContextMenu();
           }
         } else if (eventName == kSystemTrayEventRightClick) {
-          // Right click shows the context menu on Windows, app on macOS
+          // Right click shows the context menu on Windows, the app on macOS.
           if (Platform.isWindows) {
             _systemTray.popUpContextMenu();
           } else {
             showWindow();
           }
         } else if (eventName == kSystemTrayEventDoubleClick) {
-          // Double click shows the app
           showWindow();
         }
       });
@@ -169,14 +153,12 @@ class WindowsService {
     }
   }
 
-  /// Update the minimize to tray setting
   void updateMinimizeToTray(bool minimizeToTray) {
     _minimizeToTray = minimizeToTray;
     _windowChannel.invokeMethod('updateMinimizeToTray', minimizeToTray);
   }
 
-  /// Handle window close event
-  /// Returns true if the app should be minimized to tray instead of closed
+  /// Returns true when the window was minimized to tray instead of closed.
   Future<bool> handleWindowClose({bool forceExit = false}) async {
     if (!Platform.isWindows || !_isInitialized) return false;
 
@@ -209,19 +191,16 @@ class WindowsService {
     return false;
   }
 
-  /// Exit the application completely
   Future<void> exitApplication() async {
     developer.log('Exiting application', name: 'WindowsService');
 
     if (_isInitialized) {
       try {
-        // Try to clean up system tray resources before exiting
         developer.log(
           'Cleaning up system tray before exit',
           name: 'WindowsService',
         );
 
-        // Hide the window first
         _appWindow.hide();
 
         await _systemTray
@@ -252,7 +231,6 @@ class WindowsService {
 
     try {
       if (Platform.isAndroid || Platform.isIOS) {
-        // Try to stop any foreground tasks that might be running
         developer.log('Stopping any foreground tasks', name: 'WindowsService');
         await FlutterForegroundTask.stopService().timeout(
           const Duration(milliseconds: 100),
@@ -265,14 +243,11 @@ class WindowsService {
       );
     }
 
-    // Force exit the application using a more aggressive approach
     developer.log('Force terminating process', name: 'WindowsService');
 
-    // Use exit code 0 for normal exit
     exit(0);
   }
 
-  /// Check if the app is set to start with Windows
   Future<bool> isStartWithWindowsEnabled() async {
     if (!Platform.isWindows) return false;
 
@@ -282,7 +257,6 @@ class WindowsService {
         path: _startupRegistryPath,
       );
 
-      // Check if our app key exists in the startup registry
       bool exists = false;
       for (final value in key.values) {
         if (value.name == _appRegistryKey) {
@@ -302,7 +276,6 @@ class WindowsService {
     }
   }
 
-  /// Set whether the app should start with Windows
   Future<bool> setStartWithWindows(bool enabled) async {
     if (!Platform.isWindows) return false;
 
@@ -314,20 +287,16 @@ class WindowsService {
       );
 
       if (enabled) {
-        // Get the executable path
         final exePath = Platform.resolvedExecutable;
 
-        // Add the --start-minimized flag to the startup command
         final startupCommand = '$exePath --start-minimized';
 
-        // Add the app to startup registry with the start minimized flag
         key.createValue(RegistryValue.string(_appRegistryKey, startupCommand));
         developer.log(
           'Added app to Windows startup with minimized flag',
           name: 'WindowsService',
         );
       } else {
-        // Remove the app from startup registry
         for (final value in key.values) {
           if (value.name == _appRegistryKey) {
             key.deleteValue(_appRegistryKey);
@@ -351,16 +320,13 @@ class WindowsService {
     }
   }
 
-  /// Show the application window
   Future<void> showWindow() async {
     if (!Platform.isWindows || !_isInitialized) return;
 
     try {
       developer.log('Restoring application window...', name: 'WindowsService');
 
-      PaintingBinding.instance.imageCache.maximumSize = 1000;
-      PaintingBinding.instance.imageCache.maximumSizeBytes =
-          100 << 20; // 100 MB
+      ImageCacheService.applyMemoryLimits();
 
       isHidden.value = false;
 
@@ -372,7 +338,6 @@ class WindowsService {
     }
   }
 
-  /// Hide the application window
   Future<void> hideWindow({bool showNotification = false}) async {
     if (!Platform.isWindows || !_isInitialized) return;
 
@@ -384,13 +349,10 @@ class WindowsService {
 
       _appWindow.hide();
 
-      // Perform immediate deep memory reclamation now that we are fully hidden
       await trimMemory();
 
-      // Update the tooltip to inform the user that the app is still running
       await _systemTray.setToolTip('GalleVR is running in the background');
 
-      // Show a notification if requested
       if (showNotification) {
         await _showMinimizedNotification();
       }
@@ -399,7 +361,7 @@ class WindowsService {
     }
   }
 
-  /// Performs deep memory reclamation for the application.
+  /// Releases cached memory while the window is hidden.
   Future<void> trimMemory() async {
     if (!Platform.isWindows) return;
 
@@ -435,7 +397,6 @@ class WindowsService {
     }
   }
 
-  /// Show a notification that the app is minimized to tray
   Future<void> _showMinimizedNotification() async {
     if (!Platform.isWindows) {
       await _systemTray.setToolTip('GalleVR is running in the background');
@@ -446,7 +407,6 @@ class WindowsService {
     await _systemTray.setToolTip('GalleVR is running in the background');
   }
 
-  /// Show a notification that the app started minimized
   Future<void> showStartMinimizedNotification() async {
     if (!Platform.isWindows) {
       await _systemTray.setToolTip('GalleVR is running in the background');
@@ -457,7 +417,6 @@ class WindowsService {
     await _systemTray.setToolTip('GalleVR is running in the background');
   }
 
-  /// Dispose the Windows service
   void dispose() {
     if (!Platform.isWindows || !_isInitialized) return;
 
@@ -475,7 +434,6 @@ class WindowsService {
     }
   }
 
-  /// Set up the window event channel to listen for window events from native code
   void _setupWindowEventChannel() {
     _windowChannel.setMethodCallHandler((call) async {
       developer.log(
@@ -520,8 +478,7 @@ class WindowsService {
           'Window restored: Restoring UI tree and re-establishing image caches...',
           name: 'WindowsService',
         );
-        PaintingBinding.instance.imageCache.maximumSize = 1000;
-        PaintingBinding.instance.imageCache.maximumSizeBytes = 100 << 20;
+        ImageCacheService.applyMemoryLimits();
         isHidden.value = false;
       }
 

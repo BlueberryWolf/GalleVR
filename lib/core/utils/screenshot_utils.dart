@@ -1,11 +1,8 @@
 import 'dart:io';
 import 'package:path/path.dart' as path;
-import 'dart:developer' as developer;
 
-/// Consolidated utility functions for screenshots
 class ScreenshotUtils {
-  // VRChat screenshot filename regex
-  // Pattern: VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT.png
+  /// Matches VRChat screenshot filenames: `VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT.png`.
   static final RegExp vrchatScreenshotPattern = RegExp(
     r'^VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}_\d+x\d+\.png$',
   );
@@ -15,7 +12,10 @@ class ScreenshotUtils {
     return vrchatScreenshotPattern.hasMatch(filename);
   }
 
-  static String translatePlatformPath(String inputPath, String configPhotosDirectory) {
+  static String translatePlatformPath(
+    String inputPath,
+    String configPhotosDirectory,
+  ) {
     if ((Platform.isLinux || Platform.isMacOS) && inputPath.contains(r'\')) {
       final photosDirName = path.basename(configPhotosDirectory);
       const pathSeparator = r'\';
@@ -54,7 +54,7 @@ class ScreenshotUtils {
           }
           lastSize = length;
         } catch (_) {
-          // File might be locked or not fully created
+          // The file might be locked or not fully written yet.
         }
       }
       await Future.delayed(interval);

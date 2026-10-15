@@ -32,6 +32,7 @@ analyzer:
     - "**/*.freezed.dart"
     - "**/*.mocks.dart"
     - "lib/generated/**"
+    - "packages/**"
   errors:
     # Treat info level issues as warnings to catch them early
     todo: warning

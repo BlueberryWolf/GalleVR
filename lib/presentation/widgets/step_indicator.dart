@@ -2,15 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-// A widget that displays a horizontal step indicator
 class StepIndicator extends StatelessWidget {
-  // List of step labels
   final List<String> steps;
 
-  // Current active step (0-based)
   final int currentStep;
 
-  // Default constructor
   const StepIndicator({
     super.key,
     required this.steps,
@@ -21,7 +17,6 @@ class StepIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: List.generate(steps.length * 2 - 1, (index) {
-        // Even indices are step indicators, odd indices are connectors
         if (index.isEven) {
           final stepIndex = index ~/ 2;
           final isActive = stepIndex <= currentStep;
@@ -34,30 +29,34 @@ class StepIndicator extends StatelessWidget {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: isActive ? AppTheme.primaryColor : Colors.grey.shade700,
+                    color:
+                        isActive ? AppTheme.primaryColor : Colors.grey.shade700,
                     shape: BoxShape.circle,
-                    border: isCurrentStep
-                        ? Border.all(
-                            color: AppTheme.primaryLightColor,
-                            width: 2,
-                          )
-                        : null,
-                    boxShadow: isActive
-                        ? [
-                            BoxShadow(
-                              color: AppTheme.primaryColor.withAlpha(77),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ]
-                        : null,
+                    border:
+                        isCurrentStep
+                            ? Border.all(
+                              color: AppTheme.primaryLightColor,
+                              width: 2,
+                            )
+                            : null,
+                    boxShadow:
+                        isActive
+                            ? [
+                              BoxShadow(
+                                color: AppTheme.primaryColor.withAlpha(77),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                            : null,
                   ),
                   child: Center(
                     child: Text(
                       '${stepIndex + 1}',
                       style: TextStyle(
                         color: Colors.white,
-                        fontWeight: isCurrentStep ? FontWeight.bold : FontWeight.normal,
+                        fontWeight:
+                            isCurrentStep ? FontWeight.bold : FontWeight.normal,
                       ),
                     ),
                   ),
@@ -68,7 +67,8 @@ class StepIndicator extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: isActive ? Colors.white : Colors.grey,
-                    fontWeight: isCurrentStep ? FontWeight.bold : FontWeight.normal,
+                    fontWeight:
+                        isCurrentStep ? FontWeight.bold : FontWeight.normal,
                     fontSize: 12,
                   ),
                 ),
