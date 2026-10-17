@@ -1,112 +1,40 @@
-**GalleVR** is your VRChat social gallery. Link with VRChat, follow friends, comment on photos, and share your favourite VR moments. Unlimited photo storage is **completely free**, and all photos are private by default until you choose to share. Built entirely by me, for the community. Sharing the app and small donations help me keep making it better!
-
 <div align="center">
-<img src="https://github.com/user-attachments/assets/56d8355c-022f-4518-bee0-401667ac11a4" alt="logo" width="300" />
+<img src="https://github.com/user-attachments/assets/56d8355c-022f-4518-bee0-401667ac11a4" alt="GalleVR logo" width="300" />
 </div>
 
-<div align="center">
-<img src="https://img.shields.io/badge/Followers-Follow%20friends-green?style=for-the-badge" />
-<img src="https://img.shields.io/badge/Commenting-Talk%20on%20photos-orange?style=for-the-badge" />
-<img src="https://img.shields.io/badge/Unlimited%20Storage-For%20free!-red?style=for-the-badge" />
-<img src="https://img.shields.io/badge/Private%20by%20Default-You%20control%20photos-purple?style=for-the-badge" />
-</div>
+This is the **GalleVR companion app**. It uploads your VRChat photos to [gallevr.app](https://gallevr.app), where you can browse, search, and share them.
 
-<div align="center">
+> [gallevr-overview.webm](https://github.com/user-attachments/assets/238effc0-8d60-4493-ba27-326dcdf5d585)
 
-### **TLDR:** Free unlimited VRChat photo storage, sorting, profiles, followers, commenting, sharing, cross-platform, all private by default, built solo by me.
+Keep it running while you play and it picks up new screenshots as you take them. It reads VRChat's logs to tag each photo with the world you were in and the people who were there, then adds it to your private gallery. Storage is free and unlimited. It runs on Windows, Linux, Quest, and Pico.
 
-> Think of it as your personal VR gallery, but automatically neat, easily shared, and with charm. Works on **Windows**, **Quest**, **Pico**, and the Web.
+It's light enough to forget about: it uses around 100 MB of RAM with the window open, and under 10 MB when it's minimized, so it won't compete with VRChat for resources.
 
-</div>
+On [gallevr.app](https://gallevr.app), your photos are sorted by world and by who was there, so you can search a friend's name and find every moment you spent together. Everything stays private until you choose to share it. When you do, you can make a profile, post to the community feed, put together public galleries, follow friends to see their latest photos, and comment on each other's photos.
 
------
+## Getting started
 
-## Why GalleVR?
+1. Download the version for your platform from the [releases page](https://github.com/BlueberryWolf/GalleVR/releases), or get it on Quest from the [Meta Horizon Store](https://www.meta.com/experiences/gallevr/35314674911480097/).
+2. Open it and link your VRChat account. There's no separate GalleVR account to make.
+3. Take photos in VRChat as usual. They'll appear on [gallevr.app](https://gallevr.app).
 
-Scrolling through hundreds of VRChat screenshots was a pain, and navigating photos in VR was... not fun. I made GalleVR to solve that. Now you can browse, share, and interact with your VR memories, all with GalleVR.
+The [setup guide](https://gallevr.app/setup) covers each platform in more detail.
 
-It's a **solo project**, so every feature is made by me with the community in mind. Unlimited storage is my way of saying thanks for being part of it. If you like the app, sharing it or supporting development really helps me keep building!
+## Why it exists
 
------
+My Pictures folder had thousands of loose VRChat screenshots, and Explorer froze every time I opened it. I wrote a small uploader to keep them safe in one place, then started reading VRChat's logs to tag worlds and players, and it grew into GalleVR from there. It's a one-person project; there's more about it on the [about page](https://gallevr.app/about).
 
-## Features
+## Privacy
 
-  * **Profiles & Followers**: With your profile, follow friends, see their VR adventures, and show off your favourite moments!
-  * **Social Feed**: Check out what your friends are up to and discover new moments from the community.
-  * **Commenting**: Talk about moments right on the photos.
-  * **Auto-sorting**: By world, friends, and soon: events.
-  * **Private by default**: You control your photos.
-  * **Smart tagging**: Find photos instantly.
-  * **Cross-device support**: Use the native app or web version.
-  * **Galleries & customization**: Curate collections, show favourites, and personalize your profile.
-  * Works on **Windows**, **Linux**, **Quest**, **Pico**, and **Web**.
+Photos are private until you choose to share them. The full privacy policy is at [gallevr.app/privacy](https://gallevr.app/privacy).
 
------
+## Support
 
-## Two Ways to Use
+GalleVR has no ads. If you'd like to help with ongoing costs, a donation or a word to friends goes a long way:
 
-### Native App (Windows, Linux, Quest & Pico)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FF813F?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/BlueberryWolfi)
 
-Manage local photos, sync online, and browse offline.
+## Code Signing Policy
 
-> [silly2.webm](https://github.com/user-attachments/assets/7af1b7a3-a5d7-424c-9fdd-b938540e852b)
-
-### Web Platform
-
-Check photos, manage galleries, share moments, and update your profile from anywhere. The web version is your social hub for the feed and smart galleries.
-
-> [silly.webm](https://github.com/user-attachments/assets/3908a093-b31c-43fb-9837-ee0899f6a0e4)
-
------
-
-## Photo Privacy & Safety
-
-All photos are **private by default**. You choose what to share, and who gets to see it.
-
-  * **Privacy Policy:** You can view our full privacy policy **[here](https://gallevr.app/privacy)**.
-
------
-
-## Download / Get Started
-
-1.  Go to the [releases page](https://github.com/BlueberryWolf/GalleVR/releases)
-2.  Download the version for your platform
-3.  Install and run. Setup is quick!
-4.  Visit [gallevr.app](https://gallevr.app) to browse and share your VR memories
-
------
-
-## Support / Donations
-
-GalleVR is **100% free**. No ads, no hidden fees.
-
-If you enjoy the app, sharing it with friends or supporting development with a donation helps me keep adding features:
-
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FF813F?style=for-the-badge\&logo=ko-fi\&logoColor=white)](https://ko-fi.com/BlueberryWolfi)
-
-
-Every contribution helps me improve the app and keep your VR memories safe and social!
-
------
-
-## Cool stuffs
-
-  * No extra account needed: verify/link your VRChat account
-  * Built with Flutter: no resource-hogging webview in VR
-  * Open source and community-friendly
-  * **Solo project**: every feature is by me
-
------
-
-## Credits & Compliance
-
-  * Made entirely by me, for the VRChat community
-  * Inspired by the need for a **simple, private, and social VR gallery**
-
-### 🛡️ Code Signing Policy
-  * **Authors/Reviewers:** [BlueberryWolf](https://github.com/BlueberryWolf)
-  * **Approvers:** [BlueberryWolf](https://github.com/BlueberryWolf)
-
------
-
-**GalleVR is still growing, so why not try it? If you like it, tell your friends! Every new user helps keep it alive!**
+- **Authors/Reviewers:** [BlueberryWolf](https://github.com/BlueberryWolf)
+- **Approvers:** [BlueberryWolf](https://github.com/BlueberryWolf)
