@@ -281,6 +281,7 @@ class PhotosScreenState extends State<PhotosScreen> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
+        allowSnapshotting: false,
         builder:
             (context) => PhotoDetailView(
               photos: widget.controller.value.allPhotos,

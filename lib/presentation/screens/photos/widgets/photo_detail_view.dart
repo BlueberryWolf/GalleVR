@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:pasteboard/pasteboard.dart';
+import '../../../../core/image/image_cache_service.dart';
 import '../../../../data/models/photo_metadata.dart';
 import '../../../../data/models/config_model.dart';
 import '../../../../data/repositories/photo_metadata_repository.dart';
@@ -59,10 +60,21 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final window = MediaQuery.sizeOf(context);
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final bytesPerPhoto =
+        (window.width * dpr * 2) * (window.height * dpr * 2) * 4;
+    ImageCacheService.reserve(count: 3, bytes: (bytesPerPhoto * 3).ceil());
+  }
+
+  @override
   void dispose() {
     _metadataDebounceTimer?.cancel();
     _pageController.dispose();
     _loadedPaths.forEach(CachedImage.evictOriginal);
+    ImageCacheService.reserve(count: 0, bytes: 0);
     super.dispose();
   }
 

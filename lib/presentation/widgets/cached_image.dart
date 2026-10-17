@@ -114,12 +114,16 @@ class _CachedImageState extends State<CachedImage> {
       return LayoutBuilder(
         builder: (context, constraints) {
           final dpr = MediaQuery.devicePixelRatioOf(context);
+          final window = MediaQuery.sizeOf(context);
           final maxW = widget.width ?? constraints.maxWidth;
           final maxH = widget.height ?? constraints.maxHeight;
           final size =
-              maxW.isFinite && maxH.isFinite
-                  ? ((maxW * dpr * 2).round(), (maxH * dpr * 2).round())
-                  : (0, 0);
+              window.isEmpty
+                  ? (0, 0)
+                  : (
+                    (window.width * dpr * 2).round(),
+                    (window.height * dpr * 2).round(),
+                  );
           final provider = CachedImage._originalProviders
               .putIfAbsent(widget.filePath, () => {})
               .putIfAbsent(size, () {

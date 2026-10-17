@@ -17,25 +17,42 @@ class ImageCacheService {
 
   static const int _defaultMaxImages = 24;
   static const int _defaultMaxBytes = 16 << 20;
+  static int _baseCount = _defaultMaxImages;
+  static int _baseBytes = _defaultMaxBytes;
+  static int _reservedCount = 0;
+  static int _reservedBytes = 0;
 
   static void applyMemoryLimits() {
-    PaintingBinding.instance.imageCache
-      ..maximumSize = _defaultMaxImages
-      ..maximumSizeBytes = _defaultMaxBytes;
+    _baseCount = _defaultMaxImages;
+    _baseBytes = _defaultMaxBytes;
+    _apply();
   }
 
   static void fitToVisible({
     required int count,
     required double bytesPerImage,
   }) {
+    _baseCount = count;
+    _baseBytes = (count * bytesPerImage).ceil();
+    _apply();
+  }
+
+  static void reserve({required int count, required int bytes}) {
+    _reservedCount = count;
+    _reservedBytes = bytes;
+    _apply();
+  }
+
+  static void _apply() {
     final cache = PaintingBinding.instance.imageCache;
-    final maxBytes = (count * bytesPerImage).ceil();
-    if (cache.maximumSize == count && cache.maximumSizeBytes == maxBytes) {
+    final count = _baseCount + _reservedCount;
+    final bytes = _baseBytes + _reservedBytes;
+    if (cache.maximumSize == count && cache.maximumSizeBytes == bytes) {
       return;
     }
     cache
       ..maximumSize = count
-      ..maximumSizeBytes = maxBytes;
+      ..maximumSizeBytes = bytes;
   }
 
   Directory? _cacheDir;
