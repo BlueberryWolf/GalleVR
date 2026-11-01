@@ -201,34 +201,8 @@ class PhotoMetadataRepository {
               )
               .toList();
 
-      if (legacyKeys.isEmpty) return;
-
-      final backup = <String, Object>{};
-      for (final key in allKeys) {
-        if (!key.startsWith(_photoMetadataKeyPrefix) && key != _photoIdsKey) {
-          final value = _prefs!.get(key);
-          if (value != null) {
-            backup[key] = value;
-          }
-        }
-      }
-
-      await _prefs!.clear();
-
-      for (final entry in backup.entries) {
-        final k = entry.key;
-        final v = entry.value;
-        if (v is bool) {
-          _prefs!.setBool(k, v);
-        } else if (v is String) {
-          _prefs!.setString(k, v);
-        } else if (v is int) {
-          _prefs!.setInt(k, v);
-        } else if (v is double) {
-          _prefs!.setDouble(k, v);
-        } else if (v is List<String>) {
-          _prefs!.setStringList(k, v);
-        }
+      for (final key in legacyKeys) {
+        await _prefs!.remove(key);
       }
     } catch (e) {
       developer.log('routine error: $e', name: 'PhotoMetadataRepository');

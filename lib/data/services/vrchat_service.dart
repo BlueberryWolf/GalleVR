@@ -581,10 +581,13 @@ class VRChatService {
           name: 'VRChatService',
         );
 
-        final statusResult = await checkVerificationStatus(
-          authData,
-          forceRefresh: true,
-        );
+        bool statusResult = false;
+        try {
+          statusResult = await checkVerificationStatus(
+            authData,
+            forceRefresh: true,
+          );
+        } catch (_) {}
         if (statusResult) {
           verificationSuccessful = true;
           break;
@@ -749,15 +752,17 @@ class VRChatService {
         }
 
         return isVerified;
-      } else if (response.statusCode >= 500) {
-        throw Exception(
-          'Server error checking verification status: ${response.statusCode}',
-        );
+      } else if (response.statusCode == 401 ||
+          response.statusCode == 403 ||
+          response.statusCode == 404) {
+        _cachedIsVerifiedMap.remove(userId);
+        _lastVerificationCheckMap.remove(userId);
+        return false;
       }
 
-      _cachedIsVerifiedMap.remove(userId);
-      _lastVerificationCheckMap.remove(userId);
-      return false;
+      throw Exception(
+        'Unexpected response checking verification status: ${response.statusCode}',
+      );
     } catch (e) {
       developer.log(
         'Error checking verification status: $e',
