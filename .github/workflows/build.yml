@@ -10,6 +10,8 @@ jobs:
   build-windows:
     name: Build Windows Inno Setup Installer
     runs-on: windows-2022
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
 
     steps:
       - name: Checkout repository
@@ -103,7 +105,7 @@ jobs:
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
       - name: Build Android release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --target-platform android-arm64
         env:
           ANDROID_KEYSTORE_PATH: "release.keystore"
           ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
@@ -122,6 +124,9 @@ jobs:
   build-linux:
     name: Build Linux Release Bundle
     runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: content
+      CCACHE_SLOPPINESS: time_macros
 
     steps:
       - name: Checkout repository

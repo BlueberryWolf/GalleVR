@@ -33,6 +33,10 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 add_definitions(-DUNICODE -D_UNICODE)
 if(MSVC)
   add_compile_options(/MP)
+  set(CMAKE_VS_GLOBALS
+    "UseMultiToolTask=true"
+    "EnforceProcessCountAcrossBuilds=true"
+  )
 endif()
 
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)
