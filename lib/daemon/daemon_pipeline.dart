@@ -21,6 +21,8 @@ import 'daemon_storage.dart';
 class DaemonPipeline {
   static const String _verifyStatusEndpoint =
       'https://api.gallevr.app/vrchat/verify/status';
+  static const String _authMeEndpoint =
+      'https://api.gallevr.app/vrchat/auth/me';
   static const String _tosStatusEndpoint =
       'https://api.gallevr.app/vrchat/tos/status';
 
@@ -40,8 +42,8 @@ class DaemonPipeline {
   final List<Map<String, dynamic>> _eventHistory = [];
 
   bool _isWatching = false;
-  bool? _cachedNeedsToAcceptTOS;
-  DateTime? _lastTOSCheck;
+  final Map<String, DateTime> _verifiedCache = {};
+  final Map<String, DateTime> _tosAcceptedCache = {};
 
   DaemonPipeline({
     required DaemonStorage storage,
@@ -70,6 +72,8 @@ class DaemonPipeline {
   }
 
   Future<void> reloadConfig() async {
+    _verifiedCache.clear();
+    _tosAcceptedCache.clear();
     final nextConfig = await _storage.loadConfig();
     final prev = _config;
     _config = nextConfig;
@@ -476,31 +480,45 @@ class DaemonPipeline {
     AuthData authData, {
     required bool isSecondary,
   }) async {
+    final cacheKey = '${authData.userId}:${authData.accessKey}';
+    final now = DateTime.now();
+    final lastVerified = _verifiedCache[cacheKey];
+    if (lastVerified != null &&
+        now.difference(lastVerified) < const Duration(minutes: 5)) {
+      return true;
+    }
+
     try {
       final resp = await http
           .get(
-            Uri.parse('$_verifyStatusEndpoint?user=${Uri.encodeComponent(authData.userId)}'),
-            headers: {'Authorization': 'Bearer ${authData.accessKey}'},
+            Uri.parse(
+              '$_verifyStatusEndpoint/${Uri.encodeComponent(authData.userId)}',
+            ),
+            headers: {
+              'Authorization': 'Bearer ${authData.accessKey}',
+              'Accept': 'application/json',
+            },
           )
           .timeout(const Duration(seconds: 10));
-      if (resp.statusCode != 200) return false;
+      if (resp.statusCode == 401 ||
+          resp.statusCode == 403 ||
+          resp.statusCode == 404) {
+        _verifiedCache.remove(cacheKey);
+        return false;
+      }
+      if (resp.statusCode != 200) return true;
       final decoded = json.decode(resp.body) as Map<String, dynamic>;
-      final verified = decoded['verified'] == true;
+      final verified =
+          decoded['status'] == 'verified' || decoded['verified'] == true;
       if (verified) {
-        final rawBadges = decoded['badges'];
-        final badges =
-            rawBadges is List
-                ? rawBadges.map((b) => b.toString()).toList()
-                : authData.badges;
-        final updated = AuthData(
-          accessKey: authData.accessKey,
-          userId: authData.userId,
-          displayName: decoded['displayName'] as String? ?? authData.displayName,
-          avatarUrl: decoded['avatarUrl'] as String? ?? authData.avatarUrl,
-          badges: badges,
-          ageVerified: decoded['ageVerified'] as bool? ?? authData.ageVerified,
+        _verifiedCache[cacheKey] = now;
+        await _refreshProfileFromMe(
+          authData,
+          isSecondary: isSecondary,
+          fallbackAgeVerified: decoded['ageVerified'] as bool?,
         );
-        await _storage.saveAuthData(updated, secondary: isSecondary);
+      } else {
+        _verifiedCache.remove(cacheKey);
       }
       return verified;
     } catch (_) {
@@ -508,11 +526,57 @@ class DaemonPipeline {
     }
   }
 
+  Future<void> _refreshProfileFromMe(
+    AuthData authData, {
+    required bool isSecondary,
+    bool? fallbackAgeVerified,
+  }) async {
+    try {
+      final resp = await http
+          .get(
+            Uri.parse('$_authMeEndpoint?cache=false'),
+            headers: {
+              'Authorization': 'Bearer ${authData.accessKey}',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
+      if (resp.statusCode != 200) return;
+      final decoded = json.decode(resp.body) as Map<String, dynamic>;
+      final rawBadges = decoded['badges'];
+      final badges =
+          rawBadges is List
+              ? rawBadges.map((b) => b.toString()).toList()
+              : authData.badges;
+      final updated = AuthData(
+        accessKey: authData.accessKey,
+        userId: authData.userId,
+        displayName:
+            decoded['displayName'] as String? ??
+            decoded['name'] as String? ??
+            authData.displayName,
+        avatarUrl:
+            decoded['avatarUrl'] as String? ??
+            decoded['pfp'] as String? ??
+            authData.avatarUrl,
+        badges: badges,
+        ageVerified:
+            decoded['ageVerified'] as bool? ??
+            fallbackAgeVerified ??
+            authData.ageVerified,
+      );
+      if (updated != authData) {
+        await _storage.saveAuthData(updated, secondary: isSecondary);
+      }
+    } catch (_) {}
+  }
+
   Future<bool> _needsToAcceptTOS(AuthData authData) async {
+    final cacheKey = '${authData.userId}:${authData.accessKey}';
     final now = DateTime.now();
-    if (_cachedNeedsToAcceptTOS == false &&
-        _lastTOSCheck != null &&
-        now.difference(_lastTOSCheck!) < const Duration(minutes: 5)) {
+    final lastAccepted = _tosAcceptedCache[cacheKey];
+    if (lastAccepted != null &&
+        now.difference(lastAccepted) < const Duration(minutes: 5)) {
       return false;
     }
     try {
@@ -526,8 +590,9 @@ class DaemonPipeline {
         final decoded = json.decode(resp.body) as Map<String, dynamic>;
         final needs = decoded['needsToAccept'] == true;
         if (!needs) {
-          _cachedNeedsToAcceptTOS = false;
-          _lastTOSCheck = now;
+          _tosAcceptedCache[cacheKey] = now;
+        } else {
+          _tosAcceptedCache.remove(cacheKey);
         }
         return needs;
       }
@@ -564,7 +629,7 @@ class DaemonPipeline {
       if (!isVerified) {
         _recordEvent(
           'upload',
-          'Account ${uploadAuth.displayName} is not verified. Please verify your account in the Account tab',
+          'Account ${uploadAuth.displayName ?? uploadAuth.userId} is not verified. Please verify your account in the Account tab',
           photoPath: originalPath,
         );
         return;
