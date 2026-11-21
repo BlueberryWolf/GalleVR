@@ -97,11 +97,23 @@ class _BlurrableQrCodeState extends State<BlurrableQrCode> {
                         child: Center(
                           child: ElevatedButton.icon(
                             onPressed: _toggleVisibility,
-                            icon: const Icon(Icons.visibility),
+                            icon: const Icon(Icons.visibility_rounded, size: 18),
                             label: const Text('Reveal QR Code'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.black87,
+                              backgroundColor: const Color(0xE616161E),
                               foregroundColor: Colors.white,
+                              side: const BorderSide(
+                                color: AppTheme.buttonBorderColor,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.radiusControl,
+                                ),
+                              ),
                             ),
                           ),
                         ),

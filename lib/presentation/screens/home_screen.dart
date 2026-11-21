@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'monitor_screen.dart';
@@ -6,10 +7,10 @@ import 'account_screen.dart';
 import 'settings_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/refresh_button.dart';
+import '../widgets/tinted_button.dart';
 import '../widgets/walkthrough_dialog.dart';
 import '../controllers/photos_controller.dart';
 import '../../data/services/photo_upload_service.dart';
-import 'dart:io';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.initialTabIndex = 0});
@@ -47,31 +48,35 @@ class _HomeScreenState extends State<HomeScreen>
         icon: Icons.photo_library_rounded,
         label: 'Photos',
         screen: PhotosScreen(controller: _photosController),
-        iconColor: AppTheme.accentPink,
+        iconColor: AppTheme.iconPhotos,
+        headerAccent: AppTheme.iconPhotos,
       ),
       _NavItem(
         icon: Icons.monitor_rounded,
         label: 'Monitor',
         screen: const MonitorScreen(),
-        iconColor: AppTheme.accentCyan,
+        iconColor: AppTheme.iconFeed,
+        headerAccent: AppTheme.iconFeed,
       ),
       _NavItem(
         icon: Icons.account_circle_rounded,
         label: 'Account',
         screen: const AccountScreen(),
-        iconColor: AppTheme.successColor,
+        iconColor: AppTheme.iconPlayers,
+        headerAccent: AppTheme.iconPlayers,
       ),
       _NavItem(
         icon: Icons.settings_rounded,
         label: 'Settings',
         screen: const SettingsScreen(),
-        iconColor: AppTheme.secondaryTextColor,
+        iconColor: AppTheme.iconSettings,
+        headerAccent: AppTheme.brandPurple,
       ),
     ];
 
     _fadeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 180),
     );
 
     _fadeAnimation = Tween<double>(
@@ -119,6 +124,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
 
     return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
       bottomNavigationBar: isSmallScreen ? _buildBottomNavBar(context) : null,
       body: Row(
         children: [
@@ -155,10 +161,10 @@ class _HomeScreenState extends State<HomeScreen>
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
       decoration: BoxDecoration(
-        color: AppTheme.tint(AppTheme.warningColor, 0.12),
+        color: AppTheme.tint(AppTheme.warningColor, 0.10),
         border: Border(
           bottom: BorderSide(
-            color: AppTheme.warningColor.withValues(alpha: 0.3),
+            color: AppTheme.warningColor.withValues(alpha: 0.30),
           ),
         ),
       ),
@@ -175,21 +181,19 @@ class _HomeScreenState extends State<HomeScreen>
               'curl is not installed on your system. GalleVR will use a slower fallback uploader.',
               style: TextStyle(
                 color: AppTheme.textColor,
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          IconButton(
-            icon: const Icon(
-              Icons.close_rounded,
-              size: 16,
-              color: AppTheme.secondaryTextColor,
-            ),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            onPressed: () {
+          const SizedBox(width: 12),
+          _GhostIconButton(
+            icon: Icons.close_rounded,
+            iconSize: 18,
+            size: 32,
+            color: AppTheme.secondaryTextColor,
+            tooltip: 'Dismiss',
+            onTap: () {
               setState(() {
                 _showCurlWarning = false;
               });
@@ -201,191 +205,142 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildHeader(bool isSmallScreen) {
+    final current = _navItems[_currentIndex];
+
     return Container(
-      height: 70,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceBase,
+      height: isSmallScreen ? 56 : 64,
+      padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 16 : 28),
+      decoration: const BoxDecoration(
+        color: AppTheme.chromeColor,
         border: Border(
-          bottom: BorderSide(color: AppTheme.cardBorderColor, width: 1),
+          bottom: BorderSide(color: AppTheme.headerBorderColor, width: 1),
         ),
       ),
       child: Row(
         children: [
           if (isSmallScreen)
             Container(
-              height: 40,
-              width: 40,
+              height: 32,
+              width: 32,
               margin: const EdgeInsets.only(right: 12),
               child: Image.asset(
                 'assets/images/square.png',
                 fit: BoxFit.contain,
               ),
             ),
-
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildHeaderTitle(isSmallScreen),
-              if (!isSmallScreen) _buildHeaderSubtext(),
-            ],
-          ),
-
-          const Spacer(),
-
-          if (!isSmallScreen) ...[
-            if (_navItems[_currentIndex].label == 'Photos')
-              ValueListenableBuilder<PhotosState>(
-                valueListenable: _photosController,
-                builder: (context, state, child) {
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildSelectButton(state),
-                      const SizedBox(width: 12),
-                      RefreshButton(
-                        isLoading: state.isLoading,
-                        onTap: () => _photosController.refresh(forceSync: true),
-                        tooltip: 'Refresh Photos',
-                      ),
-                      const SizedBox(width: 12),
-                      _HelpButton(
+          Expanded(child: _buildHeaderTitle(current, isSmallScreen)),
+          if (current.label == 'Photos')
+            ValueListenableBuilder<PhotosState>(
+              valueListenable: _photosController,
+              builder: (context, state, child) {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildSelectButton(state, isSmallScreen),
+                    const SizedBox(width: 8),
+                    RefreshButton(
+                      isLoading: state.isLoading,
+                      onTap: () => _photosController.refresh(forceSync: true),
+                      tooltip: 'Refresh Photos',
+                    ),
+                    if (!isSmallScreen) ...[
+                      const SizedBox(width: 4),
+                      _GhostIconButton(
+                        icon: Icons.help_outline_rounded,
+                        tooltip: 'Show Walkthrough',
                         onTap:
                             () => WalkthroughDialog.showIfRequired(
                               context,
                               force: true,
                             ),
-                        tooltip: 'Show Walkthrough',
                       ),
                     ],
-                  );
-                },
-              ),
-          ],
+                  ],
+                );
+              },
+            ),
         ],
       ),
     );
   }
 
-  static const Map<String, (List<Color>, IconData, String)> _sectionHeaders = {
-    'Photos': (
-      [AppTheme.primaryColor, AppTheme.primaryLightColor],
-      Icons.photo_library_rounded,
-      'Browse your VR photos',
-    ),
-    'Monitor': (
-      [AppTheme.accentCyan, Color(0xFF8CC7F6)],
-      Icons.monitor_rounded,
-      'Track background activity',
-    ),
-    'Account': (
-      [AppTheme.successColor, Color(0xFF22C55E)],
-      Icons.account_circle_rounded,
-      'Manage your account details',
-    ),
-    'Settings': (
-      [AppTheme.brandPurple, AppTheme.brandPurpleDeep],
-      Icons.settings_rounded,
-      'Customize your GalleVR experience',
-    ),
-  };
-
-  Widget _buildHeaderTitle(bool isSmallScreen) {
-    final label = _navItems[_currentIndex].label;
-    final section = _sectionHeaders[label];
-    final fontSize = isSmallScreen ? 20.0 : 24.0;
-    final textStyle = TextStyle(
+  Widget _buildHeaderTitle(_NavItem item, bool isSmallScreen) {
+    final fontSize = isSmallScreen ? 20.0 : 26.0;
+    final baseStyle = TextStyle(
       fontSize: fontSize,
-      fontWeight: FontWeight.w700,
+      fontWeight: FontWeight.w800,
       letterSpacing: fontSize * -0.025,
-      height: 1.2,
+      height: 1.15,
       color: AppTheme.textColor,
     );
 
-    if (section == null) return Text(label, style: textStyle);
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('Your ', style: textStyle),
-        ShaderMask(
-          blendMode: BlendMode.srcIn,
-          shaderCallback:
-              (bounds) => LinearGradient(
-                colors: section.$1,
-              ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
-          child: Text(label, style: textStyle),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHeaderSubtext() {
-    final section = _sectionHeaders[_navItems[_currentIndex].label];
-    if (section == null) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 2),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+    return Text.rich(
+      TextSpan(
+        style: baseStyle,
         children: [
-          Icon(section.$2, size: 14, color: section.$1.first),
-          const SizedBox(width: 6),
-          Text(
-            section.$3,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: AppTheme.secondaryTextColor,
-            ),
+          const TextSpan(text: 'Your '),
+          TextSpan(
+            text: item.label,
+            style: TextStyle(color: item.headerAccent),
           ),
         ],
       ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 
-  Widget _buildSelectButton(PhotosState state) {
+  Widget _buildSelectButton(PhotosState state, bool isSmallScreen) {
     final isSelectionMode = state.isSelectionMode;
     final color = isSelectionMode ? AppTheme.errorColor : AppTheme.brandPurple;
-    return SizedBox(
-      height: 44,
-      child: ElevatedButton.icon(
+
+    if (isSmallScreen) {
+      return TintedButton(
         onPressed: _photosController.toggleSelectionMode,
-        icon: Icon(
+        label: isSelectionMode ? 'Cancel' : 'Select',
+        color: color,
+        icon:
+            isSelectionMode
+                ? Icons.close_rounded
+                : Icons.library_add_check_outlined,
+        height: 40,
+        dense: true,
+      );
+    }
+
+    return TintedButton(
+      onPressed: _photosController.toggleSelectionMode,
+      label: isSelectionMode ? 'Cancel' : 'Select',
+      color: color,
+      icon:
           isSelectionMode
               ? Icons.close_rounded
               : Icons.library_add_check_outlined,
-          size: 18,
-        ),
-        label: Text(isSelectionMode ? 'Cancel' : 'Select'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.tint(color, 0.22),
-          foregroundColor: Colors.white,
-          side: BorderSide(color: color.withValues(alpha: 0.35)),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-        ),
-      ),
+      height: 44,
     );
   }
 
   Widget _buildDesktopSidebar() {
     return RepaintBoundary(
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
+        duration: const Duration(milliseconds: 220),
+        curve: const Cubic(0.25, 0.1, 0.25, 1.0),
         width: _isSidebarCollapsed ? 70 : 250,
         decoration: const BoxDecoration(
-          color: AppTheme.surfaceBase,
-          border: Border(right: BorderSide(color: AppTheme.cardBorderColor)),
+          color: AppTheme.chromeColor,
+          border: Border(
+            right: BorderSide(color: AppTheme.sidebarBorderColor, width: 1),
+          ),
         ),
         child: Column(
           children: [
             _buildSidebarHeader(),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 children: _buildNavItems(),
               ),
             ),
@@ -399,10 +354,10 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildBottomNavBar(BuildContext context) {
     return RepaintBoundary(
       child: Container(
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceBase,
+        decoration: const BoxDecoration(
+          color: AppTheme.chromeColor,
           border: Border(
-            top: BorderSide(color: AppTheme.cardBorderColor, width: 1),
+            top: BorderSide(color: AppTheme.headerBorderColor, width: 1),
           ),
         ),
         height: 60,
@@ -423,13 +378,14 @@ class _HomeScreenState extends State<HomeScreen>
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            item.icon,
-                            color:
-                                isSelected
-                                    ? AppTheme.primaryColor
-                                    : item.iconColor,
-                            size: 24,
+                          AnimatedScale(
+                            scale: isSelected ? 1.1 : 1.0,
+                            duration: const Duration(milliseconds: 180),
+                            child: Icon(
+                              item.icon,
+                              color: item.iconColor,
+                              size: 22,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
@@ -438,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen>
                               fontSize: 12,
                               fontWeight:
                                   isSelected
-                                      ? FontWeight.w600
+                                      ? FontWeight.w700
                                       : FontWeight.w500,
                               color:
                                   isSelected
@@ -460,88 +416,72 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildSidebarHeader() {
-    const double collapsedLogoSize = 48;
-    const double expandedLogoSize = 70;
-
-    return Container(
+    return SizedBox(
       height: 100,
-      padding: EdgeInsets.zero,
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppTheme.cardBorderColor, width: 1),
-        ),
-      ),
-      child: Center(
-        child: SizedBox(
-          width: _isSidebarCollapsed ? 70 : 200,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              AnimatedOpacity(
-                opacity: _isSidebarCollapsed ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 280),
-                  curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
-                  ),
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    height: expandedLogoSize,
-                    fit: BoxFit.contain,
-                  ),
-                ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AnimatedOpacity(
+            opacity: _isSidebarCollapsed ? 0.0 : 1.0,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Image.asset(
+                'assets/images/logo.png',
+                height: 64,
+                fit: BoxFit.contain,
               ),
-
-              AnimatedOpacity(
-                opacity: _isSidebarCollapsed ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 280),
-                  curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.all(8),
-                  child: Image.asset(
-                    'assets/images/square.png',
-                    height: collapsedLogoSize,
-                    width: collapsedLogoSize,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+          AnimatedOpacity(
+            opacity: _isSidebarCollapsed ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            child: Image.asset(
+              'assets/images/square.png',
+              height: 48,
+              width: 48,
+              fit: BoxFit.contain,
+            ),
+          ),
+          const Positioned(
+            bottom: 0,
+            left: 16,
+            right: 16,
+            child: Divider(height: 1, color: Color(0x1AFFFFFF)),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildSidebarToggle() {
-    return Container(
-      height: 60,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: AppTheme.cardBorderColor, width: 1),
+    return Stack(
+      children: [
+        const Positioned(
+          top: 0,
+          left: 16,
+          right: 16,
+          child: Divider(height: 1, color: Color(0x1AFFFFFF)),
         ),
-      ),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: InkWell(
-          mouseCursor: SystemMouseCursors.click,
-          borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-          onTap: _toggleSidebar,
-          child: AnimatedRotation(
-            turns: _isSidebarCollapsed ? 0.0 : 0.5,
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeOutCubic,
-            child: const Icon(Icons.chevron_right, size: 20),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          child: _SidebarNavTile(
+            icon:
+                _isSidebarCollapsed
+                    ? Icons.chevron_right_rounded
+                    : Icons.chevron_left_rounded,
+            iconColor: AppTheme.secondaryTextColor,
+            label: _isSidebarCollapsed ? 'Expand' : 'Collapse',
+            isSelected: false,
+            isCollapsed: _isSidebarCollapsed,
+            height: 44,
+            tooltip: _isSidebarCollapsed ? 'Expand sidebar' : null,
+            onTap: _toggleSidebar,
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -552,52 +492,15 @@ class _HomeScreenState extends State<HomeScreen>
       final isSelected = index == _currentIndex;
 
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            mouseCursor: SystemMouseCursors.click,
-            onTap: () => _selectNavItem(index),
-            hoverColor: AppTheme.buttonHoverColor,
-            borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 280),
-              curve: Curves.easeOutCubic,
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: isSelected ? AppTheme.buttonColor : Colors.transparent,
-                borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    item.icon,
-                    color: isSelected ? AppTheme.primaryColor : item.iconColor,
-                    size: isSelected ? 24 : 22,
-                  ),
-                  if (!_isSidebarCollapsed) ...[
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        item.label,
-                        style: TextStyle(
-                          fontWeight:
-                              isSelected ? FontWeight.w700 : FontWeight.w600,
-                          color:
-                              isSelected
-                                  ? AppTheme.textColor
-                                  : AppTheme.secondaryTextColor,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
+        padding: const EdgeInsets.only(bottom: 6),
+        child: _SidebarNavTile(
+          icon: item.icon,
+          iconColor: item.iconColor,
+          label: item.label,
+          isSelected: isSelected,
+          isCollapsed: _isSidebarCollapsed,
+          tooltip: _isSidebarCollapsed ? item.label : null,
+          onTap: () => _selectNavItem(index),
         ),
       );
     }).toList();
@@ -613,6 +516,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (index == _currentIndex) return;
 
     _fadeController.reverse().then((_) {
+      if (!mounted) return;
       setState(() {
         _currentIndex = index;
         _builtTabs.add(index);
@@ -622,38 +526,176 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
+class _SidebarNavTile extends StatefulWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final bool isSelected;
+  final bool isCollapsed;
+  final double height;
+  final String? tooltip;
+  final VoidCallback onTap;
+
+  const _SidebarNavTile({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.isSelected,
+    required this.isCollapsed,
+    required this.onTap,
+    this.height = 48,
+    this.tooltip,
+  });
+
+  @override
+  State<_SidebarNavTile> createState() => _SidebarNavTileState();
+}
+
+class _SidebarNavTileState extends State<_SidebarNavTile> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final bgColor =
+        widget.isSelected
+            ? AppTheme.buttonColor
+            : _isHovered
+            ? AppTheme.buttonHoverColor
+            : Colors.transparent;
+
+    final textColor =
+        widget.isSelected
+            ? AppTheme.textColor
+            : _isHovered
+            ? AppTheme.bodyTextColor
+            : AppTheme.secondaryTextColor;
+
+    final tile = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          height: widget.height,
+          padding: const EdgeInsets.symmetric(horizontal: 5),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: Center(
+                  child: AnimatedScale(
+                    scale: (widget.isSelected || _isHovered) ? 1.1 : 1.0,
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOut,
+                    child: Icon(widget.icon, color: widget.iconColor, size: 22),
+                  ),
+                ),
+              ),
+              if (!widget.isCollapsed) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    widget.label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight:
+                          widget.isSelected ? FontWeight.w700 : FontWeight.w600,
+                      color: textColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (widget.tooltip != null) {
+      return Tooltip(message: widget.tooltip!, child: tile);
+    }
+    return tile;
+  }
+}
+
 class _NavItem {
   final IconData icon;
   final String label;
   final Widget screen;
   final Color iconColor;
+  final Color headerAccent;
 
   _NavItem({
     required this.icon,
     required this.label,
     required this.screen,
     required this.iconColor,
+    required this.headerAccent,
   });
 }
 
-class _HelpButton extends StatelessWidget {
+class _GhostIconButton extends StatefulWidget {
+  final IconData icon;
   final VoidCallback onTap;
   final String tooltip;
+  final double size;
+  final double iconSize;
+  final Color color;
 
-  const _HelpButton({required this.onTap, required this.tooltip});
+  const _GhostIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+    this.size = 44,
+    this.iconSize = 20,
+    this.color = AppTheme.textColor,
+  });
+
+  @override
+  State<_GhostIconButton> createState() => _GhostIconButtonState();
+}
+
+class _GhostIconButtonState extends State<_GhostIconButton> {
+  bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: onTap,
-      tooltip: tooltip,
-      icon: const Icon(Icons.help_outline_rounded, size: 20),
-      style: IconButton.styleFrom(
-        fixedSize: const Size(44, 44),
-        backgroundColor: AppTheme.buttonColor,
-        hoverColor: AppTheme.buttonHoverColor,
-        foregroundColor: AppTheme.textColor,
-        side: const BorderSide(color: AppTheme.buttonBorderColor),
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            width: widget.size,
+            height: widget.size,
+            decoration: BoxDecoration(
+              color: _isHovered ? AppTheme.buttonHoverColor : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              widget.icon,
+              size: widget.iconSize,
+              color: _isHovered ? AppTheme.textColor : widget.color,
+            ),
+          ),
+        ),
       ),
     );
   }

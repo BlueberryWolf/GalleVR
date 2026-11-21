@@ -13,6 +13,7 @@ import '../../data/models/verification_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_switch.dart';
+import '../widgets/tinted_button.dart';
 
 class MonitorScreen extends StatefulWidget {
   const MonitorScreen({super.key});
@@ -362,52 +363,77 @@ class _MonitorScreenState extends State<MonitorScreen> {
     if (isConfigMissing) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 48),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.settings_suggest_rounded,
-                size: 48,
-                color: AppTheme.secondaryTextColor,
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: AppCard(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.settings_suggest_rounded,
+                    size: 44,
+                    color: AppTheme.iconFeed,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Configuration Incomplete',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textColor,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    missingMessage,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppTheme.secondaryTextColor,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Configuration Incomplete',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                missingMessage,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.secondaryTextColor,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+            ),
           ),
         ),
       );
     }
 
-    return ListView(
-      padding: EdgeInsets.symmetric(
-        horizontal: max(16.0, (MediaQuery.sizeOf(context).width - 1100) / 2),
-        vertical: 16,
-      ),
-      children: [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final horizontalPad =
+            width < 600 ? 16.0 : max(28.0, (width - 1200) / 2);
+
+        return ListView(
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPad,
+            vertical: width < 600 ? 16 : 24,
+          ),
+          children: [
         _buildStatusCard(),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          padding: const EdgeInsets.only(bottom: 10),
           child: Row(
             children: [
+              const Icon(
+                Icons.history_rounded,
+                size: 20,
+                color: AppTheme.iconFeed,
+              ),
+              const SizedBox(width: 8),
               const Text(
                 'Activity',
                 style: TextStyle(
                   color: AppTheme.textColor,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(width: 8),
@@ -416,6 +442,8 @@ class _MonitorScreenState extends State<MonitorScreen> {
                 style: const TextStyle(
                   color: AppTheme.secondaryTextColor,
                   fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  fontFeatures: [FontFeature.tabularFigures()],
                 ),
               ),
               const Spacer(),
@@ -426,13 +454,13 @@ class _MonitorScreenState extends State<MonitorScreen> {
                 style: TextButton.styleFrom(
                   foregroundColor: AppTheme.secondaryTextColor,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
+                    horizontal: 12,
+                    vertical: 8,
                   ),
                   minimumSize: Size.zero,
                   textStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -441,6 +469,8 @@ class _MonitorScreenState extends State<MonitorScreen> {
         ),
         _buildEventList(),
       ],
+    );
+      },
     );
   }
 
@@ -461,66 +491,84 @@ class _MonitorScreenState extends State<MonitorScreen> {
         _isWatching ? AppTheme.successColor : AppTheme.secondaryTextColor;
 
     return AppCard(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Wrap(
+            spacing: 16,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            alignment: WrapAlignment.spaceBetween,
             children: [
-              Icon(
-                _isWatching
-                    ? Icons.visibility_outlined
-                    : Icons.visibility_off_outlined,
-                color: statusColor,
-                size: 22,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  _isWatching ? 'Watching for new photos' : 'Not watching',
-                  style: const TextStyle(
-                    color: AppTheme.textColor,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _isWatching
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    color: statusColor,
+                    size: 24,
                   ),
-                ),
-              ),
-              const Text(
-                'Auto-upload',
-                style: TextStyle(
-                  color: AppTheme.secondaryTextColor,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(width: 10),
-              AppSwitch(
-                value: _config?.uploadEnabled ?? false,
-                onChanged: _config == null ? null : _setUploadEnabled,
-              ),
-              const SizedBox(width: 16),
-              OutlinedButton(
-                onPressed: _isWatching ? _stopWatching : _startWatching,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
+                  const SizedBox(width: 12),
+                  Text(
+                    _isWatching ? 'Watching for new photos' : 'Not watching',
+                    style: const TextStyle(
+                      color: AppTheme.textColor,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                child: Text(_isWatching ? 'Stop' : 'Start'),
+                ],
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Auto-upload',
+                    style: TextStyle(
+                      color: AppTheme.secondaryTextColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  AppSwitch(
+                    value: _config?.uploadEnabled ?? false,
+                    onChanged: _config == null ? null : _setUploadEnabled,
+                  ),
+                  const SizedBox(width: 16),
+                  _isWatching
+                      ? TintedButton.neutral(
+                        onPressed: _stopWatching,
+                        label: 'Stop',
+                        dense: true,
+                      )
+                      : TintedButton(
+                        onPressed: _startWatching,
+                        label: 'Start',
+                        color: AppTheme.successColor,
+                        dense: true,
+                      ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 16),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: AppTheme.surfaceBase,
               borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+              border: Border.all(color: AppTheme.cardBorderColor),
             ),
             child: Column(
               children: [
-                for (final (label, dir) in directories)
-                  _buildDirectoryRow(label, dir),
+                for (var i = 0; i < directories.length; i++) ...[
+                  if (i > 0)
+                    const Divider(height: 1, color: AppTheme.cardBorderColor),
+                  _buildDirectoryRow(directories[i].$1, directories[i].$2),
+                ],
               ],
             ),
           ),
@@ -540,7 +588,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
             : 'Not found';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
       child: Row(
         children: [
           SizedBox(
@@ -550,17 +598,21 @@ class _MonitorScreenState extends State<MonitorScreen> {
               style: const TextStyle(
                 color: AppTheme.secondaryTextColor,
                 fontSize: 14,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
-          Flexible(
+          Expanded(
             child: Text(
               directory.isEmpty ? '-' : directory,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AppTheme.textColor, fontSize: 14),
+              style: const TextStyle(
+                color: AppTheme.bodyTextColor,
+                fontSize: 14,
+              ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Icon(
             problem == null ? Icons.check_rounded : Icons.warning_amber_rounded,
             size: 16,
@@ -568,12 +620,12 @@ class _MonitorScreenState extends State<MonitorScreen> {
                 problem == null ? AppTheme.successColor : AppTheme.warningColor,
           ),
           if (problem != null) ...[
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             Text(
               problem,
               style: const TextStyle(
                 color: AppTheme.warningColor,
-                fontSize: 14,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -586,99 +638,111 @@ class _MonitorScreenState extends State<MonitorScreen> {
   Widget _buildEventList() {
     if (_events.isEmpty) {
       return const AppCard(
-        padding: EdgeInsets.symmetric(vertical: 32),
+        padding: EdgeInsets.symmetric(vertical: 40, horizontal: 24),
         child: Center(
-          child: Text(
-            'No activity yet',
-            style: TextStyle(color: AppTheme.secondaryTextColor, fontSize: 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.inbox_outlined,
+                size: 32,
+                color: AppTheme.secondaryTextColor,
+              ),
+              SizedBox(height: 10),
+              Text(
+                'No activity yet',
+                style: TextStyle(
+                  color: AppTheme.secondaryTextColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
         ),
       );
     }
 
     return AppCard(
-      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
-        children: [for (final event in _events) _buildEventItem(event)],
+        children: [
+          for (var i = 0; i < _events.length; i++) ...[
+            if (i > 0)
+              const Divider(height: 1, color: AppTheme.cardBorderColor),
+            _buildEventItem(_events[i]),
+          ],
+        ],
       ),
     );
   }
 
   Widget _buildEventItem(_ProcessingEvent event) {
     final (iconData, color) = switch (event.type) {
-      _EventType.error => (Icons.error_outline_rounded, AppTheme.errorColor),
+      _EventType.error => (Icons.error_outline_rounded, AppTheme.errorTextColor),
       _EventType.success => (
         Icons.check_circle_outline_rounded,
         AppTheme.successColor,
       ),
       _EventType.upload => (
         Icons.cloud_upload_outlined,
-        AppTheme.primaryLightColor,
+        AppTheme.iconWorld,
       ),
-      _EventType.photo => (Icons.photo_outlined, AppTheme.brandPurple),
+      _EventType.photo => (Icons.photo_outlined, AppTheme.iconPhotos),
       _EventType.info => (
         Icons.info_outline_rounded,
         AppTheme.secondaryTextColor,
       ),
     };
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6),
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          mouseCursor: SystemMouseCursors.click,
-          borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-          hoverColor: AppTheme.cardHoverColor,
-          onTap:
-              event.photoPath != null
-                  ? () => _showPhotoPreview(event.photoPath!)
-                  : null,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Text(
-                  _formatTimestamp(event.timestamp),
-                  style: const TextStyle(
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        mouseCursor:
+            event.photoPath != null
+                ? SystemMouseCursors.click
+                : SystemMouseCursors.basic,
+        hoverColor: AppTheme.cardHoverColor,
+        onTap:
+            event.photoPath != null
+                ? () => _showPhotoPreview(event.photoPath!)
+                : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Text(
+                _formatTimestamp(event.timestamp),
+                style: const TextStyle(
+                  color: AppTheme.secondaryTextColor,
+                  fontSize: 13,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Icon(iconData, color: color, size: 18),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  event.message,
+                  style: TextStyle(
+                    color:
+                        event.type == _EventType.error
+                            ? AppTheme.errorTextColor
+                            : AppTheme.bodyTextColor,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              if (event.photoPath != null)
+                const Padding(
+                  padding: EdgeInsets.only(left: 12),
+                  child: Icon(
+                    Icons.visibility_outlined,
+                    size: 16,
                     color: AppTheme.secondaryTextColor,
-                    fontSize: 13,
-                    fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 ),
-                const SizedBox(width: 14),
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: AppTheme.tint(color, 0.15),
-                    borderRadius: BorderRadius.circular(AppTheme.radiusTag),
-                  ),
-                  child: Icon(iconData, color: color, size: 16),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    event.message,
-                    style: TextStyle(
-                      color:
-                          event.type == _EventType.error
-                              ? AppTheme.errorColor
-                              : AppTheme.textColor,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-                if (event.photoPath != null)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 12),
-                    child: Icon(
-                      Icons.visibility_outlined,
-                      size: 16,
-                      color: AppTheme.secondaryTextColor,
-                    ),
-                  ),
-              ],
-            ),
+            ],
           ),
         ),
       ),
@@ -694,36 +758,68 @@ class _MonitorScreenState extends State<MonitorScreen> {
       context: context,
       builder:
           (context) => Dialog(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AppBar(
-                  title: Text(path.basename(photoPath)),
-                  automaticallyImplyLeading: false,
-                  actions: [
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.of(context).pop(),
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(24),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 900, maxHeight: 700),
+              decoration: AppTheme.modalDecoration,
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
                     ),
-                  ],
-                ),
-                Flexible(
-                  child: Image.file(
-                    File(photoPath),
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Padding(
-                        padding: EdgeInsets.all(48),
-                        child: Icon(
-                          Icons.broken_image_rounded,
-                          color: AppTheme.secondaryTextColor,
-                          size: 48,
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: AppTheme.cardBorderColor),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            path.basename(photoPath),
+                            style: const TextStyle(
+                              color: AppTheme.textColor,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      );
-                    },
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: AppTheme.secondaryTextColor,
+                            size: 20,
+                          ),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  Flexible(
+                    child: Image.file(
+                      File(photoPath),
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Padding(
+                          padding: EdgeInsets.all(48),
+                          child: Icon(
+                            Icons.broken_image_rounded,
+                            color: AppTheme.secondaryTextColor,
+                            size: 48,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
     );

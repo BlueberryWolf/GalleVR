@@ -32,28 +32,22 @@ class PhotoGridItem extends StatefulWidget {
     return RepaintBoundary(
       child: Container(
         decoration: BoxDecoration(
-          color: AppTheme.surfaceColor,
+          color: AppTheme.cardBackgroundColor,
           borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-          border: Border.all(color: AppTheme.cardBorderColor, width: 1.5),
+          border: Border.all(color: AppTheme.cardBorderColor),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppTheme.radiusCard),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Container(color: Colors.white.withValues(alpha: 0.05)),
+              Container(color: Colors.white.withValues(alpha: 0.03)),
               const Center(
                 child: Icon(
                   Icons.photo_outlined,
                   color: Colors.white10,
-                  size: 48,
+                  size: 40,
                 ),
-              ),
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Container(height: 32, color: Colors.black26),
               ),
             ],
           ),
@@ -66,6 +60,12 @@ class PhotoGridItem extends StatefulWidget {
 class _PhotoGridItemState extends State<PhotoGridItem> {
   final ValueNotifier<bool> _isHovered = ValueNotifier<bool>(false);
 
+  static final Color _hoverBorderColor = Color.lerp(
+    AppTheme.cardBorderColor,
+    AppTheme.brandPurple,
+    0.35,
+  )!;
+
   @override
   void dispose() {
     _isHovered.dispose();
@@ -75,18 +75,32 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
   @override
   Widget build(BuildContext context) {
     final isUploaded = widget.metadata?.galleryUrl != null;
+
     return RepaintBoundary(
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+      child: ValueListenableBuilder<bool>(
+        valueListenable: _isHovered,
+        builder: (context, hovered, child) {
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: const Cubic(0.16, 1, 0.3, 1),
+            transform: Matrix4.translationValues(0, hovered ? -3.0 : 0.0, 0),
+            decoration: BoxDecoration(
+              color: AppTheme.cardBackgroundColor,
+              borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+              boxShadow: [
+                BoxShadow(
+                  color:
+                      hovered
+                          ? const Color(0x80000000)
+                          : const Color(0x66000000),
+                  blurRadius: hovered ? 32 : 24,
+                  offset: Offset(0, hovered ? 12 : 8),
+                ),
+              ],
             ),
-          ],
-        ),
+            child: child,
+          );
+        },
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppTheme.radiusCard),
           child: Stack(
@@ -100,15 +114,15 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                   return AnimatedScale(
                     scale: hovered && !widget.isSelected ? 1.04 : 1.0,
                     duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOutCubic,
+                    curve: const Cubic(0.16, 1, 0.3, 1),
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
+                      duration: const Duration(milliseconds: 250),
                       foregroundDecoration: BoxDecoration(
                         color:
                             widget.isSelected
                                 ? AppTheme.brandPurple.withValues(alpha: 0.14)
                                 : hovered
-                                ? Colors.white.withValues(alpha: 0.05)
+                                ? Colors.white.withValues(alpha: 0.04)
                                 : Colors.transparent,
                       ),
                       child: CachedImage(
@@ -124,11 +138,36 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                 },
               ),
 
+              ValueListenableBuilder<bool>(
+                valueListenable: _isHovered,
+                builder: (context, hovered, _) {
+                  return IgnorePointer(
+                    child: AnimatedOpacity(
+                      opacity: hovered ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 250),
+                      child: const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [Color(0xB3000000), Color(0x00000000)],
+                            stops: [0.0, 0.45],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+
               Material(
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: widget.onTap,
                   onHover: (value) => _isHovered.value = value,
+                  hoverColor: Colors.transparent,
+                  splashColor: Colors.white.withValues(alpha: 0.08),
+                  highlightColor: Colors.transparent,
                   borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                   mouseCursor: SystemMouseCursors.click,
                 ),
@@ -149,7 +188,7 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                 builder: (context, hovered, child) {
                   return IgnorePointer(
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
+                      duration: const Duration(milliseconds: 220),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(
                           AppTheme.radiusCard,
@@ -159,9 +198,9 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                               widget.isSelected
                                   ? AppTheme.brandPurple
                                   : hovered
-                                  ? Colors.white.withValues(alpha: 0.3)
-                                  : Colors.white.withValues(alpha: 0.1),
-                          width: widget.isSelected ? 2 : 1.5,
+                                  ? _hoverBorderColor
+                                  : AppTheme.cardBorderColor,
+                          width: widget.isSelected ? 2 : 1,
                         ),
                       ),
                     ),
@@ -210,22 +249,19 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
   }
 
   Widget _buildTopGradient() {
-    return Positioned(
+    return const Positioned(
       top: 0,
       left: 0,
       right: 0,
-      height: 100,
+      height: 96,
       child: IgnorePointer(
-        child: Container(
+        child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                Colors.black.withValues(alpha: 0.7),
-                Colors.black.withValues(alpha: 0.2),
-                Colors.transparent,
-              ],
+              colors: [Color(0xD9000000), Color(0xA6000000), Color(0x00000000)],
+              stops: [0.0, 0.55, 1.0],
             ),
           ),
         ),
@@ -241,10 +277,14 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
 
     final worldName = widget.metadata?.world?.name;
     final playerCount = widget.metadata?.players.length ?? 0;
+    const textShadow = [
+      Shadow(color: Color(0xE6000000), blurRadius: 3, offset: Offset(0, 1)),
+    ];
+
     return Positioned(
       top: 12,
       left: 12,
-      right: 80,
+      right: 52,
       child: IgnorePointer(
         child: RepaintBoundary(
           child: Column(
@@ -252,11 +292,11 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
             children: [
               Text(
                 dateStr,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.95),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  shadows: const [Shadow(color: Colors.black45, blurRadius: 4)],
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  shadows: textShadow,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -268,19 +308,17 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                     const Icon(
                       Icons.public_rounded,
                       size: 13,
-                      color: AppTheme.primaryColor,
+                      color: AppTheme.iconWorld,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 5),
                     Flexible(
                       child: Text(
                         stripResoniteTags(worldName),
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          shadows: const [
-                            Shadow(color: Colors.black45, blurRadius: 2),
-                          ],
+                        style: const TextStyle(
+                          color: AppTheme.bodyTextColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          shadows: textShadow,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -288,22 +326,21 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                     ),
                   ],
                   if (playerCount > 0) ...[
-                    if (worldName != null) const SizedBox(width: 8),
+                    if (worldName != null) const SizedBox(width: 10),
                     const Icon(
                       Icons.people_alt_rounded,
                       size: 13,
-                      color: AppTheme.successColor,
+                      color: AppTheme.iconPlayers,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 5),
                     Text(
                       '$playerCount',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.8),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        shadows: const [
-                          Shadow(color: Colors.black45, blurRadius: 2),
-                        ],
+                      style: const TextStyle(
+                        color: AppTheme.bodyTextColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                        shadows: textShadow,
                       ),
                     ),
                   ],
@@ -317,44 +354,29 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
   }
 
   Widget _buildTopRightActions() {
-    return Positioned(
-      top: 12,
-      right: 12,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.metadata?.galleryUrl != null)
-            _buildIndicatorButton(
-              icon: Icons.cloud_done_rounded,
-              color: AppTheme.successColor,
-              tooltip: 'Uploaded to Gallery',
-              onPressed: widget.onTap,
-            ),
-        ],
-      ),
-    );
-  }
+    if (widget.metadata?.galleryUrl == null) return const SizedBox.shrink();
 
-  Widget _buildIndicatorButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    required String tooltip,
-    Color color = Colors.white,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onPressed,
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+    return Positioned(
+      top: 10,
+      right: 10,
+      child: Tooltip(
+        message: 'Uploaded to Gallery',
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: widget.onTap,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0x99000000),
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+              ),
+              child: const Icon(
+                Icons.cloud_done_rounded,
+                size: 16,
+                color: AppTheme.successColor,
+              ),
             ),
-            child: Icon(icon, size: 16, color: color.withValues(alpha: 0.9)),
           ),
         ),
       ),

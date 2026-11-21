@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_theme.dart';
+import 'tinted_button.dart';
 
 class WalkthroughDialog extends StatefulWidget {
   final VoidCallback onDismissed;
@@ -43,7 +44,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
   final List<_SlideData> _slides = [
     _SlideData(
       icon: Icons.favorite_rounded,
-      iconColor: AppTheme.brandPurpleDeep,
+      iconColor: AppTheme.brandPurple,
       title: 'Welcome to GalleVR',
       content:
           'GalleVR is my passion project, built by a solo developer. There may be a few issues here and there, but I hope you love it!\n\n'
@@ -51,7 +52,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
     ),
     _SlideData(
       icon: Icons.settings_suggest_rounded,
-      iconColor: AppTheme.accentCyan,
+      iconColor: AppTheme.iconFeed,
       title: 'Keep it Running',
       content:
           'Photos can only be uploaded if GalleVR was open when they were taken, or if you had the third-party app VRCX tagging them.\n\n'
@@ -59,7 +60,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
     ),
     _SlideData(
       icon: Icons.image_search_rounded,
-      iconColor: AppTheme.primaryColor,
+      iconColor: AppTheme.iconWorld,
       title: 'How Photos Appear',
       content:
           'To show up in the Photos tab, a screenshot needs embedded world and player metadata.\n\n'
@@ -67,7 +68,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
     ),
     _SlideData(
       icon: Icons.cloud_upload_rounded,
-      iconColor: AppTheme.secondaryTextColor,
+      iconColor: AppTheme.brandPurpleLighter,
       title: 'Grey vs. Uploaded Photos',
       content:
           'The Photos tab displays all eligible photos. If a photo is grey, it means it has metadata but has not been uploaded to the GalleVR website yet. Simply click on any grey photo and select Upload Photo to upload it!\n\n'
@@ -75,7 +76,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
     ),
     _SlideData(
       icon: Icons.collections_bookmark_rounded,
-      iconColor: AppTheme.successColor,
+      iconColor: AppTheme.iconPlayers,
       title: 'Organize with Galleries',
       content:
           'On the website, you can organize your photos using Galleries.\n\n'
@@ -83,7 +84,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
     ),
     _SlideData(
       icon: Icons.campaign_rounded,
-      iconColor: AppTheme.accentPink,
+      iconColor: AppTheme.iconPhotos,
       title: 'Share to the Feed',
       content:
           'When photos are uploaded, they are private by default, meaning only you can see them.\n\n'
@@ -122,8 +123,8 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
       children: [
         Positioned.fill(
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-            child: Container(color: Colors.black.withValues(alpha: 0.6)),
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(color: Colors.black.withValues(alpha: 0.65)),
           ),
         ),
 
@@ -131,20 +132,9 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
           child: Material(
             color: Colors.transparent,
             child: Container(
-              width: isSmallScreen ? size.width * 0.9 : 520,
-              height: 480,
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceColor,
-                borderRadius: BorderRadius.circular(AppTheme.radiusModal),
-                border: Border.all(color: AppTheme.cardBorderColor, width: 1),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
+              width: isSmallScreen ? size.width * 0.92 : 520,
+              height: 450,
+              decoration: AppTheme.modalDecoration,
               child: Column(
                 children: [
                   Expanded(
@@ -167,12 +157,9 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
                       horizontal: 24,
                       vertical: 16,
                     ),
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       border: Border(
-                        top: BorderSide(
-                          color: AppTheme.cardBorderColor,
-                          width: 1,
-                        ),
+                        top: BorderSide(color: AppTheme.cardBorderColor),
                       ),
                     ),
                     child: Row(
@@ -180,7 +167,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
                       children: [
                         TextButton(
                           onPressed: _finish,
-                          child: Text(
+                          child: const Text(
                             'Skip',
                             style: TextStyle(
                               color: AppTheme.secondaryTextColor,
@@ -196,39 +183,26 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
                               duration: const Duration(milliseconds: 200),
                               margin: const EdgeInsets.symmetric(horizontal: 4),
                               height: 6,
-                              width: _currentPage == index ? 16 : 6,
+                              width: _currentPage == index ? 18 : 6,
                               decoration: BoxDecoration(
                                 color:
                                     _currentPage == index
-                                        ? AppTheme.primaryColor
+                                        ? AppTheme.brandPurple
                                         : Colors.white.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(3),
+                                borderRadius: BorderRadius.circular(999),
                               ),
                             ),
                           ),
                         ),
 
-                        ElevatedButton(
+                        TintedButton(
                           onPressed: _nextPage,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                AppTheme.radiusControl,
-                              ),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 12,
-                            ),
-                          ),
-                          child: Text(
-                            _currentPage == _slides.length - 1
-                                ? 'Finish'
-                                : 'Next',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
+                          label:
+                              _currentPage == _slides.length - 1
+                                  ? 'Finish'
+                                  : 'Next',
+                          color: AppTheme.brandPurple,
+                          dense: true,
                         ),
                       ],
                     ),
@@ -244,19 +218,12 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
 
   Widget _buildSlide(_SlideData slide) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 40, 32, 20),
+      padding: const EdgeInsets.fromLTRB(32, 36, 32, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.tint(slide.iconColor, 0.15),
-              borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-            ),
-            child: Icon(slide.icon, size: 40, color: slide.iconColor),
-          ),
-          const SizedBox(height: 24),
+          Icon(slide.icon, size: 42, color: slide.iconColor),
+          const SizedBox(height: 18),
 
           Text(
             slide.title,
@@ -264,22 +231,21 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
               fontSize: 22,
               fontWeight: FontWeight.w700,
               color: Colors.white,
-              letterSpacing: -0.5,
+              letterSpacing: -0.4,
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
           Expanded(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               child: Text(
                 slide.content,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 14,
                   height: 1.6,
-                  color: Colors.white.withValues(alpha: 0.85),
-                  fontWeight: FontWeight.w500,
+                  color: AppTheme.secondaryTextColor,
                 ),
                 textAlign: TextAlign.center,
               ),

@@ -31,6 +31,18 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
+if(MSVC)
+  add_compile_options(/MP)
+endif()
+
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)
+
+if(NOT NUGET AND EXISTS "${CMAKE_BINARY_DIR}/_deps/nuget-src/nuget.exe")
+  set(NUGET "${CMAKE_BINARY_DIR}/_deps/nuget-src/nuget.exe" CACHE FILEPATH "Cached nuget.exe" FORCE)
+endif()
+if(NOT FETCHCONTENT_SOURCE_DIR_SQLITE3 AND EXISTS "${CMAKE_BINARY_DIR}/_deps/sqlite3-src/sqlite3.c")
+  set(FETCHCONTENT_SOURCE_DIR_SQLITE3 "${CMAKE_BINARY_DIR}/_deps/sqlite3-src" CACHE PATH "Cached sqlite3 source" FORCE)
+endif()
 
 # Compilation settings that should be applied to most targets.
 #
@@ -40,7 +52,7 @@ add_definitions(-DUNICODE -D_UNICODE)
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_17)
   target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
-  target_compile_options(${TARGET} PRIVATE /EHsc)
+  target_compile_options(${TARGET} PRIVATE /EHsc /MP)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")
 endfunction()
@@ -76,6 +88,9 @@ set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 
+install(TARGETS gallevr_core RUNTIME DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
+
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 
@@ -102,6 +117,9 @@ install(CODE "
   " COMPONENT Runtime)
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
+install(CODE "
+  file(REMOVE_RECURSE \"${INSTALL_BUNDLE_DATA_DIR}/${FLUTTER_ASSET_DIR_NAME}/assets/bin/linux\")
+  " COMPONENT Runtime)
 
 # Install the AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"

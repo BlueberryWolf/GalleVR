@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as path;
@@ -10,6 +9,7 @@ import '../../data/repositories/photo_metadata_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cached_image.dart';
 import '../widgets/app_card.dart';
+import '../widgets/tinted_button.dart';
 
 class MassUploadScreen extends StatefulWidget {
   final List<String>? initialFilePaths;
@@ -249,149 +249,102 @@ class _MassUploadScreenState extends State<MassUploadScreen>
   }
 
   Widget _buildHeader() {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.2),
-            border: Border(
-              bottom: BorderSide(
-                color: AppTheme.cardBorderColor.withValues(alpha: 0.5),
+    return Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: const BoxDecoration(
+        color: AppTheme.chromeColor,
+        border: Border(
+          bottom: BorderSide(color: AppTheme.headerBorderColor),
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              color: AppTheme.secondaryTextColor,
+              size: 20,
+            ),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          const SizedBox(width: 8),
+          Text.rich(
+            TextSpan(
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
               ),
+              children: [
+                TextSpan(text: widget.isManualUpload ? 'Bulk ' : 'Mass '),
+                const TextSpan(
+                  text: 'Upload',
+                  style: TextStyle(color: AppTheme.brandPurple),
+                ),
+              ],
             ),
           ),
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: AppTheme.secondaryTextColor,
-                  size: 20,
-                ),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                widget.isManualUpload ? 'Bulk Upload' : 'Mass Upload',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const Spacer(),
-              if (_tasks.isNotEmpty && !_isProcessing)
-                TextButton.icon(
-                  onPressed: _pickFiles,
-                  icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
-                  label: const Text('Add More'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppTheme.primaryLightColor,
-                  ),
-                ),
-            ],
-          ),
-        ),
+          const Spacer(),
+          if (_tasks.isNotEmpty && !_isProcessing)
+            TintedButton.neutral(
+              onPressed: _pickFiles,
+              icon: Icons.add_circle_outline_rounded,
+              label: 'Add More',
+              dense: true,
+            ),
+        ],
       ),
     );
   }
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppTheme.tint(AppTheme.primaryColor, 0.15),
-              borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-            ),
-            child: Icon(
-              Icons.cloud_upload_rounded,
-              size: 48,
-              color: AppTheme.primaryColor,
-            ),
-          ),
-          const SizedBox(height: 32),
-          Text(
-            widget.isManualUpload ? 'Bulk Upload' : 'Mass Upload',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            widget.isManualUpload
-                ? 'Batch process and upload your original gallery photos.\nYour local photos will be safely queued and verified.'
-                : 'Batch process and upload edited photos.\nSelect PNGs from your computer to begin.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppTheme.secondaryTextColor,
-              fontSize: 16,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 48),
-          _buildActionButton(
-            onPressed: _pickFiles,
-            label: 'Select Files',
-            color: AppTheme.primaryColor,
-            icon: Icons.add_photo_alternate_rounded,
-            large: true,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    required VoidCallback? onPressed,
-    required String label,
-    required Color color,
-    required IconData icon,
-    bool large = false,
-    bool outlined = false,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        mouseCursor: SystemMouseCursors.click,
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-        child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: large ? 32 : 20,
-            vertical: large ? 16 : 12,
-          ),
-          decoration: BoxDecoration(
-            color:
-                outlined ? Colors.transparent : color.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-            border: Border.all(
-              color: color.withValues(alpha: outlined ? 0.3 : 0.5),
-              width: 1.5,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: large ? 24 : 18, color: color),
-              const SizedBox(width: 12),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                  fontSize: large ? 15 : 12,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.cloud_upload_outlined,
+                  size: 48,
+                  color: AppTheme.brandPurple,
                 ),
-              ),
-            ],
+                const SizedBox(height: 20),
+                Text(
+                  widget.isManualUpload ? 'Bulk Upload' : 'Mass Upload',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  widget.isManualUpload
+                      ? 'Batch process and upload your original gallery photos.\nYour local photos will be safely queued and verified.'
+                      : 'Batch process and upload edited photos.\nSelect PNGs from your computer to begin.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppTheme.secondaryTextColor,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                TintedButton(
+                  onPressed: _pickFiles,
+                  label: 'Select Files',
+                  color: AppTheme.brandPurple,
+                  icon: Icons.add_photo_alternate_rounded,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -399,31 +352,39 @@ class _MassUploadScreenState extends State<MassUploadScreen>
   }
 
   Widget _buildTaskList() {
-    return Column(
-      children: [
-        _buildSummaryCard(),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            itemCount: _tasks.length,
-            itemBuilder: (context, index) {
-              final task = _tasks[index];
-              return _TaskTile(
-                task: task,
-                onRemove:
-                    _isProcessing
-                        ? null
-                        : () {
-                          setState(() {
-                            _tasks.removeAt(index);
-                            if (_tasks.isEmpty) _summaryController.reverse();
-                          });
-                        },
-              );
-            },
-          ),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1200),
+        child: Column(
+          children: [
+            _buildSummaryCard(),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                itemCount: _tasks.length,
+                itemBuilder: (context, index) {
+                  final task = _tasks[index];
+                  return _TaskTile(
+                    task: task,
+                    onRemove:
+                        _isProcessing
+                            ? null
+                            : () {
+                              setState(() {
+                                _tasks.removeAt(index);
+                                if (_tasks.isEmpty) _summaryController.reverse();
+                              });
+                            },
+                  );
+                },
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -431,32 +392,44 @@ class _MassUploadScreenState extends State<MassUploadScreen>
     return SizeTransition(
       sizeFactor: CurvedAnimation(
         parent: _summaryController,
-        curve: Curves.easeOutBack,
+        curve: const Cubic(0.16, 1, 0.3, 1),
       ),
       child: Container(
-        margin: const EdgeInsets.all(16),
-        child: AppCard(
-          padding: const EdgeInsets.all(20),
+        margin: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: AppTheme.stripDividerColor,
+          borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+          border: Border.all(color: AppTheme.cardBorderColor),
+        ),
+        child: IntrinsicHeight(
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildSummaryStat(
-                'Queue',
-                _tasks.length.toString(),
-                Icons.list_alt_rounded,
-                AppTheme.secondaryTextColor,
+              Expanded(
+                child: _buildSummaryStat(
+                  'QUEUE',
+                  _tasks.length.toString(),
+                  Icons.list_alt_rounded,
+                  AppTheme.brandPurple,
+                ),
               ),
-              _buildSummaryStat(
-                'Done',
-                _completedCount.toString(),
-                Icons.check_circle_rounded,
-                AppTheme.successColor,
+              const SizedBox(width: 1),
+              Expanded(
+                child: _buildSummaryStat(
+                  'DONE',
+                  _completedCount.toString(),
+                  Icons.check_circle_rounded,
+                  AppTheme.successColor,
+                ),
               ),
-              _buildSummaryStat(
-                'Failed',
-                _failedCount.toString(),
-                Icons.error_rounded,
-                AppTheme.errorColor,
+              const SizedBox(width: 1),
+              Expanded(
+                child: _buildSummaryStat(
+                  'FAILED',
+                  _failedCount.toString(),
+                  Icons.error_rounded,
+                  AppTheme.errorTextColor,
+                ),
               ),
             ],
           ),
@@ -471,23 +444,40 @@ class _MassUploadScreenState extends State<MassUploadScreen>
     IconData icon,
     Color color,
   ) {
-    return Column(
-      children: [
-        Icon(icon, color: color.withValues(alpha: 0.5), size: 20),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: color,
+    return Container(
+      color: AppTheme.cardBackgroundColor,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: AppTheme.secondaryTextColor,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textColor,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
           ),
-        ),
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, color: AppTheme.secondaryTextColor),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -495,15 +485,15 @@ class _MassUploadScreenState extends State<MassUploadScreen>
     if (_tasks.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.4),
-        border: Border(top: BorderSide(color: AppTheme.surfaceBase)),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      decoration: const BoxDecoration(
+        color: AppTheme.chromeColor,
+        border: Border(top: BorderSide(color: AppTheme.headerBorderColor)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _buildActionButton(
+          TintedButton.neutral(
             onPressed:
                 _isProcessing
                     ? null
@@ -512,15 +502,14 @@ class _MassUploadScreenState extends State<MassUploadScreen>
                       _summaryController.reverse();
                     }),
             label: 'Clear',
-            color: AppTheme.secondaryTextColor,
             icon: Icons.delete_sweep_rounded,
-            outlined: true,
           ),
-          _buildActionButton(
+          TintedButton(
             onPressed: _isProcessing ? null : _startUpload,
             label: _isProcessing ? 'Processing...' : 'Start Upload',
-            color: AppTheme.primaryColor,
+            color: AppTheme.brandPurple,
             icon: Icons.cloud_upload_rounded,
+            loading: _isProcessing,
           ),
         ],
       ),
@@ -542,10 +531,10 @@ class _TaskTile extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         borderColor:
             task.status == TaskStatus.completed
-                ? AppTheme.successColor.withValues(alpha: 0.3)
+                ? AppTheme.cardAccentBorder(AppTheme.successColor)
                 : task.status == TaskStatus.failed
-                ? AppTheme.errorColor.withValues(alpha: 0.3)
-                : AppTheme.surfaceBase,
+                ? AppTheme.cardAccentBorder(AppTheme.errorColor)
+                : AppTheme.cardBorderColor,
         child: Row(
           children: [
             _buildLeading(context),
@@ -559,9 +548,8 @@ class _TaskTile extends StatelessWidget {
                     path.basename(task.path),
                     style: const TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                       fontSize: 14,
-                      letterSpacing: 0.3,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -573,7 +561,7 @@ class _TaskTile extends StatelessWidget {
                       style: TextStyle(
                         color:
                             task.status == TaskStatus.failed
-                                ? AppTheme.errorColor
+                                ? AppTheme.errorTextColor
                                 : !task.hasMetadata
                                 ? AppTheme.warningColor
                                 : AppTheme.secondaryTextColor,
@@ -587,7 +575,7 @@ class _TaskTile extends StatelessWidget {
                           task.hasMetadata
                               ? Icons.check_circle_outline_rounded
                               : Icons.warning_amber_rounded,
-                          size: 12,
+                          size: 14,
                           color:
                               task.hasMetadata
                                   ? AppTheme.secondaryTextColor
@@ -602,10 +590,8 @@ class _TaskTile extends StatelessWidget {
                             color:
                                 task.hasMetadata
                                     ? AppTheme.secondaryTextColor
-                                    : AppTheme.warningColor.withValues(
-                                      alpha: 0.9,
-                                    ),
-                            fontSize: 11,
+                                    : AppTheme.warningColor,
+                            fontSize: 12,
                             fontWeight:
                                 task.hasMetadata
                                     ? FontWeight.normal
@@ -635,7 +621,7 @@ class _TaskTile extends StatelessWidget {
                   IconButton(
                     icon: const Icon(
                       Icons.close_rounded,
-                      color: Colors.white24,
+                      color: AppTheme.secondaryTextColor,
                       size: 20,
                     ),
                     onPressed: onRemove,

@@ -176,7 +176,7 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.getDarkTheme(),
         home: Scaffold(
-          backgroundColor: const Color(0xFF0F0F0F),
+          backgroundColor: AppTheme.backgroundColor,
           body: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -199,7 +199,7 @@ class _GalleVRAppState extends State<GalleVRApp> with WidgetsBindingObserver {
                   child: CircularProgressIndicator(
                     strokeWidth: 3,
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      AppTheme.primaryColor,
+                      AppTheme.brandPurple,
                     ),
                   ),
                 ),

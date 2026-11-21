@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io' show Platform, Process;
 import 'package:flutter/material.dart';
@@ -23,6 +24,7 @@ class AccountScreen extends StatefulWidget {
 
 class _AccountScreenState extends State<AccountScreen> {
   final VRChatService _vrchatService = VRChatService();
+  StreamSubscription<AuthData?>? _authSubscription;
 
   bool _isLoading = true;
   bool _isVerified = false;
@@ -34,6 +36,17 @@ class _AccountScreenState extends State<AccountScreen> {
   void initState() {
     super.initState();
     _loadConfig();
+    _authSubscription = AppServiceManager().authDataStream.listen((_) {
+      if (mounted) {
+        _checkLoginStatus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadConfig() async {
@@ -44,8 +57,6 @@ class _AccountScreenState extends State<AccountScreen> {
     });
 
     try {
-      await _vrchatService.initialize();
-
       await _checkLoginStatus();
     } catch (e) {
       developer.log('Error loading config: $e', name: 'AccountScreen');
@@ -124,28 +135,61 @@ class _AccountScreenState extends State<AccountScreen> {
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: Text('Confirm Logout - $accountName'),
-            content: const Text(
-              'Are you sure you want to log out of this account? You will need to verify it again to access its features.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.tint(AppTheme.errorColor, 0.2),
-                  foregroundColor: AppTheme.errorColor,
-                  side: BorderSide(
-                    color: AppTheme.errorColor.withValues(alpha: 0.35),
+          (context) => Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 420),
+              padding: const EdgeInsets.all(24),
+              decoration: AppTheme.modalDecoration,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.logout_rounded,
+                    size: 32,
+                    color: AppTheme.errorTextColor,
                   ),
-                ),
-                child: const Text('Logout'),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Sign out of $accountName?',
+                    style: const TextStyle(
+                      color: AppTheme.textColor,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Are you sure you want to log out of this account? You will need to verify it again to access its features.',
+                    style: TextStyle(
+                      color: AppTheme.secondaryTextColor,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TintedButton.neutral(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        label: 'Cancel',
+                        dense: true,
+                      ),
+                      const SizedBox(width: 10),
+                      TintedButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        label: 'Log out',
+                        color: AppTheme.errorColor,
+                        dense: true,
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
     );
 
@@ -190,70 +234,56 @@ class _AccountScreenState extends State<AccountScreen> {
   Widget _buildUnverifiedView() {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
-        child: AppCard(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: AppTheme.tint(AppTheme.primaryColor, 0.2),
-                  borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.person_outline_rounded,
+                  size: 48,
+                  color: AppTheme.brandPurple,
                 ),
-                child: const Icon(
-                  Icons.person_rounded,
-                  size: 32,
-                  color: AppTheme.primaryLightColor,
+                const SizedBox(height: 16),
+                const Text(
+                  'Social Account',
+                  style: TextStyle(
+                    color: AppTheme.textColor,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Social Account',
-                style: TextStyle(
-                  color: AppTheme.textColor,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+                const SizedBox(height: 8),
+                const Text(
+                  'Verify your account to unlock your personal gallery and enable photo sharing.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppTheme.secondaryTextColor,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Not verified',
-                style: TextStyle(
-                  color: AppTheme.errorColor,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 24),
+                TintedButton(
+                  onPressed: () async {
+                    if (mounted) {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const VerificationScreen(),
+                        ),
+                      );
+                      if (mounted) await _checkLoginStatus();
+                    }
+                  },
+                  icon: Icons.verified_user_rounded,
+                  label: 'Start Verification',
+                  color: AppTheme.brandPurple,
                 ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Verify your account to unlock your personal gallery and enable photo sharing.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppTheme.secondaryTextColor,
-                  fontSize: 14,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 32),
-              TintedButton(
-                onPressed: () async {
-                  if (mounted) {
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const VerificationScreen(),
-                      ),
-                    );
-                    if (mounted) await _checkLoginStatus();
-                  }
-                },
-                icon: Icons.verified_user_rounded,
-                label: 'Start Verification',
-                color: AppTheme.primaryColor,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -264,12 +294,12 @@ class _AccountScreenState extends State<AccountScreen> {
     final displayName = auth.displayName ?? 'User';
     final isResonite = auth.userId.startsWith('U-');
     final platformColor =
-        isResonite ? AppTheme.resoniteColor : AppTheme.brandPurpleDeep;
+        isResonite ? AppTheme.resoniteColor : AppTheme.brandPurple;
     final platformText = isResonite ? 'Resonite' : 'VRChat';
 
     final avatarWidget = AvatarCircle(
       imageUrl: auth.avatarUrl,
-      size: isWide ? 100 : 70,
+      size: isWide ? 88 : 68,
       color: platformColor,
     );
 
@@ -277,31 +307,29 @@ class _AccountScreenState extends State<AccountScreen> {
       crossAxisAlignment:
           isWide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
+        Wrap(
+          spacing: 10,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          alignment: isWide ? WrapAlignment.start : WrapAlignment.center,
           children: [
             Text(
               displayName,
               style: TextStyle(
                 color: Colors.white,
                 fontSize: isWide ? 22 : 18,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppTheme.tint(platformColor, 0.2),
-                borderRadius: BorderRadius.circular(AppTheme.radiusTag),
-              ),
-              child: Text(
-                platformText,
-                style: TextStyle(
-                  color: platformColor,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+            Tooltip(
+              message: platformText,
+              child: Image.asset(
+                isResonite
+                    ? 'assets/images/resonite_logo.png'
+                    : 'assets/images/VRChat_logo.png',
+                width: 22,
+                height: 22,
+                fit: BoxFit.contain,
               ),
             ),
           ],
@@ -323,18 +351,18 @@ class _AccountScreenState extends State<AccountScreen> {
         const SizedBox(height: 8),
         TextButton.icon(
           onPressed: () => _showLogoutConfirmationFor(isSecondary, displayName),
-          icon: const Icon(Icons.logout_rounded, size: 14),
+          icon: const Icon(Icons.logout_rounded, size: 16),
           label: const Text('Log out'),
           style: TextButton.styleFrom(
-            foregroundColor: AppTheme.errorColor,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            foregroundColor: AppTheme.errorTextColor,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           ),
         ),
       ],
     );
 
     return AppCard(
-      padding: EdgeInsets.all(isWide ? 24 : 16),
+      padding: EdgeInsets.all(isWide ? 24 : 18),
       child:
           isWide
               ? Row(
@@ -424,10 +452,10 @@ class _AccountScreenState extends State<AccountScreen> {
                   : 'Link Resonite Account';
           final btnColor =
               targetPlatform == 'vrchat'
-                  ? AppTheme.brandPurpleDeep
+                  ? AppTheme.brandPurple
                   : AppTheme.resoniteColor;
 
-          list.add(const SizedBox(height: 24));
+          list.add(const SizedBox(height: 20));
           list.add(
             Center(
               child: TintedButton(
@@ -443,7 +471,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   );
                   await _loadConfig();
                 },
-                icon: Icons.add_circle_outline,
+                icon: Icons.add_circle_outline_rounded,
                 label: label,
                 color: btnColor,
               ),
@@ -452,52 +480,31 @@ class _AccountScreenState extends State<AccountScreen> {
         }
 
         final qrCard = AppCard(
-          padding: EdgeInsets.all(isWide ? 40 : 24),
+          padding: EdgeInsets.all(isWide ? 32 : 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
+              const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.tint(AppTheme.primaryColor, 0.15),
-                      borderRadius: BorderRadius.circular(
-                        AppTheme.radiusControl,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.qr_code_scanner_rounded,
-                      color: AppTheme.primaryLightColor,
-                      size: 24,
-                    ),
+                  Icon(
+                    Icons.qr_code_scanner_rounded,
+                    color: AppTheme.brandPurple,
+                    size: 24,
                   ),
-                  const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Mobile Access',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Scan to view your gallery on your phone',
-                        style: TextStyle(
-                          color: AppTheme.secondaryTextColor,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
+                  SizedBox(width: 10),
+                  Text(
+                    'Mobile Access',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 18,
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 28),
               BlurrableQrCode(
                 revealedData: _galleryUrl,
                 blurredData:
@@ -510,17 +517,34 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
         );
 
+        final isTwoColumn = constraints.maxWidth >= 900;
+        final horizontalPad =
+            isWide ? ((constraints.maxWidth - 1200) / 2).clamp(28.0, double.infinity) : 16.0;
+
         return SingleChildScrollView(
-          padding: EdgeInsets.all(isWide ? 40 : 20),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 800),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [...list, const SizedBox(height: 24), qrCard],
-              ),
-            ),
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPad,
+            vertical: isWide ? 24 : 16,
           ),
+          child:
+              isTwoColumn
+                  ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: list,
+                        ),
+                      ),
+                      const SizedBox(width: 24),
+                      SizedBox(width: 340, child: qrCard),
+                    ],
+                  )
+                  : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [...list, const SizedBox(height: 24), qrCard],
+                  ),
         );
       },
     );

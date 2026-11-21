@@ -10,6 +10,8 @@ import '../../core/image/image_cache_service.dart';
 import '../../data/models/photo_metadata.dart';
 import 'mass_upload_screen.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_card.dart';
+import '../widgets/tinted_button.dart';
 
 class PhotosScreen extends StatefulWidget {
   final PhotosController controller;
@@ -108,7 +110,9 @@ class PhotosScreenState extends State<PhotosScreen> {
                       key: const PageStorageKey('photos_grid_scroll'),
                       slivers: [
                         SliverPadding(
-                          padding: const EdgeInsets.all(16),
+                          padding: EdgeInsets.all(
+                            MediaQuery.sizeOf(context).width < 600 ? 16 : 24,
+                          ),
                           sliver: _PhotoGridView(
                             state: state,
                             onOpenDetails: (index) {
@@ -195,35 +199,27 @@ class PhotosScreenState extends State<PhotosScreen> {
                   color: AppTheme.cardBorderColor,
                 ),
                 const SizedBox(width: 8),
-                SizedBox(
+                TintedButton(
+                  onPressed:
+                      count == 0
+                          ? null
+                          : () {
+                            final paths = state.selectedPhotoPaths.toList();
+                            widget.controller.clearSelection();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder:
+                                    (context) => MassUploadScreen(
+                                      initialFilePaths: paths,
+                                      isManualUpload: true,
+                                    ),
+                              ),
+                            );
+                          },
+                  icon: Icons.cloud_upload_rounded,
+                  label: 'Upload',
+                  color: AppTheme.brandPurple,
                   height: 40,
-                  child: ElevatedButton.icon(
-                    onPressed:
-                        count == 0
-                            ? null
-                            : () {
-                              final paths = state.selectedPhotoPaths.toList();
-                              widget.controller.clearSelection();
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder:
-                                      (context) => MassUploadScreen(
-                                        initialFilePaths: paths,
-                                        isManualUpload: true,
-                                      ),
-                                ),
-                              );
-                            },
-                    icon: const Icon(Icons.cloud_upload_rounded, size: 18),
-                    label: const Text('Upload'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      textStyle: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
                 ),
                 const SizedBox(width: 8),
                 IconButton(
@@ -246,30 +242,51 @@ class PhotosScreenState extends State<PhotosScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.photo_library,
-            size: 64,
-            color: AppTheme.secondaryTextColor,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.photo_library_outlined,
+                  size: 44,
+                  color: AppTheme.iconPhotos,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'No photos found',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textColor,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Take some photos in VRChat or Resonite to see them here.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.secondaryTextColor,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                TintedButton(
+                  onPressed: () => widget.controller.refresh(forceSync: true),
+                  icon: Icons.refresh_rounded,
+                  label: 'Refresh',
+                  color: AppTheme.brandPurple,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          Text(
-            'No photos found',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Take some photos in VRChat to see them here',
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () => widget.controller.refresh(forceSync: true),
-            child: const Text('Refresh'),
-          ),
-        ],
+        ),
       ),
     );
   }

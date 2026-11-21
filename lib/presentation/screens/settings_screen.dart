@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:file_picker/file_picker.dart';
@@ -308,9 +309,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     final isSmallScreen = _isSmallScreen(context);
-    final edgeInsets =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
-    final sectionSpacing = isSmallScreen ? 12.0 : 16.0;
+    final sectionSpacing = isSmallScreen ? 16.0 : 24.0;
 
     final int itemCount = Platform.isWindows ? 12 : 10;
 
@@ -322,15 +321,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ),
-      child: RepaintBoundary(
-        child: ListView.builder(
-          scrollCacheExtent: const ScrollCacheExtent.pixels(500.0),
-          controller: _scrollController,
-          padding: edgeInsets,
-          addAutomaticKeepAlives: false,
-          addRepaintBoundaries: true,
-          itemCount: itemCount,
-          itemBuilder: (context, index) {
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final horizontalPad =
+              isSmallScreen
+                  ? 16.0
+                  : max(28.0, (constraints.maxWidth - 1200) / 2);
+          final edgeInsets = EdgeInsets.symmetric(
+            horizontal: horizontalPad,
+            vertical: isSmallScreen ? 16 : 24,
+          );
+          return RepaintBoundary(
+            child: ListView.builder(
+              scrollCacheExtent: const ScrollCacheExtent.pixels(500.0),
+              controller: _scrollController,
+              padding: edgeInsets,
+              addAutomaticKeepAlives: false,
+              addRepaintBoundaries: true,
+              itemCount: itemCount,
+              itemBuilder: (context, index) {
             switch (index) {
               case 0:
                 return _buildDirectoriesSection(isSmallScreen);
@@ -372,103 +381,89 @@ class _SettingsScreenState extends State<SettingsScreen> {
             }
           },
         ),
+      );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCardHeader(IconData icon, Color iconColor, String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        children: [
+          Icon(icon, color: iconColor, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: AppTheme.textColor,
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildEditorSection([bool isSmallScreen = false]) {
     final padding =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
+        isSmallScreen ? const EdgeInsets.all(16) : const EdgeInsets.all(24);
 
     return RepaintBoundary(
       child: AppCard(
-        color: AppTheme.brandPurpleDeep.withValues(alpha: 0.1),
-        borderColor: AppTheme.brandPurpleDeep.withValues(alpha: 0.2),
         padding: padding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(
-                  Icons.edit_note_rounded,
-                  color: AppTheme.brandPurple,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Editor Tools',
-                  style: TextStyle(
-                    color: AppTheme.brandPurple,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            _buildCardHeader(
+              Icons.edit_note_rounded,
+              AppTheme.brandPurple,
+              'Editor Tools',
             ),
-            const SizedBox(height: 20),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                mouseCursor: SystemMouseCursors.click,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const MassUploadScreen(),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppTheme.tint(AppTheme.brandPurple, 0.2),
-                          borderRadius: BorderRadius.circular(
-                            AppTheme.radiusControl,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.cloud_upload_rounded,
-                          color: AppTheme.brandPurple,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Mass Upload Screenshots',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Upload edited photos in bulk',
-                              style: TextStyle(
-                                color: AppTheme.secondaryTextColor,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        color: Colors.white24,
-                      ),
-                    ],
-                  ),
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: AppTheme.cardBorderColor),
                 ),
+              ),
+              padding: const EdgeInsets.only(top: 14),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.cloud_upload_rounded,
+                    color: AppTheme.brandPurple,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Mass Upload Screenshots',
+                      style: TextStyle(
+                        color: AppTheme.bodyTextColor,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  TintedButton.neutral(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const MassUploadScreen(),
+                        ),
+                      );
+                    },
+                    label: 'Open',
+                    appendIcon: Icons.chevron_right_rounded,
+                    dense: true,
+                  ),
+                ],
               ),
             ),
           ],
@@ -479,8 +474,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildDirectoriesSection([bool isSmallScreen = false]) {
     final padding =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
-    final spacing = isSmallScreen ? 16.0 : 20.0;
+        isSmallScreen ? const EdgeInsets.all(16) : const EdgeInsets.all(24);
 
     final hasVRC =
         (_authData != null && !_authData!.userId.startsWith('U-')) ||
@@ -506,7 +500,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
         ),
       );
-      widgets.add(SizedBox(height: spacing));
       widgets.add(
         _buildDirectoryPicker(
           label: 'VRChat Logs Directory',
@@ -522,9 +515,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     if (showResonite) {
-      if (widgets.isNotEmpty) {
-        widgets.add(SizedBox(height: spacing));
-      }
       widgets.add(
         _buildDirectoryPicker(
           label: 'Resonite Photos Directory',
@@ -545,25 +535,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
-              children: [
-                Icon(
-                  Icons.folder_copy_rounded,
-                  color: AppTheme.primaryLightColor,
-                  size: 20,
-                ),
-                SizedBox(width: 12),
-                Text(
-                  'Directories',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            _buildCardHeader(
+              Icons.folder_copy_rounded,
+              AppTheme.iconWorld,
+              'Directories',
             ),
-            SizedBox(height: spacing),
             ...widgets,
           ],
         ),
@@ -573,8 +549,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildPhotoProcessingSection([bool isSmallScreen = false]) {
     final padding =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
-    final accentColor = AppTheme.accentPink;
+        isSmallScreen ? const EdgeInsets.all(16) : const EdgeInsets.all(24);
 
     return RepaintBoundary(
       child: AppCard(
@@ -582,43 +557,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(Icons.auto_fix_high_rounded, color: accentColor, size: 20),
-                const SizedBox(width: 12),
-                const Text(
-                  'Processing',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            _buildCardHeader(
+              Icons.auto_fix_high_rounded,
+              AppTheme.iconPhotos,
+              'Processing',
             ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: AppTheme.cardBorderColor),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 14),
               child: Row(
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Compression Delay',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+                  const Tooltip(
+                    message: 'Wait time before compressing a newly saved photo',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.timer_outlined,
+                          color: AppTheme.iconPhotos,
+                          size: 18,
                         ),
-                      ),
-                      Text(
-                        '${_config!.compressionDelay.toStringAsFixed(1)} seconds',
-                        style: const TextStyle(
-                          color: AppTheme.secondaryTextColor,
-                          fontSize: 12,
+                        SizedBox(width: 10),
+                        Text(
+                          'Compression Delay',
+                          style: TextStyle(
+                            color: AppTheme.bodyTextColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                   const SizedBox(width: 24),
                   Expanded(
@@ -632,6 +605,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       },
                     ),
                   ),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 44,
+                    child: Text(
+                      '${_config!.compressionDelay.toStringAsFixed(1)}s',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        color: AppTheme.secondaryTextColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -643,8 +630,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildNotificationsSection([bool isSmallScreen = false]) {
     final padding =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
-    final accentColor = AppTheme.primaryLightColor;
+        isSmallScreen ? const EdgeInsets.all(16) : const EdgeInsets.all(24);
 
     return RepaintBoundary(
       child: AppCard(
@@ -652,45 +638,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.notifications_active_rounded,
-                  color: accentColor,
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Notifications',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            _buildCardHeader(
+              Icons.notifications_active_rounded,
+              AppTheme.iconWorld,
+              'Notifications',
             ),
-            const SizedBox(height: 12),
             _buildCustomSwitchRow(
+              icon: Icons.volume_up_rounded,
+              iconColor: AppTheme.iconWorld,
               title: 'Sound Alerts',
-              subtitle: 'Play sound when photo is processed',
-              activeColor: accentColor,
               value: _config!.soundEnabled,
               onChanged:
                   (value) =>
                       _saveConfig(_config!.copyWith(soundEnabled: value)),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: AppTheme.cardBorderColor),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 14),
               child: Row(
                 children: [
+                  const Icon(
+                    Icons.tune_rounded,
+                    color: AppTheme.brandPurple,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
                   const SizedBox(
                     width: 80,
                     child: Text(
                       'Volume',
                       style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                        color: AppTheme.bodyTextColor,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -715,8 +699,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildSharingSection([bool isSmallScreen = false]) {
     final padding =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(20);
-    final accentColor = AppTheme.successColor;
+        isSmallScreen ? const EdgeInsets.all(16) : const EdgeInsets.all(24);
 
     return RepaintBoundary(
       child: AppCard(
@@ -724,25 +707,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(Icons.share_rounded, color: accentColor, size: 20),
-                const SizedBox(width: 12),
-                const Text(
-                  'Sharing',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            _buildCardHeader(
+              Icons.share_rounded,
+              AppTheme.iconPlayers,
+              'Sharing',
             ),
-            const SizedBox(height: 12),
             _buildCustomSwitchRow(
+              icon: Icons.cloud_upload_outlined,
+              iconColor: AppTheme.iconPlayers,
               title: 'Automatic Uploading',
-              subtitle: 'Upload processed photos automatically',
-              activeColor: accentColor,
               value: _config!.uploadEnabled,
               onChanged: (value) async {
                 if (value) {
@@ -787,9 +760,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             _buildCustomSwitchRow(
+              icon: Icons.link_rounded,
+              iconColor: AppTheme.iconFeed,
               title: 'Auto-Copy URL',
-              subtitle: 'Copy gallery link after upload',
-              activeColor: accentColor,
+              tooltip: 'Copy gallery link after upload',
               value: _config!.autoCopyGalleryUrl,
               onChanged:
                   _config!.uploadEnabled
@@ -805,8 +779,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildAboutSection([bool isSmallScreen = false]) {
     final padding =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
-    final spacing = isSmallScreen ? 12.0 : 16.0;
+        isSmallScreen ? const EdgeInsets.all(16) : const EdgeInsets.all(24);
 
     return RepaintBoundary(
       child: AppCard(
@@ -814,164 +787,133 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  color: AppTheme.brandPurple,
-                  size: 20,
-                ),
-                SizedBox(width: 12),
-                Text(
-                  'About',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            _buildCardHeader(
+              Icons.info_outline_rounded,
+              AppTheme.brandPurple,
+              'About',
             ),
-            SizedBox(height: spacing),
-
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color:
-                    _updateAvailable
-                        ? AppTheme.warningColor.withValues(alpha: 0.1)
-                        : AppTheme.surfaceBase,
-                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-                border: Border.all(
-                  color:
-                      _updateAvailable
-                          ? AppTheme.warningColor.withValues(alpha: 0.3)
-                          : Colors.white.withValues(alpha: 0.08),
+              decoration: const BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: AppTheme.cardBorderColor),
                 ),
               ),
+              padding: const EdgeInsets.symmetric(vertical: 14),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  Icon(
+                    _updateAvailable
+                        ? Icons.system_update_rounded
+                        : Icons.update_rounded,
+                    color:
+                        _updateAvailable
+                            ? AppTheme.warningColor
+                            : AppTheme.brandPurple,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Icon(
-                          _updateAvailable
-                              ? Icons.system_update
-                              : Icons.info_outline,
-                          color:
-                              _updateAvailable
-                                  ? Theme.of(context).colorScheme.error
-                                  : Theme.of(context).colorScheme.primary,
+                    child: Text.rich(
+                      TextSpan(
+                        style: const TextStyle(
+                          color: AppTheme.bodyTextColor,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'GalleVR',
-                                style: Theme.of(context).textTheme.titleMedium,
+                        children: [
+                          TextSpan(text: 'Version $_appVersion'),
+                          if (_updateAvailable && _latestVersion != null) ...[
+                            const TextSpan(
+                              text: '  •  ',
+                              style: TextStyle(
+                                color: AppTheme.secondaryTextColor,
                               ),
-                              RichText(
-                                text: TextSpan(
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                  children: [
-                                    TextSpan(text: 'Version $_appVersion'),
-                                    if (_updateAvailable &&
-                                        _latestVersion != null) ...[
-                                      const TextSpan(
-                                        text: ' • ',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      TextSpan(
-                                        text: 'Update: $_latestVersion',
-                                        style: TextStyle(
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).colorScheme.error,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
+                            ),
+                            TextSpan(
+                              text: 'Update $_latestVersion available',
+                              style: const TextStyle(
+                                color: AppTheme.warningColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
                               ),
-                            ],
-                          ),
-                        ),
-                      ],
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
-
+                  const SizedBox(width: 12),
                   if (_updateAvailable && _latestVersion != null) ...[
-                    OutlinedButton(
+                    TintedButton.neutral(
                       onPressed: _checkForUpdatesWithFeedback,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
-                      child: const Text('Check Again'),
+                      label: 'Check Again',
+                      dense: true,
                     ),
                     const SizedBox(width: 8),
-                    ElevatedButton.icon(
+                    TintedButton(
                       onPressed: _updateService.openReleasesPage,
-                      icon: const Icon(Icons.download_rounded, size: 18),
-                      label: const Text('Download'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
+                      icon: Icons.download_rounded,
+                      label: 'Download',
+                      color: AppTheme.brandPurple,
+                      dense: true,
                     ),
                   ] else
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.refresh_rounded, size: 18),
-                      label: const Text('Check for Updates'),
+                    TintedButton.neutral(
                       onPressed: _checkForUpdatesWithFeedback,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
+                      icon: Icons.refresh_rounded,
+                      label: 'Check for Updates',
+                      dense: true,
                     ),
                 ],
               ),
             ),
-
-            const SizedBox(height: 16),
-
             _buildCustomInfoRow(
-              dense: isSmallScreen,
               title: 'Platform',
               subtitle: _getPlatformName(),
-              leading: Icons.devices,
+              leading: Icons.devices_rounded,
             ),
-            if (Platform.isWindows || Platform.isLinux) ...[
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: TintedButton(
-                  onPressed:
-                      () => AppServiceManager().handleWindowClose(
-                        forceExit: true,
-                      ),
-                  icon: Icons.power_settings_new_rounded,
-                  label: 'Quit GalleVR',
-                  color: AppTheme.errorColor,
-                  dense: true,
+            if (Platform.isWindows || Platform.isLinux)
+              Container(
+                decoration: const BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: AppTheme.cardBorderColor),
+                  ),
+                ),
+                padding: const EdgeInsets.only(top: 14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.power_settings_new_rounded,
+                          color: AppTheme.errorTextColor,
+                          size: 18,
+                        ),
+                        SizedBox(width: 10),
+                        Text(
+                          'Exit Application',
+                          style: TextStyle(
+                            color: AppTheme.bodyTextColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    TintedButton(
+                      onPressed:
+                          () => AppServiceManager().handleWindowClose(
+                            forceExit: true,
+                          ),
+                      icon: Icons.power_settings_new_rounded,
+                      label: 'Quit GalleVR',
+                      color: AppTheme.errorColor,
+                      dense: true,
+                    ),
+                  ],
                 ),
               ),
-            ],
           ],
         ),
       ),
@@ -984,104 +926,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required bool isSmallScreen,
     required Function(String?) onChanged,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+    final pathBox = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceBase,
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+        border: Border.all(color: AppTheme.buttonBorderColor),
+      ),
+      child: Text(
+        value.isEmpty ? 'Not set' : value,
+        style: TextStyle(
+          color:
+              value.isEmpty
+                  ? AppTheme.secondaryTextColor.withValues(alpha: 0.6)
+                  : AppTheme.bodyTextColor,
+          fontSize: 13,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: AppTheme.cardBorderColor)),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            style: const TextStyle(
+              color: AppTheme.bodyTextColor,
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+            ),
           ),
           const SizedBox(height: 8),
           if (isSmallScreen)
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceBase,
-                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-                    border: Border.all(color: Colors.white10),
-                  ),
-                  child: Text(
-                    value.isEmpty ? 'Not set' : value,
-                    style: TextStyle(
-                      color:
-                          value.isEmpty
-                              ? Colors.white24
-                              : AppTheme.secondaryTextColor,
-                      fontSize: 13,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
+                pathBox,
                 const SizedBox(height: 8),
-                _buildModernButton(
+                TintedButton.neutral(
                   onPressed: () => _pickDirectory(onChanged),
+                  icon: Icons.folder_open_rounded,
                   label: 'Browse',
-                  color: AppTheme.primaryColor,
+                  dense: true,
                 ),
               ],
             )
           else
             Row(
               children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceBase,
-                      borderRadius: BorderRadius.circular(
-                        AppTheme.radiusControl,
-                      ),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Text(
-                      value.isEmpty ? 'Not set' : value,
-                      style: TextStyle(
-                        color:
-                            value.isEmpty
-                                ? Colors.white24
-                                : AppTheme.secondaryTextColor,
-                        fontSize: 14,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
+                Expanded(child: pathBox),
                 const SizedBox(width: 12),
-                _buildModernButton(
+                TintedButton.neutral(
                   onPressed: () => _pickDirectory(onChanged),
+                  icon: Icons.folder_open_rounded,
                   label: 'Browse',
-                  color: AppTheme.primaryColor,
+                  dense: true,
                 ),
               ],
             ),
         ],
       ),
-    );
-  }
-
-  Widget _buildModernButton({
-    required VoidCallback? onPressed,
-    required String label,
-    required Color color,
-  }) {
-    return TintedButton(
-      onPressed: onPressed,
-      label: label,
-      color: color,
-      dense: true,
     );
   }
 
@@ -1287,8 +1198,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildWindowsSection([bool isSmallScreen = false]) {
     final padding =
-        isSmallScreen ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
-    final spacing = isSmallScreen ? 12.0 : 16.0;
+        isSmallScreen ? const EdgeInsets.all(16) : const EdgeInsets.all(24);
 
     return RepaintBoundary(
       child: AppCard(
@@ -1296,31 +1206,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
-              children: [
-                Icon(
-                  Icons.settings_applications_rounded,
-                  color: AppTheme.primaryLightColor,
-                  size: 20,
-                ),
-                SizedBox(width: 12),
-                Text(
-                  'Windows Settings',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            _buildCardHeader(
+              Icons.settings_applications_rounded,
+              AppTheme.iconWorld,
+              'Windows Settings',
             ),
-            SizedBox(height: spacing),
             RepaintBoundary(
               child: _buildCustomSwitchRow(
-                dense: isSmallScreen,
+                icon: Icons.minimize_rounded,
+                iconColor: AppTheme.iconWorld,
                 title: 'Minimize to System Tray',
-                subtitle: 'Keep the app running in the system tray when closed',
-                activeColor: Theme.of(context).colorScheme.primary,
                 value: _config!.minimizeToTray,
                 onChanged: (value) {
                   final updatedConfig = _config!.copyWith(
@@ -1332,10 +1227,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             RepaintBoundary(
               child: _buildCustomSwitchRow(
-                dense: isSmallScreen,
+                icon: Icons.power_rounded,
+                iconColor: AppTheme.iconPlayers,
                 title: 'Start with Windows',
-                subtitle: 'Automatically start GalleVR when Windows starts',
-                activeColor: Theme.of(context).colorScheme.primary,
                 value: _config!.startWithWindows,
                 onChanged: (value) {
                   final updatedConfig = _config!.copyWith(
@@ -1347,11 +1241,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             RepaintBoundary(
               child: _buildCustomSwitchRow(
-                dense: isSmallScreen,
+                icon: Icons.system_update_alt_rounded,
+                iconColor: AppTheme.brandPurple,
                 title: 'Auto Updates',
-                subtitle:
-                    'Automatically download and install updates in the background',
-                activeColor: Theme.of(context).colorScheme.primary,
                 value: _config!.autoUpdateEnabled,
                 onChanged: (value) {
                   final updatedConfig = _config!.copyWith(
@@ -1369,49 +1261,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildCustomSwitchRow({
     required String title,
-    required String subtitle,
+    String? tooltip,
     required bool value,
     required ValueChanged<bool>? onChanged,
-    required Color activeColor,
-    bool dense = false,
+    IconData? icon,
+    Color? iconColor,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        mouseCursor: SystemMouseCursors.click,
-        onTap: onChanged != null ? () => onChanged(!value) : null,
-        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: 8,
-            vertical: dense ? 8 : 12,
+    final enabled = onChanged != null;
+    final labelRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, color: iconColor ?? AppTheme.brandPurple, size: 18),
+          const SizedBox(width: 10),
+        ],
+        Flexible(
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: AppTheme.bodyTextColor,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: AppTheme.secondaryTextColor,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
+        ),
+      ],
+    );
+
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.5,
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppTheme.cardBorderColor)),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            mouseCursor:
+                enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+            onTap: enabled ? () => onChanged(!value) : null,
+            hoverColor: Colors.transparent,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child:
+                        tooltip != null
+                            ? Tooltip(message: tooltip, child: labelRow)
+                            : labelRow,
+                  ),
+                  const SizedBox(width: 16),
+                  AppSwitch(value: value, onChanged: onChanged),
+                ],
               ),
-              AppSwitch(value: value, onChanged: onChanged),
-            ],
+            ),
           ),
         ),
       ),
@@ -1422,48 +1326,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String title,
     required String subtitle,
     required IconData leading,
-    bool dense = false,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        mouseCursor: SystemMouseCursors.click,
-        onTap: () {},
-        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: 8,
-            vertical: dense ? 8 : 12,
-          ),
-          child: Row(
-            children: [
-              Icon(leading, color: AppTheme.secondaryTextColor, size: 24),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: AppTheme.secondaryTextColor,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: AppTheme.cardBorderColor)),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Row(
+        children: [
+          Icon(leading, color: AppTheme.secondaryTextColor, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: AppTheme.bodyTextColor,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
               ),
-            ],
+            ),
           ),
-        ),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: AppTheme.secondaryTextColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

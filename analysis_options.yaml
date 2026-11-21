@@ -33,6 +33,10 @@ analyzer:
     - "**/*.mocks.dart"
     - "lib/generated/**"
     - "packages/**"
+    - build/**
+    - android/**
+    - windows/**
+    - linux/**
   errors:
     # Treat info level issues as warnings to catch them early
     todo: warning

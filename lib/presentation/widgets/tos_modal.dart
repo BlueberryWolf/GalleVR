@@ -5,6 +5,7 @@ import 'dart:ui';
 
 import '../../data/services/tos_service.dart';
 import '../theme/app_theme.dart';
+import 'tinted_button.dart';
 
 class TOSModal extends StatefulWidget {
   final Function() onAccept;
@@ -103,11 +104,11 @@ class _TOSModalState extends State<TOSModal> {
       children: [
         Positioned.fill(
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: GestureDetector(
               onTap: () {},
               behavior: HitTestBehavior.opaque,
-              child: Container(color: Colors.black.withValues(alpha: 0.5)),
+              child: Container(color: Colors.black.withValues(alpha: 0.7)),
             ),
           ),
         ),
@@ -116,99 +117,103 @@ class _TOSModalState extends State<TOSModal> {
           child: Material(
             color: Colors.transparent,
             child: Container(
-              width: isSmallScreen ? size.width * 0.9 : size.width * 0.7,
-              height: size.height * 0.8,
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceColor,
-                borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-              ),
-              padding: const EdgeInsets.all(24),
+              width: isSmallScreen ? size.width * 0.92 : size.width * 0.7,
+              constraints: const BoxConstraints(maxWidth: 760),
+              height: size.height * 0.82,
+              decoration: AppTheme.modalDecoration,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.title,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Color(0x1AFFFFFF)),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        if (_tosData.containsKey('content') &&
+                            _tosData['content'] is Map &&
+                            (_tosData['content'] as Map).containsKey(
+                              'effectiveDate',
+                            )) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'Effective Date: ${_formatDate((_tosData['content'] as Map)['effectiveDate'])}',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: AppTheme.secondaryTextColor,
+                            ),
+                          ),
+                        ] else if (_tosData.containsKey('lastModified')) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'Last Updated: ${_formatDate(_tosData['lastModified'])}',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: AppTheme.secondaryTextColor,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
 
-                  if (_tosData.containsKey('content') &&
-                      _tosData['content'] is Map &&
-                      (_tosData['content'] as Map).containsKey(
-                        'effectiveDate',
-                      )) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Effective Date: ${_formatDate((_tosData['content'] as Map)['effectiveDate'])}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppTheme.secondaryTextColor,
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: _buildContent(),
+                    ),
+                  ),
+
+                  if (_errorMessage.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                      child: Text(
+                        _errorMessage,
+                        style: const TextStyle(
+                          color: AppTheme.errorTextColor,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
-                  ] else if (_tosData.containsKey('lastModified')) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Last Updated: ${_formatDate(_tosData['lastModified'])}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppTheme.secondaryTextColor,
+
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        top: BorderSide(color: Color(0x1AFFFFFF)),
                       ),
                     ),
-                  ],
-
-                  const SizedBox(height: 16),
-                  const Divider(color: Colors.white24),
-                  const SizedBox(height: 16),
-
-                  Expanded(child: _buildContent()),
-
-                  if (_errorMessage.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      _errorMessage,
-                      style: const TextStyle(
-                        color: AppTheme.errorColor,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      if (widget.showDeclineButton) ...[
-                        TextButton(
-                          onPressed: _isAccepting ? null : widget.onDecline,
-                          child: const Text(
-                            'Decline',
-                            style: TextStyle(color: AppTheme.errorColor),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (widget.showDeclineButton) ...[
+                          TintedButton.neutral(
+                            onPressed: _isAccepting ? null : widget.onDecline,
+                            label: 'Decline',
                           ),
+                          const SizedBox(width: 12),
+                        ],
+                        TintedButton(
+                          onPressed: _isAccepting ? null : _acceptTOS,
+                          label: 'Accept',
+                          color: AppTheme.brandPurple,
+                          loading: _isAccepting,
                         ),
-                        const SizedBox(width: 16),
                       ],
-                      ElevatedButton(
-                        onPressed: _isAccepting ? null : _acceptTOS,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                        ),
-                        child:
-                            _isAccepting
-                                ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                                : const Text('Accept'),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),

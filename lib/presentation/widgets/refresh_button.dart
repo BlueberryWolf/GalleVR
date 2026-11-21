@@ -21,8 +21,9 @@ class _RefreshButtonState extends State<RefreshButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1000),
+    duration: const Duration(milliseconds: 900),
   );
+  bool _isHovered = false;
 
   @override
   void initState() {
@@ -53,21 +54,48 @@ class _RefreshButtonState extends State<RefreshButton>
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: widget.isLoading ? null : widget.onTap,
-      tooltip: widget.tooltip ?? 'Refresh',
-      icon: RotationTransition(
-        turns: _controller,
-        child: const Icon(Icons.refresh_rounded, size: 20),
-      ),
-      style: IconButton.styleFrom(
-        fixedSize: const Size(44, 44),
-        backgroundColor: AppTheme.buttonColor,
-        disabledBackgroundColor: AppTheme.buttonColor,
-        hoverColor: AppTheme.buttonHoverColor,
-        foregroundColor: AppTheme.textColor,
-        disabledForegroundColor: AppTheme.textColor,
-        side: const BorderSide(color: AppTheme.buttonBorderColor),
+    return Tooltip(
+      message: widget.tooltip ?? 'Refresh',
+      child: MouseRegion(
+        cursor:
+            widget.isLoading
+                ? SystemMouseCursors.basic
+                : SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.isLoading ? null : widget.onTap,
+          child: Opacity(
+            opacity: widget.isLoading ? 0.5 : 1.0,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: const Cubic(0.16, 1, 0.3, 1),
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color:
+                    _isHovered && !widget.isLoading
+                        ? AppTheme.buttonHoverColor
+                        : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+              ),
+              alignment: Alignment.center,
+              child: AnimatedRotation(
+                turns: !widget.isLoading && _isHovered ? 0.25 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                curve: const Cubic(0.16, 1, 0.3, 1),
+                child: RotationTransition(
+                  turns: _controller,
+                  child: const Icon(
+                    Icons.refresh_rounded,
+                    size: 20,
+                    color: AppTheme.textColor,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

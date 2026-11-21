@@ -1,10 +1,9 @@
 import 'dart:io';
 import 'dart:developer' as developer;
-import 'package:flutter/foundation.dart';
-import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/image/image_dimensions_reader.dart';
 import '../../core/webp/webp_encoder_service.dart';
 import '../models/config_model.dart';
 import '../models/log_metadata.dart';
@@ -250,7 +249,6 @@ class PhotoProcessorService {
       final fileName = path.basenameWithoutExtension(sourcePath);
       final outputPath = path.join(outputDir.path, '$fileName.webp');
 
-      final file = File(sourcePath);
       final tier = _getTierSettings(badges);
       final int maxDimension = tier['maxDimension']!;
       final int webpQuality = tier['webpQuality']!;
@@ -260,14 +258,10 @@ class PhotoProcessorService {
       int height = 0;
 
       try {
-        final bytes = await file.readAsBytes();
-        final decoder = img.findDecoderForData(bytes);
-        if (decoder != null) {
-          final info = decoder.startDecode(bytes);
-          if (info != null) {
-            width = info.width;
-            height = info.height;
-          }
+        final dims = await ImageDimensionsReader.readFromFile(sourcePath);
+        if (dims != null) {
+          width = dims.width;
+          height = dims.height;
         }
       } catch (e) {
         developer.log(
@@ -351,58 +345,11 @@ class PhotoProcessorService {
           name: 'PhotoProcessorService',
         );
       } else {
-        final bytes = await file.readAsBytes();
-        final image = await _decodeImage(bytes);
-
-        if (image == null) {
-          final error = 'Failed to decode image: $filename';
-          developer.log(error, name: 'PhotoProcessorService');
-          PhotoEventService().notifyError(
-            'processing',
-            error,
-            photoPath: sourcePath,
-          );
-          return null;
-        }
-
-        final processedImage = await _resizeImageIfNeeded(image, maxDimension);
-
         developer.log(
-          'Fallback path dynamic size ceiling: $scaledMaxSizeBytes bytes for resolution ${processedImage.width}x${processedImage.height} (max tier limit: $maxSizeBytes bytes)',
+          'Unsupported platform for WebP encoding: ${Platform.operatingSystem}',
           name: 'PhotoProcessorService',
         );
-
-        Uint8List webpBytes = await _encodeToWebP(processedImage, webpQuality);
-
-        if (webpBytes.length > scaledMaxSizeBytes) {
-          int currentQuality = webpQuality;
-          developer.log(
-            'Initial encode too large for user tier (${webpBytes.length} bytes, limit is $scaledMaxSizeBytes), starting iterative compression...',
-            name: 'PhotoProcessorService',
-          );
-
-          while (webpBytes.length > scaledMaxSizeBytes && currentQuality > 50) {
-            currentQuality -= 10;
-            if (currentQuality < 50) currentQuality = 50;
-            webpBytes = await _encodeToWebP(processedImage, currentQuality);
-            developer.log(
-              'Retry quality $currentQuality produced ${webpBytes.length} bytes',
-              name: 'PhotoProcessorService',
-            );
-            if (currentQuality <= 50) break;
-          }
-        }
-
-        developer.log(
-          'Final WebP: ${webpBytes.length} bytes (Quality: $webpQuality / Limit: $scaledMaxSizeBytes)',
-          name: 'PhotoProcessorService',
-        );
-
-        await File(outputPath).writeAsBytes(webpBytes);
-        developer.log(
-          'Saved WebP file to: $outputPath',
-          name: 'PhotoProcessorService',
-        );
+        return null;
       }
 
       return outputPath;
@@ -428,51 +375,6 @@ class PhotoProcessorService {
 
     return (ratio - ratio16_9).abs() < tolerance ||
         (ratio - ratio9_16).abs() < tolerance;
-  }
-
-  Future<img.Image?> _decodeImage(Uint8List bytes) async {
-    return await compute((Uint8List bytes) {
-      return img.decodeImage(bytes);
-    }, bytes);
-  }
-
-  Future<img.Image> _resizeImageIfNeeded(
-    img.Image image,
-    int maxDimension,
-  ) async {
-    if (image.width <= maxDimension && image.height <= maxDimension) {
-      return image;
-    }
-
-    return await compute((Map<String, dynamic> params) {
-      final img.Image image = params['image'];
-      final int maxDim = params['maxDim'];
-
-      int newWidth, newHeight;
-
-      if (image.width > image.height) {
-        newWidth = maxDim;
-        newHeight = (image.height * (maxDim / image.width)).round();
-      } else {
-        newHeight = maxDim;
-        newWidth = (image.width * (maxDim / image.height)).round();
-      }
-
-      return img.copyResize(
-        image,
-        width: newWidth,
-        height: newHeight,
-        interpolation: img.Interpolation.cubic,
-      );
-    }, {'image': image, 'maxDim': maxDimension});
-  }
-
-  Future<Uint8List> _encodeToWebP(img.Image image, int quality) async {
-    return await _webpEncoderService.encodeToWebP(
-      image,
-      quality: quality,
-      method: 6,
-    );
   }
 
   Map<String, dynamic> _getTierSettings(List<String> badges) {

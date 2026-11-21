@@ -20,6 +20,19 @@ jobs:
         with:
           flutter-version: "3.44.6"
           channel: stable
+          cache: true
+
+      - name: Cache Pub, NuGet, and CMake deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\Pub\Cache
+            ~\.nuget\packages
+            build\windows\x64\_deps\sqlite3-src
+            build\windows\x64\_deps\nuget-src
+          key: ${{ runner.os }}-windows-deps-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-windows-deps-
 
       - name: Disable analytics
         run: |
@@ -58,6 +71,18 @@ jobs:
         with:
           flutter-version: "3.44.6"
           channel: stable
+          cache: true
+
+      - name: Cache Pub and Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-android-deps-${{ hashFiles('pubspec.lock', 'android/gradle/wrapper/gradle-wrapper.properties', 'android/settings.gradle.kts', 'android/app/build.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-android-deps-
 
       - name: Disable analytics
         run: |
@@ -101,6 +126,18 @@ jobs:
         with:
           flutter-version: "3.44.6"
           channel: stable
+          cache: true
+
+      - name: Cache Pub, ccache, and CMake deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ~/.cache/ccache
+            build/linux/x64/release/_deps/sqlite3-src
+          key: ${{ runner.os }}-linux-deps-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-linux-deps-
 
       - name: Disable analytics
         run: |
@@ -110,7 +147,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev liblzma-dev libnm-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev ninja-build pkg-config imagemagick patchelf
+          sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev liblzma-dev libnm-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev ninja-build pkg-config imagemagick patchelf ccache lld
 
       - name: Flutter pub get
         run: flutter pub get

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,7 +13,6 @@ import '../widgets/blurrable_qr_code.dart';
 import '../widgets/app_card.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/tinted_button.dart';
-import '../widgets/step_indicator.dart';
 import '../widgets/tos_modal.dart';
 import 'onboarding_screen.dart';
 
@@ -41,6 +41,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
   bool _isLoading = false;
   bool _isVerified = false;
   bool _showTotpField = false;
+  List<String> _twoFactorTypes = const [];
   bool _isAgeVerified = false;
   bool _showTOSModal = false;
   String _errorMessage = '';
@@ -54,6 +55,12 @@ class _VerificationScreenState extends State<VerificationScreen> {
   Map<String, dynamic>? _lookedUpAccount;
   bool _isLookingUp = false;
   String? _activePlatform;
+  Timer? _pollTimer;
+  bool _isPollInFlight = false;
+  bool _isFriend = true;
+  bool _friendCheckDone = false;
+  bool _tokenCopied = false;
+  Timer? _copiedResetTimer;
 
   @override
   void initState() {
@@ -67,11 +74,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   @override
   void dispose() {
+    _stopManualPolling();
+    _copiedResetTimer?.cancel();
     _usernameController.dispose();
     _passwordController.dispose();
     _totpController.dispose();
     _pairCodeController.dispose();
     super.dispose();
+  }
+
+  void _stopManualPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _isPollInFlight = false;
   }
 
   Future<void> _initializeService() async {
@@ -81,7 +96,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
     });
 
     try {
-      await _vrchatService.initialize();
+      try {
+        await _vrchatService.initialize();
+      } catch (e) {
+        developer.log(
+          'Non-fatal error initializing VRChat client: $e',
+          name: 'VerificationScreen',
+        );
+      }
 
       final isStoredAgeVerified = await _vrchatService.loadAgeVerified();
       if (isStoredAgeVerified) {
@@ -233,9 +255,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
           });
         }
       } else if (loginResult.requiresTwoFactor) {
+        final isEmail = loginResult.isEmailOtp;
+        final wasAlreadyShowing = _showTotpField;
         setState(() {
           _showTotpField = true;
-          _errorMessage = 'Please enter your 2FA code';
+          _twoFactorTypes = loginResult.twoFactorTypes;
+          _errorMessage =
+              wasAlreadyShowing
+                  ? (loginResult.errorMessage ?? 'Invalid 2FA code')
+                  : isEmail
+                  ? 'Enter the 6-digit code sent to your email'
+                  : 'Enter the 6-digit code from your authenticator app';
         });
       } else {
         setState(() {
@@ -270,7 +300,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
     });
 
     try {
-      final authData = await _vrchatService.pairWithCode(code);
+      final authData = await _vrchatService.pairWithCode(
+        code,
+        saveAsPrimary: !widget.isLinkMode,
+      );
 
       if (authData != null) {
         await _markAsVerified(authData);
@@ -295,7 +328,10 @@ class _VerificationScreenState extends State<VerificationScreen> {
   Future<void> _markAsVerified(AuthData baseAuth) async {
     AuthData finalAuth = baseAuth;
     try {
-      final fetched = await _vrchatService.fetchMe(baseAuth);
+      final fetched = await _vrchatService.fetchMe(
+        baseAuth,
+        saveToStorage: false,
+      );
       if (fetched != null) {
         finalAuth = fetched;
       }
@@ -326,141 +362,69 @@ class _VerificationScreenState extends State<VerificationScreen> {
   }
 
   Future<void> _startManualVerification() async {
-    final isResonite = _activePlatform == 'resonite';
-    if (_manualVerificationStep == 0) {
-      if (_usernameController.text.isEmpty) {
+    if (_lookedUpAccount == null) return;
+
+    if (!_isAgeVerified) {
+      if (_selectedDate == null || !_isOver13()) {
         setState(() {
-          _errorMessage =
-              isResonite
-                  ? 'Please enter your Resonite username'
-                  : 'Please enter your VRChat username';
+          _errorMessage = 'Please select your date of birth (must be 13+).';
         });
         return;
       }
-
       setState(() {
-        _isLoading = true;
-        _errorMessage = '';
-        _statusMessage = 'Starting verification...';
+        _isAgeVerified = true;
       });
+    }
 
-      try {
-        final lookupId = _lookedUpAccount?['id'] ?? _usernameController.text;
-        final verificationResult = await _vrchatService.startManualVerification(
-          lookupId,
-          ageVerified: _isAgeVerified,
-        );
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
 
-        if (verificationResult.success && verificationResult.authData != null) {
-          if (widget.isLinkMode) {
-            await _vrchatService.saveAuthDataSecondary(
-              verificationResult.authData!,
-            );
-          } else {
-            await _vrchatService.saveAuthData(verificationResult.authData!);
-          }
+    try {
+      final lookupId =
+          (_lookedUpAccount?['id'] ??
+                  _lookedUpAccount?['userId'] ??
+                  _usernameController.text.trim())
+              .toString();
+      final verificationResult = await _vrchatService.startManualVerification(
+        lookupId,
+        ageVerified: _isAgeVerified,
+      );
 
-          setState(() {
-            _manualVerificationStep = 1;
-            _authData = verificationResult.authData;
-            _verificationToken = verificationResult.verificationToken ?? '';
-          });
-        } else {
-          setState(() {
-            _errorMessage =
-                verificationResult.errorMessage ?? 'Verification failed';
-          });
-        }
-      } catch (e) {
-        setState(() {
-          _errorMessage = 'Error: $e';
-        });
-      } finally {
-        setState(() {
-          _isLoading = false;
-          _statusMessage = '';
-        });
-      }
-    } else if (_manualVerificationStep == 1) {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = '';
-        _statusMessage = 'Checking friend status...';
-      });
-
-      try {
-        String lookupId = _lookedUpAccount?['id'] ?? _usernameController.text;
-        if (isResonite && !lookupId.startsWith('U-')) {
-          lookupId = 'U-$lookupId';
-        }
-        final isFriend = await _vrchatService.checkFriendStatus(lookupId);
-
-        if (isFriend) {
-          setState(() {
-            _manualVerificationStep = 2;
-            _statusMessage = 'Friend status confirmed!';
-          });
-        } else {
-          setState(() {
-            _errorMessage =
-                isResonite
-                    ? 'Friend request not found. Please add GalleVR as a friend in Resonite and try again.'
-                    : 'Friend request not found. Please add GalleVR as a friend in VRChat and try again.';
-          });
-        }
-      } catch (e) {
-        setState(() {
-          _errorMessage = 'Error checking friend status: $e';
-        });
-      } finally {
-        setState(() {
-          _isLoading = false;
-          _statusMessage = '';
-        });
-      }
-    } else if (_manualVerificationStep == 2) {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = '';
-        _statusMessage = 'Checking verification status...';
-      });
-
-      try {
-        if (_authData != null) {
-          final isVerified = await _vrchatService.checkVerificationStatus(
-            _authData!,
+      if (verificationResult.success && verificationResult.authData != null) {
+        if (widget.isLinkMode) {
+          await _vrchatService.saveAuthDataSecondary(
+            verificationResult.authData!,
           );
-
-          if (isVerified) {
-            await _markAsVerified(_authData!);
-          } else {
-            await Future.delayed(const Duration(seconds: 3));
-            final retryVerified = await _vrchatService.checkVerificationStatus(
-              _authData!,
-            );
-
-            if (retryVerified) {
-              await _markAsVerified(_authData!);
-            } else {
-              setState(() {
-                _errorMessage =
-                    isResonite
-                        ? 'Verification failed. Please make sure you\'ve sent the verification token to the Resonite bot and try again.'
-                        : 'Verification failed. Please make sure you\'ve set your VRChat status to the verification token and try again.';
-              });
-            }
-          }
         } else {
-          setState(() {
-            _errorMessage =
-                'Authentication data is missing. Please restart the verification process.';
-          });
+          await _vrchatService.saveAuthData(verificationResult.authData!);
         }
-      } catch (e) {
+
+        if (!mounted) return;
         setState(() {
-          _errorMessage = 'Error checking verification status: $e';
+          _manualVerificationStep = 2;
+          _authData = verificationResult.authData;
+          _verificationToken = verificationResult.verificationToken ?? '';
+          _friendCheckDone = false;
+          _isFriend = true;
         });
-      } finally {
+
+        _checkFriendStatusQuietly(lookupId);
+        _startManualPolling(verificationResult.authData!);
+      } else {
+        setState(() {
+          _errorMessage =
+              verificationResult.errorMessage ??
+              'Something went wrong starting verification. Try again.';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Something went wrong starting verification. Try again.';
+      });
+    } finally {
+      if (mounted) {
         setState(() {
           _isLoading = false;
           _statusMessage = '';
@@ -469,9 +433,52 @@ class _VerificationScreenState extends State<VerificationScreen> {
     }
   }
 
+  Future<void> _checkFriendStatusQuietly(String lookupId) async {
+    try {
+      var id = lookupId;
+      if (_activePlatform == 'resonite' && !id.startsWith('U-')) {
+        id = 'U-$id';
+      }
+      final friend = await _vrchatService.checkFriendStatus(id);
+      if (mounted) {
+        setState(() {
+          _isFriend = friend;
+          _friendCheckDone = true;
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _startManualPolling(AuthData pendingAuth) {
+    _stopManualPolling();
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (!mounted || _isPollInFlight) return;
+      _isPollInFlight = true;
+      try {
+        final verified = await _vrchatService.checkVerificationStatus(
+          pendingAuth,
+          forceRefresh: true,
+        );
+        if (verified && mounted) {
+          _stopManualPolling();
+          setState(() {
+            _manualVerificationStep = 3;
+          });
+          await Future.delayed(const Duration(milliseconds: 1200));
+          if (mounted) {
+            await _markAsVerified(pendingAuth);
+          }
+        }
+      } catch (_) {
+      } finally {
+        _isPollInFlight = false;
+      }
+    });
+  }
+
   Future<void> _performAccountLookup() async {
     final text = _usernameController.text.trim();
-    if (text.length < 2) return;
+    if (text.isEmpty || _isLookingUp) return;
 
     setState(() {
       _isLookingUp = true;
@@ -485,23 +492,33 @@ class _VerificationScreenState extends State<VerificationScreen> {
         text,
         platform: platform,
       );
+      if (!mounted) return;
       setState(() {
         _lookedUpAccount = account;
-        if (account == null) {
+        if (account != null) {
+          _manualVerificationStep = 1;
+        } else {
           _errorMessage =
               platform == 'resonite'
-                  ? 'No matching Resonite account found on API.'
-                  : 'No matching VRChat account found on API.';
+                  ? 'No Resonite account found with that name. Check spelling and try again.'
+                  : 'Could not find this VRChat user. Check spelling or use their User ID.';
         }
       });
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Search request error.';
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage =
+              _activePlatform == 'resonite'
+                  ? 'No Resonite account found with that name. Check spelling and try again.'
+                  : 'Could not find this VRChat user. Check spelling or use their User ID.';
+        });
+      }
     } finally {
-      setState(() {
-        _isLookingUp = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLookingUp = false;
+        });
+      }
     }
   }
 
@@ -588,45 +605,29 @@ class _VerificationScreenState extends State<VerificationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
+        toolbarHeight: 64,
         title: Text(
           _activePlatform == null
               ? 'Link Account'
               : _activePlatform == 'resonite'
               ? 'Resonite Verification'
               : 'VRChat Verification',
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+            letterSpacing: -0.4,
+          ),
         ),
-        backgroundColor: AppTheme.backgroundColor,
+        backgroundColor: AppTheme.chromeColor,
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1, color: AppTheme.headerBorderColor),
+        ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (_activePlatform == 'resonite' && _selectedMethod != null) {
-              setState(() {
-                _selectedMethod = null;
-                _activePlatform =
-                    widget.initialPlatform == null ? null : _activePlatform;
-                _errorMessage = '';
-              });
-            } else if (_selectedMethod != null) {
-              setState(() {
-                _selectedMethod = null;
-                _errorMessage = '';
-              });
-            } else if (_activePlatform != null &&
-                widget.initialPlatform == null) {
-              setState(() {
-                _activePlatform = null;
-              });
-            } else if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-            } else {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (context) => const OnboardingScreen(),
-                ),
-              );
-            }
-          },
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: _handleBackNavigation,
         ),
       ),
       body: Stack(
@@ -635,47 +636,93 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ? _buildVerifiedView()
               : Stack(
                 children: [
-                  SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (_activePlatform == null)
-                          _buildPlatformPickerView()
-                        else if (_selectedMethod == null)
-                          _buildMethodSelectionLanding()
-                        else if (_selectedMethod == VerificationMethod.pairCode)
-                          _buildPairCodeVerificationView()
-                        else if (_selectedMethod ==
-                            VerificationMethod.automatic)
-                          _buildAutomaticVerificationView()
-                        else
-                          _buildManualVerificationView(),
-                      ],
-                    ),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isPicker =
+                          _activePlatform == null || _selectedMethod == null;
+                      final isManual =
+                          _selectedMethod == VerificationMethod.manual;
+                      final double contentMaxWidth =
+                          _activePlatform == null
+                              ? 960
+                              : _selectedMethod == null
+                              ? 820
+                              : isManual
+                              ? 480
+                              : 560;
+                      return SingleChildScrollView(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: constraints.maxWidth > 640 ? 32 : 16,
+                          vertical: 24,
+                        ),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: (constraints.maxHeight - 48).clamp(
+                              0.0,
+                              double.infinity,
+                            ),
+                          ),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: contentMaxWidth,
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (_activePlatform == null)
+                                    _buildPlatformPickerView(
+                                      constraints.maxWidth > 720,
+                                    )
+                                  else if (_selectedMethod == null)
+                                    _buildMethodSelectionLanding(
+                                      constraints.maxWidth > 640,
+                                    )
+                                  else if (_selectedMethod ==
+                                      VerificationMethod.pairCode)
+                                    _buildPairCodeVerificationView()
+                                  else if (_selectedMethod ==
+                                      VerificationMethod.automatic)
+                                    _buildAutomaticVerificationView()
+                                  else
+                                    _buildManualVerificationView(),
+                                  if (isPicker) const SizedBox(height: 32),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
 
-                  if (_isLoading)
+                  if (_isLoading &&
+                      _selectedMethod != VerificationMethod.manual)
                     Container(
-                      color: Colors.black.withAlpha(76),
+                      color: Colors.black.withValues(alpha: 0.6),
                       child: Center(
-                        child: Card(
-                          elevation: 4,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const CircularProgressIndicator(),
-                                const SizedBox(height: 16),
-                                Text(
-                                  _statusMessage.isNotEmpty
-                                      ? _statusMessage
-                                      : 'Processing...',
-                                  textAlign: TextAlign.center,
+                        child: Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: AppTheme.modalDecoration,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const CircularProgressIndicator(
+                                color: AppTheme.brandPurple,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _statusMessage.isNotEmpty
+                                    ? _statusMessage
+                                    : 'Processing...',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: AppTheme.bodyTextColor,
+                                  fontSize: 14,
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -694,214 +741,354 @@ class _VerificationScreenState extends State<VerificationScreen> {
     );
   }
 
-  Widget _buildPlatformPickerView() {
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: 32.0,
-        bottom: 24.0,
-        left: 12.0,
-        right: 12.0,
+  void _handleBackNavigation() {
+    _stopManualPolling();
+    if (_selectedMethod == VerificationMethod.manual &&
+        _manualVerificationStep > 0 &&
+        _manualVerificationStep < 3) {
+      setState(() {
+        _manualVerificationStep = _manualVerificationStep == 2 ? 1 : 0;
+        _errorMessage = '';
+      });
+      return;
+    }
+
+    if (_activePlatform == 'resonite' && _selectedMethod != null) {
+      if (widget.initialPlatform == null) {
+        setState(() {
+          _selectedMethod = null;
+          _activePlatform = null;
+          _manualVerificationStep = 0;
+          _lookedUpAccount = null;
+          _errorMessage = '';
+        });
+      } else if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+        );
+      }
+    } else if (_selectedMethod != null) {
+      setState(() {
+        _selectedMethod = null;
+        _manualVerificationStep = 0;
+        _lookedUpAccount = null;
+        _errorMessage = '';
+      });
+    } else if (_activePlatform != null && widget.initialPlatform == null) {
+      setState(() {
+        _activePlatform = null;
+      });
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+      );
+    }
+  }
+
+  Widget _buildPlatformPickerView(bool isWide) {
+    final cards = [
+      _buildPickerTile(
+        title: 'Instant Link Code',
+        description: '6-digit code from the website',
+        icon: Icons.flash_on_rounded,
+        color: AppTheme.primaryColor,
+        isGrid: isWide,
+        onTap: () {
+          setState(() {
+            _selectedMethod = VerificationMethod.pairCode;
+            _activePlatform = 'vrchat';
+            _errorMessage = '';
+          });
+        },
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Primary Platform',
-            style: Theme.of(context).textTheme.displaySmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              letterSpacing: -1.0,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Pick the account you want to link to GalleVR or enter a website pairing code.',
-            style: TextStyle(
-              fontSize: 16,
-              color: AppTheme.secondaryTextColor,
-              height: 1.5,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 36),
-
-          _buildActionCard(
-            title: 'Instant Link Code',
-            description:
-                'Best option. If you followed onboarding on the website, just type the 6-digit code here.',
-            icon: Icons.flash_on_rounded,
-            color: AppTheme.primaryColor,
-            onTap: () {
-              setState(() {
-                _selectedMethod = VerificationMethod.pairCode;
-                _activePlatform = 'vrchat';
-                _errorMessage = '';
-              });
-            },
-          ),
-          const SizedBox(height: 20),
-
-          _buildActionCard(
-            title: 'VRChat',
-            description:
-                'Link your VRChat account to organize and share your VRChat photos.',
-            imageAsset: 'assets/images/VRChat_logo.png',
-            color: AppTheme.brandPurpleDeep,
-            onTap: () {
-              setState(() {
-                _activePlatform = 'vrchat';
-                _errorMessage = '';
-              });
-            },
-          ),
-          const SizedBox(height: 20),
-
-          _buildActionCard(
-            title: 'Resonite',
-            description:
-                'Link your Resonite account using our verification bot.',
-            imageAsset: 'assets/images/resonite_logo.png',
-            color: AppTheme.resoniteColor,
-            onTap: () {
-              setState(() {
-                _activePlatform = 'resonite';
-                _selectedMethod = VerificationMethod.manual;
-                _errorMessage = '';
-              });
-            },
-          ),
-        ],
+      _buildPickerTile(
+        title: 'VRChat',
+        imageAsset: 'assets/images/VRChat_logo.png',
+        color: AppTheme.brandPurpleDeep,
+        isGrid: isWide,
+        onTap: () {
+          setState(() {
+            _activePlatform = 'vrchat';
+            _errorMessage = '';
+          });
+        },
       ),
+      _buildPickerTile(
+        title: 'Resonite',
+        imageAsset: 'assets/images/resonite_logo.png',
+        color: AppTheme.resoniteColor,
+        isGrid: isWide,
+        onTap: () {
+          _stopManualPolling();
+          setState(() {
+            _activePlatform = 'resonite';
+            _selectedMethod = VerificationMethod.manual;
+            _manualVerificationStep = 0;
+            _lookedUpAccount = null;
+            _errorMessage = '';
+          });
+        },
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment:
+          isWide ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Primary Platform',
+          textAlign: isWide ? TextAlign.center : TextAlign.left,
+          style: Theme.of(context).textTheme.displaySmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+            letterSpacing: -0.8,
+          ),
+        ),
+        const SizedBox(height: 28),
+        if (isWide)
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: cards[0]),
+                const SizedBox(width: 16),
+                Expanded(child: cards[1]),
+                const SizedBox(width: 16),
+                Expanded(child: cards[2]),
+              ],
+            ),
+          )
+        else
+          Column(
+            children: [
+              cards[0],
+              const SizedBox(height: 14),
+              cards[1],
+              const SizedBox(height: 14),
+              cards[2],
+            ],
+          ),
+      ],
     );
   }
 
-  Widget _buildMethodSelectionLanding() {
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: 32.0,
-        bottom: 24.0,
-        left: 12.0,
-        right: 12.0,
+  Widget _buildMethodSelectionLanding(bool isWide) {
+    final cards = [
+      _buildPickerTile(
+        title: 'Automatic Verification',
+        description: 'Sign in once and verify your status automatically',
+        icon: Icons.verified_user_rounded,
+        color: AppTheme.brandPurpleDeep,
+        isGrid: isWide,
+        onTap: () {
+          setState(() {
+            _selectedMethod = VerificationMethod.automatic;
+            _errorMessage = '';
+          });
+        },
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Link VRChat',
-            style: Theme.of(context).textTheme.displayMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              letterSpacing: -1.0,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'To link your VRChat account, I just need to confirm you own it. You verify with a temporary code in your VRChat status.',
-            style: TextStyle(
-              fontSize: 16,
-              color: AppTheme.secondaryTextColor,
-              height: 1.5,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 48),
+      _buildPickerTile(
+        title: 'Manual Verification',
+        description: 'Add a verification code to your VRChat status yourself',
+        icon: Icons.edit_note_rounded,
+        color: AppTheme.accentPink,
+        isGrid: isWide,
+        onTap: () {
+          _stopManualPolling();
+          setState(() {
+            _selectedMethod = VerificationMethod.manual;
+            _manualVerificationStep = 0;
+            _lookedUpAccount = null;
+            _errorMessage = '';
+          });
+        },
+      ),
+    ];
 
-          _buildActionCard(
-            title: 'Automatic Verification',
-            description:
-                'Log in once and GalleVR will automatically handle adding and removing the verification code from your status for you.',
-            icon: Icons.verified_user_rounded,
-            color: AppTheme.brandPurpleDeep,
-            onTap: () {
-              setState(() {
-                _selectedMethod = VerificationMethod.automatic;
-                _errorMessage = '';
-              });
-            },
+    return Column(
+      crossAxisAlignment:
+          isWide ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Link VRChat',
+          textAlign: isWide ? TextAlign.center : TextAlign.left,
+          style: Theme.of(context).textTheme.displaySmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+            letterSpacing: -0.8,
           ),
-          const SizedBox(height: 20),
-          _buildActionCard(
-            title: 'Manual Verification',
-            description:
-                'Prefer to handle it yourself? Just look up your account and copy the code in manually.',
-            icon: Icons.edit_note_rounded,
-            color: AppTheme.accentPink,
-            onTap: () {
-              setState(() {
-                _selectedMethod = VerificationMethod.manual;
-                _errorMessage = '';
-              });
-            },
+        ),
+        const SizedBox(height: 28),
+        if (isWide)
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: cards[0]),
+                const SizedBox(width: 16),
+                Expanded(child: cards[1]),
+              ],
+            ),
+          )
+        else
+          Column(children: [cards[0], const SizedBox(height: 14), cards[1]]),
+      ],
+    );
+  }
+
+  Widget _buildPickerTile({
+    required String title,
+    String? description,
+    IconData? icon,
+    String? imageAsset,
+    required Color color,
+    required bool isGrid,
+    required VoidCallback onTap,
+  }) {
+    if (!isGrid) {
+      return _buildActionCard(
+        title: title,
+        description: description,
+        icon: icon,
+        imageAsset: imageAsset,
+        color: color,
+        onTap: onTap,
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
+        onTap: onTap,
+        hoverColor: AppTheme.cardHoverColor,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+            color: AppTheme.cardBackgroundColor,
+            border: Border.all(color: AppTheme.cardBorderColor),
           ),
-        ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 56,
+                  height: 56,
+                  child: Center(
+                    child:
+                        imageAsset != null
+                            ? Image.asset(
+                              imageAsset,
+                              width: 52,
+                              height: 52,
+                              fit: BoxFit.contain,
+                            )
+                            : Icon(
+                              icon ?? Icons.flash_on_rounded,
+                              size: 42,
+                              color: color,
+                            ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                if (description != null && description.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    description,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppTheme.secondaryTextColor,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildPairCodeVerificationView() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
+    return AppCard(
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 16),
-          Row(
+          const Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withAlpha(30),
-                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-                ),
-                child: const Icon(
-                  Icons.flash_on_rounded,
-                  color: AppTheme.primaryColor,
-                  size: 24,
-                ),
+              Icon(
+                Icons.flash_on_rounded,
+                color: AppTheme.brandPurple,
+                size: 24,
               ),
-              const SizedBox(width: 16),
-              const Text(
+              SizedBox(width: 12),
+              Text(
                 'Instant Pair Code',
                 style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
                   color: Colors.white,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text(
-            'Look at the website setup screen. You\'ll find a 6-digit numerical code there.',
+          const SizedBox(height: 10),
+          const Text(
+            'Enter the 6-digit code shown on the website.',
             style: TextStyle(
-              fontSize: 15,
+              fontSize: 14,
               color: AppTheme.secondaryTextColor,
-              height: 1.5,
+              height: 1.4,
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 20),
 
           if (_errorMessage.isNotEmpty)
             Container(
+              width: double.infinity,
               padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.only(bottom: 20),
+              margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: AppTheme.errorColor.withAlpha(20),
-                border: Border.all(color: AppTheme.errorColor.withAlpha(80)),
+                color: AppTheme.tint(AppTheme.errorColor, 0.12),
+                border: Border.all(
+                  color: AppTheme.errorColor.withValues(alpha: 0.35),
+                ),
                 borderRadius: BorderRadius.circular(AppTheme.radiusControl),
               ),
               child: Row(
                 children: [
                   const Icon(
-                    Icons.error_outline,
-                    color: AppTheme.errorColor,
-                    size: 20,
+                    Icons.error_outline_rounded,
+                    color: AppTheme.errorTextColor,
+                    size: 18,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       _errorMessage,
-                      style: const TextStyle(color: AppTheme.errorColor),
+                      style: const TextStyle(
+                        color: AppTheme.errorTextColor,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ],
@@ -918,7 +1105,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             style: const TextStyle(
               fontSize: 20,
               letterSpacing: 4,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w700,
             ),
             keyboardType: TextInputType.number,
             textAlign: TextAlign.center,
@@ -933,41 +1120,18 @@ class _VerificationScreenState extends State<VerificationScreen> {
               }
             },
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          SizedBox(
+          TintedButton(
+            onPressed: _isLoading ? null : _submitPairCode,
+            label: 'Pair Now',
+            color: AppTheme.brandPurple,
             width: double.infinity,
-            height: 54,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _submitPairCode,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryDarkColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-                ),
-              ),
-              child:
-                  _isLoading
-                      ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                      : const Text(
-                        'Pair Now',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-            ),
+            height: 48,
+            loading: _isLoading,
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Center(
             child: TextButton(
               onPressed: () {
@@ -976,7 +1140,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   _errorMessage = '';
                 });
               },
-              child: Text(
+              child: const Text(
                 'Go Back',
                 style: TextStyle(color: AppTheme.secondaryTextColor),
               ),
@@ -989,7 +1153,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   Widget _buildActionCard({
     required String title,
-    required String description,
+    String? description,
     IconData? icon,
     String? imageAsset,
     required Color color,
@@ -1000,47 +1164,44 @@ class _VerificationScreenState extends State<VerificationScreen> {
       child: InkWell(
         mouseCursor: SystemMouseCursors.click,
         onTap: onTap,
+        hoverColor: AppTheme.cardHoverColor,
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-            color: AppTheme.tileColor,
+            color: AppTheme.cardBackgroundColor,
             border: Border.all(color: AppTheme.cardBorderColor),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppTheme.tint(color, 0.25),
-                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-                  ),
-                  child:
-                      imageAsset != null
-                          ? imageAsset.endsWith('.svg')
-                              ? Icon(
-                                Icons.hub_rounded,
-                                size: 28,
-                                color: Colors.white,
-                              )
-                              : Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Image.asset(
+                SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: Center(
+                    child:
+                        imageAsset != null
+                            ? imageAsset.endsWith('.svg')
+                                ? Icon(
+                                  Icons.hub_rounded,
+                                  size: 28,
+                                  color: color,
+                                )
+                                : Image.asset(
                                   imageAsset,
+                                  width: 36,
+                                  height: 36,
                                   fit: BoxFit.contain,
-                                ),
-                              )
-                          : Icon(
-                            icon ?? Icons.flash_on_rounded,
-                            size: 28,
-                            color: Colors.white,
-                          ),
+                                )
+                            : Icon(
+                              icon ?? Icons.flash_on_rounded,
+                              size: 28,
+                              color: color,
+                            ),
+                  ),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1048,29 +1209,30 @@ class _VerificationScreenState extends State<VerificationScreen> {
                       Text(
                         title,
                         style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
                           color: Colors.white,
-                          letterSpacing: 0.5,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        description,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.white.withAlpha(200),
-                          height: 1.3,
+                      if (description != null && description.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          description,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.secondaryTextColor,
+                            height: 1.4,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
                 const Icon(
-                  Icons.arrow_forward_ios,
+                  Icons.chevron_right_rounded,
                   color: AppTheme.secondaryTextColor,
-                  size: 20,
+                  size: 22,
                 ),
               ],
             ),
@@ -1086,34 +1248,25 @@ class _VerificationScreenState extends State<VerificationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.verified_user_rounded,
-                color: AppTheme.brandPurpleDeep,
+                color: AppTheme.brandPurple,
                 size: 24,
               ),
-              const SizedBox(width: 12),
-              const Text(
+              SizedBox(width: 12),
+              Text(
                 'Automatic Verification',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
-          const Text(
-            'Sign in to your VRChat account and I\'ll handle the verification process for you.',
-            style: TextStyle(
-              color: AppTheme.secondaryTextColor,
-              fontSize: 14,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 24),
           TextField(
             controller: _usernameController,
             decoration: const InputDecoration(
@@ -1121,6 +1274,15 @@ class _VerificationScreenState extends State<VerificationScreen> {
               prefixIcon: Icon(Icons.person_rounded),
             ),
             enabled: !_isLoading,
+            onChanged: (_) {
+              if (_showTotpField) {
+                setState(() {
+                  _showTotpField = false;
+                  _twoFactorTypes = const [];
+                  _totpController.clear();
+                });
+              }
+            },
           ),
           const SizedBox(height: 16),
           TextField(
@@ -1131,20 +1293,29 @@ class _VerificationScreenState extends State<VerificationScreen> {
             ),
             obscureText: true,
             enabled: !_isLoading,
+            onChanged: (_) {
+              if (_showTotpField) {
+                setState(() {
+                  _showTotpField = false;
+                  _twoFactorTypes = const [];
+                  _totpController.clear();
+                });
+              }
+            },
           ),
           if (!_isAgeVerified) ...[
-            const SizedBox(height: 24),
-            const Divider(),
-            const SizedBox(height: 8),
+            const SizedBox(height: 20),
+            const Divider(color: AppTheme.cardBorderColor),
+            const SizedBox(height: 12),
             const Text(
               'Age Verification',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             const Text(
               'You must be at least 13 years old. Please enter your date of birth:',
               style: TextStyle(
@@ -1152,24 +1323,26 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 fontSize: 12,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             InkWell(
               mouseCursor: SystemMouseCursors.click,
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
               onTap: _isLoading ? null : _showDatePicker,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 16,
+                  horizontal: 14,
+                  vertical: 14,
                 ),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white24),
+                  color: AppTheme.surfaceBase,
+                  border: Border.all(color: AppTheme.buttonBorderColor),
                   borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 ),
                 child: Row(
                   children: [
                     const Icon(
-                      Icons.calendar_today,
-                      size: 20,
+                      Icons.calendar_today_rounded,
+                      size: 18,
                       color: AppTheme.secondaryTextColor,
                     ),
                     const SizedBox(width: 12),
@@ -1197,7 +1370,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                     color:
                         _isOver13()
                             ? AppTheme.successColor
-                            : AppTheme.errorColor,
+                            : AppTheme.errorTextColor,
                     size: 16,
                   ),
                   const SizedBox(width: 8),
@@ -1207,7 +1380,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                       color:
                           _isOver13()
                               ? AppTheme.successColor
-                              : AppTheme.errorColor,
+                              : AppTheme.errorTextColor,
                       fontSize: 12,
                     ),
                   ),
@@ -1219,54 +1392,509 @@ class _VerificationScreenState extends State<VerificationScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: _totpController,
-              decoration: const InputDecoration(
-                labelText: '2FA Code',
-                prefixIcon: Icon(Icons.security_rounded),
+              decoration: InputDecoration(
+                labelText:
+                    _twoFactorTypes
+                                .map((e) => e.toLowerCase())
+                                .contains('emailotp') &&
+                            !_twoFactorTypes
+                                .map((e) => e.toLowerCase())
+                                .contains('totp')
+                        ? 'Email 2FA Code'
+                        : 'Authenticator 2FA Code',
+                hintText:
+                    _twoFactorTypes
+                                .map((e) => e.toLowerCase())
+                                .contains('emailotp') &&
+                            !_twoFactorTypes
+                                .map((e) => e.toLowerCase())
+                                .contains('totp')
+                        ? '6-digit code from your email'
+                        : '6-digit code or recovery code',
+                prefixIcon: const Icon(Icons.security_rounded),
               ),
-              keyboardType: TextInputType.number,
+              keyboardType:
+                  _twoFactorTypes
+                          .map((e) => e.toLowerCase())
+                          .contains('otp')
+                      ? TextInputType.text
+                      : TextInputType.number,
               enabled: !_isLoading,
             ),
           ],
           if (_errorMessage.isNotEmpty) ...[
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             Container(
+              width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppTheme.errorColor.withValues(alpha: 0.1),
+                color: AppTheme.tint(AppTheme.errorColor, 0.12),
                 borderRadius: BorderRadius.circular(AppTheme.radiusControl),
                 border: Border.all(
-                  color: AppTheme.errorColor.withValues(alpha: 0.3),
+                  color: AppTheme.errorColor.withValues(alpha: 0.35),
                 ),
               ),
               child: Text(
                 _errorMessage.split('\n').first,
                 style: const TextStyle(
-                  color: AppTheme.errorColor,
+                  color: AppTheme.errorTextColor,
                   fontSize: 13,
                 ),
               ),
             ),
           ],
-          const SizedBox(height: 32),
-          Center(
-            child: _buildActionButton(
-              onPressed: () {
-                if (!_isAgeVerified) {
-                  if (_selectedDate == null || !_isOver13()) {
-                    setState(() {
-                      _errorMessage = 'Please complete age verification first.';
-                    });
-                    return;
-                  }
-                  setState(() {
-                    _isAgeVerified = true;
-                  });
-                }
-                _login();
-              },
-              label: _showTotpField ? 'Verify Code' : 'Sign In',
-              color: AppTheme.brandPurpleDeep,
-              icon: Icons.login_rounded,
+          const SizedBox(height: 24),
+          TintedButton(
+            onPressed:
+                _isLoading
+                    ? null
+                    : () {
+                      if (!_isAgeVerified) {
+                        if (_selectedDate == null || !_isOver13()) {
+                          setState(() {
+                            _errorMessage =
+                                'Please complete age verification first.';
+                          });
+                          return;
+                        }
+                        setState(() {
+                          _isAgeVerified = true;
+                        });
+                      }
+                      _login();
+                    },
+            label: _showTotpField ? 'Verify Code' : 'Sign In',
+            color: AppTheme.brandPurple,
+            icon: Icons.login_rounded,
+            width: double.infinity,
+            height: 48,
+            loading: _isLoading,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildManualVerificationView() {
+    final isResonite = _activePlatform == 'resonite';
+    final accentColor =
+        isResonite ? AppTheme.resoniteColor : AppTheme.primaryColor;
+
+    return AppCard(
+      padding: const EdgeInsets.all(24),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: (child, animation) {
+          final slide = Tween<Offset>(
+            begin: const Offset(0, 0.04),
+            end: Offset.zero,
+          ).animate(animation);
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(position: slide, child: child),
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey(_manualVerificationStep),
+          child: switch (_manualVerificationStep) {
+            0 => _buildManualFindAccountStep(isResonite, accentColor),
+            1 => _buildManualConfirmStep(accentColor),
+            2 => _buildManualVerifyStep(isResonite, accentColor),
+            _ => _buildManualSuccessStep(),
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildManualFindAccountStep(bool isResonite, Color accentColor) {
+    final canSearch = _usernameController.text.trim().isNotEmpty && !_isLookingUp;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Center(
+          child: Image.asset(
+            isResonite
+                ? 'assets/images/resonite_logo.png'
+                : 'assets/images/VRChat_logo.png',
+            width: 48,
+            height: 48,
+            fit: BoxFit.contain,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          widget.isLinkMode ? 'Link Account' : 'Sign In',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          isResonite
+              ? 'Enter your Resonite display name.'
+              : 'Enter your VRChat username to continue.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 14,
+            color: AppTheme.secondaryTextColor,
+          ),
+        ),
+        const SizedBox(height: 24),
+        TextField(
+          controller: _usernameController,
+          decoration: InputDecoration(
+            hintText: isResonite ? 'e.g. BlueberryWolf' : 'VRChat Username',
+          ),
+          enabled: !_isLookingUp,
+          textInputAction: TextInputAction.search,
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) => _performAccountLookup(),
+        ),
+        if (_errorMessage.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.tint(AppTheme.errorColor, 0.12),
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+              border: Border.all(
+                color: AppTheme.errorColor.withValues(alpha: 0.30),
+              ),
+            ),
+            child: Text(
+              _errorMessage.split('\n').first,
+              style: const TextStyle(
+                color: AppTheme.errorTextColor,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            Material(
+              color: AppTheme.buttonColor,
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+              child: InkWell(
+                mouseCursor: SystemMouseCursors.click,
+                onTap: _handleBackNavigation,
+                hoverColor: AppTheme.buttonHoverColor,
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+                    border: Border.all(color: AppTheme.buttonBorderColor),
+                  ),
+                  child: const Icon(
+                    Icons.arrow_back_rounded,
+                    size: 20,
+                    color: AppTheme.secondaryTextColor,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TintedButton(
+                onPressed: canSearch ? _performAccountLookup : null,
+                label: 'Find Account',
+                color: accentColor,
+                height: 48,
+                loading: _isLookingUp,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildManualConfirmStep(Color accentColor) {
+    final displayName =
+        (_lookedUpAccount?['displayName'] as String?) ?? 'Unknown Account';
+    final handle =
+        (_lookedUpAccount?['username'] as String?) ??
+        (_lookedUpAccount?['userId'] as String?) ??
+        (_lookedUpAccount?['id'] as String?) ??
+        '';
+    final avatarUrl = _lookedUpAccount?['avatarUrl'] as String?;
+    final canContinue =
+        !_isLoading &&
+        (_isAgeVerified || (_selectedDate != null && _isOver13()));
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Found you?',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceBase,
+            borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+            border: Border.all(color: AppTheme.cardBorderColor),
+          ),
+          child: Column(
+            children: [
+              AvatarCircle(
+                imageUrl: avatarUrl,
+                size: 80,
+                color: accentColor,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                displayName,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              if (handle.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '@$handle',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.secondaryTextColor,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (!_isAgeVerified) ...[
+          const SizedBox(height: 16),
+          InkWell(
+            mouseCursor: SystemMouseCursors.click,
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+            onTap: _isLoading ? null : _showDatePicker,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceBase,
+                border: Border.all(color: AppTheme.buttonBorderColor),
+                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.calendar_today_rounded,
+                    size: 18,
+                    color: AppTheme.secondaryTextColor,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _selectedDate != null
+                          ? '${_selectedDate!.month}/${_selectedDate!.day}/${_selectedDate!.year}'
+                          : 'Date of Birth (13+)',
+                      style: TextStyle(
+                        color:
+                            _selectedDate != null
+                                ? Colors.white
+                                : AppTheme.secondaryTextColor,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  if (_selectedDate != null)
+                    Icon(
+                      _isOver13()
+                          ? Icons.check_circle_rounded
+                          : Icons.error_rounded,
+                      color:
+                          _isOver13()
+                              ? AppTheme.successColor
+                              : AppTheme.errorTextColor,
+                      size: 18,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        if (_errorMessage.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.tint(AppTheme.errorColor, 0.12),
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+              border: Border.all(
+                color: AppTheme.errorColor.withValues(alpha: 0.30),
+              ),
+            ),
+            child: Text(
+              _errorMessage.split('\n').first,
+              style: const TextStyle(
+                color: AppTheme.errorTextColor,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(
+              flex: 1,
+              child: TintedButton.neutral(
+                onPressed:
+                    _isLoading
+                        ? null
+                        : () {
+                          setState(() {
+                            _manualVerificationStep = 0;
+                            _lookedUpAccount = null;
+                            _errorMessage = '';
+                          });
+                        },
+                label: 'Not me',
+                height: 48,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: TintedButton(
+                onPressed: canContinue ? _startManualVerification : null,
+                label: widget.isLinkMode ? 'Yes, Link' : 'Yes, Sign In',
+                color: accentColor,
+                height: 48,
+                loading: _isLoading,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildManualVerifyStep(bool isResonite, Color accentColor) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Verify Identity',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          isResonite
+              ? 'Send a message containing the code below to the GalleVR bot in Resonite.'
+              : 'Change your VRChat status to the code below so the system knows it\'s really you.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 14,
+            color: AppTheme.secondaryTextColor,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildCopyBox(value: _verificationToken),
+        const SizedBox(height: 20),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: accentColor,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              isResonite
+                  ? 'Waiting for message...'
+                  : 'Waiting for status update...',
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppTheme.bodyTextColor,
+              ),
+            ),
+          ],
+        ),
+        if (_friendCheckDone && !_isFriend) ...[
+          const SizedBox(height: 14),
+          Text(
+            isResonite
+                ? 'Add GalleVR as a friend in Resonite if you aren\'t friends yet.'
+                : 'Accept the friend request from GalleVR in VRChat if you aren\'t friends yet.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppTheme.secondaryTextColor,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildManualSuccessStep() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.check_rounded,
+            size: 44,
+            color: AppTheme.successColor,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            widget.isLinkMode ? 'Account Linked!' : 'Success!',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            widget.isLinkMode
+                ? 'Your accounts are now linked.'
+                : 'You are signed in.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppTheme.secondaryTextColor,
             ),
           ),
         ],
@@ -1274,489 +1902,61 @@ class _VerificationScreenState extends State<VerificationScreen> {
     );
   }
 
-  Widget _buildActionButton({
-    required VoidCallback onPressed,
-    required String label,
-    required Color color,
-    required IconData icon,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        mouseCursor: SystemMouseCursors.click,
-        onTap: _isLoading ? null : onPressed,
+  Widget _buildCopyBox({required String value}) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: const Color(0x66000000),
         borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-            border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 20, color: color),
-              const SizedBox(width: 12),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
+        border: Border.all(color: AppTheme.cardBorderColor),
       ),
-    );
-  }
-
-  Widget _buildManualVerificationView() {
-    final isResonite = _activePlatform == 'resonite';
-    return AppCard(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            'Manual Verification',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.2,
+          Expanded(
+            child: SelectableText(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'monospace',
+                fontSize: 20,
+                letterSpacing: 1.4,
+              ),
             ),
           ),
-          const SizedBox(height: 16),
-          StepIndicator(
-            steps: const ['Start', 'Friendship', 'Verify'],
-            currentStep: _manualVerificationStep,
-          ),
-          const SizedBox(height: 16),
-          if (_manualVerificationStep == 0) ...[
-            const Text(
-              'Enter your display name or user ID to fetch your profile.',
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _usernameController,
-              decoration: InputDecoration(
-                labelText: 'Display Name or User ID',
-                prefixIcon: const Icon(Icons.person),
-                helperText: 'e.g. "DisplayExample" or "usr_XXXX"',
-                suffixIcon: Padding(
-                  padding: const EdgeInsets.only(right: 4.0),
-                  child:
-                      _isLookingUp
-                          ? Transform.scale(
-                            scale: 0.5,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 3,
-                              color: AppTheme.brandPurpleDeep,
-                            ),
-                          )
-                          : IconButton(
-                            icon: const Icon(
-                              Icons.search,
-                              color: AppTheme.brandPurpleDeep,
-                            ),
-                            onPressed:
-                                _isLoading ? null : _performAccountLookup,
-                            tooltip: 'Search',
-                          ),
-                ),
-              ),
-              enabled: !_isLoading,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _performAccountLookup(),
-            ),
-
-            if (_lookedUpAccount != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.surfaceContainerHighest.withAlpha(100),
-                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-                  border: Border.all(
-                    color: AppTheme.primaryColor.withAlpha(80),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 24,
-                      backgroundColor: Colors.black45,
-                      backgroundImage:
-                          _lookedUpAccount!['avatarUrl'] != null
-                              ? NetworkImage(_lookedUpAccount!['avatarUrl'])
-                              : null,
-                      child:
-                          _lookedUpAccount!['avatarUrl'] == null
-                              ? const Icon(Icons.person)
-                              : null,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _lookedUpAccount!['displayName'] ??
-                                'Unknown Account',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          Text(
-                            _lookedUpAccount!['userId'] ?? '',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppTheme.secondaryTextColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(
-                      Icons.check_circle,
-                      color: AppTheme.successColor,
-                      size: 20,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Verify this profile is correct before continuing.',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                  color: AppTheme.secondaryTextColor,
-                ),
-              ),
-            ],
-
-            if (!_isAgeVerified) ...[
-              const SizedBox(height: 24),
-              const Divider(),
-              const SizedBox(height: 8),
-              Text(
-                'Age Verification',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'You must be at least 13 years old to use this app. Please enter your date of birth:',
-              ),
-              const SizedBox(height: 16),
-              InkWell(
-                mouseCursor: SystemMouseCursors.click,
-                onTap: _showDatePicker,
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Date of Birth',
-                    prefixIcon: Icon(Icons.calendar_today),
-                    border: OutlineInputBorder(),
-                  ),
-                  child: Text(
-                    _selectedDate != null
-                        ? '${_selectedDate!.month}/${_selectedDate!.day}/${_selectedDate!.year}'
-                        : 'Select Date',
-                  ),
-                ),
-              ),
-              if (_selectedDate != null) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(
-                      _isOver13() ? Icons.check_circle : Icons.error,
-                      color:
-                          _isOver13()
-                              ? AppTheme.successColor
-                              : AppTheme.errorColor,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _isOver13()
-                          ? 'Age verified'
-                          : 'You must be at least 13 years old',
-                      style: TextStyle(
-                        color:
-                            _isOver13()
-                                ? AppTheme.successColor
-                                : AppTheme.errorColor,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ] else if (_manualVerificationStep == 1) ...[
-            Text(
-              isResonite
-                  ? 'Add GalleVR as a friend in Resonite:'
-                  : 'Add GalleVR as a friend in VRChat:',
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withAlpha(25),
-                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-                border: Border.all(color: AppTheme.primaryColor),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.person, color: AppTheme.primaryColor),
-                  const SizedBox(width: 8),
-                  Text(
-                    isResonite ? 'GalleVR' : 'GalleVR',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.copy),
-                    onPressed: () {
-                      Clipboard.setData(
-                        ClipboardData(text: isResonite ? 'GalleVR' : 'GalleVR'),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            isResonite
-                                ? 'Copied "GalleVR" to clipboard'
-                                : 'Copied "GalleVR" to clipboard',
-                          ),
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    },
-                    tooltip: 'Copy to clipboard',
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              isResonite
-                  ? 'Follow these steps in Resonite:'
-                  : 'Follow these steps in VRChat:',
-            ),
-            const SizedBox(height: 8),
-            ListTile(
-              leading: const CircleAvatar(child: Text('1')),
-              title: Text(
-                isResonite
-                    ? 'Send a friend request to "GalleVR"'
-                    : 'Check your VRChat Notifications',
-              ),
-              subtitle: Text(
-                isResonite
-                    ? 'Search for "GalleVR" in Resonite and add them.'
-                    : 'A friend request from "GalleVR" should be waiting for you.',
-              ),
-            ),
-            ListTile(
-              leading: const CircleAvatar(child: Text('2')),
-              title: Text(
-                isResonite
-                    ? 'Wait for bot to accept friend request'
-                    : 'Accept the friend request',
-              ),
-              subtitle: Text(
-                isResonite
-                    ? 'The bot automatically accepts all friend requests within a few seconds.'
-                    : 'This allows us to verify your profile status.',
-              ),
-            ),
-            ListTile(
-              leading: const CircleAvatar(child: Text('3')),
-              title: Text(
-                isResonite
-                    ? 'Click "Continue" below'
-                    : 'Click "Check Status" below',
-              ),
-              subtitle: Text(
-                isResonite
-                    ? 'We\'ll progress to token message verification.'
-                    : 'We\'ll confirm once the friendship is active.',
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (!isResonite)
-              const Text(
-                'Tip: If you don\'t see a request, you can also search for "GalleVR" manually and send one to us.',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                  color: AppTheme.secondaryTextColor,
-                ),
-              ),
-          ] else if (_manualVerificationStep == 2) ...[
-            Text(
-              isResonite
-                  ? 'Send the verification token to the Resonite bot:'
-                  : 'Set your VRChat status to the verification token:',
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withAlpha(25),
-                borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-                border: Border.all(color: AppTheme.primaryColor),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.token, color: AppTheme.primaryColor),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _verificationToken,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'monospace',
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.copy),
-                    onPressed: () {
-                      Clipboard.setData(
-                        ClipboardData(text: _verificationToken),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Copied verification token to clipboard',
-                          ),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    },
-                    tooltip: 'Copy to clipboard',
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              isResonite
-                  ? 'Follow these steps in Resonite:'
-                  : 'Follow these steps in VRChat:',
-            ),
-            const SizedBox(height: 8),
-            ListTile(
-              leading: const CircleAvatar(child: Text('1')),
-              title: Text(
-                isResonite
-                    ? 'Open chat with GalleVR in Resonite'
-                    : 'In VRChat, go to your Profile and edit your status',
-              ),
-            ),
-            ListTile(
-              leading: const CircleAvatar(child: Text('2')),
-              title: Text(
-                isResonite
-                    ? 'Send the token text exactly as a message'
-                    : 'Paste the verification token as your status',
-              ),
-            ),
-            ListTile(
-              leading: const CircleAvatar(child: Text('3')),
-              title: const Text('Click "Verify Status" below'),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              isResonite
-                  ? 'When you click "Verify Status", we\'ll check if our Resonite bot received your token.'
-                  : 'When you click "Verify Status", we\'ll check if your VRChat status contains the verification token.',
-            ),
-            const SizedBox(height: 16),
-            const Text('If verification fails, please make sure:'),
-            const SizedBox(height: 8),
-            ListTile(
-              leading: const Icon(Icons.check_circle_outline),
-              title: Text(
-                isResonite
-                    ? 'You\'ve added GalleVR as a friend'
-                    : 'You\'ve added GalleVR as a friend',
-              ),
-              dense: true,
-            ),
-            ListTile(
-              leading: const Icon(Icons.check_circle_outline),
-              title: Text(
-                isResonite
-                    ? 'You sent the exact token message to the bot'
-                    : 'Your status message contains the exact verification token',
-              ),
-              dense: true,
-            ),
-            if (!isResonite)
-              const ListTile(
-                leading: Icon(Icons.check_circle_outline),
-                title: Text(
-                  'You\'ve waited a few minutes for VRChat to update your status',
-                ),
-                dense: true,
-              ),
-          ],
-          if (_errorMessage.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text(
-              _errorMessage.split('\n').first,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ],
-
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Spacer(),
-              ElevatedButton(
-                onPressed:
-                    (_manualVerificationStep == 0 &&
-                                !_isAgeVerified &&
-                                (_selectedDate == null || !_isOver13()) ||
-                            _isLoading)
-                        ? null
-                        : () {
-                          if (_manualVerificationStep == 0 &&
-                              !_isAgeVerified &&
-                              _selectedDate != null &&
-                              _isOver13()) {
-                            setState(() {
-                              _isAgeVerified = true;
-                            });
-                          }
-                          _startManualVerification();
-                        },
-                child: Text(() {
-                  switch (_manualVerificationStep) {
-                    case 0:
-                      return 'Continue';
-                    case 1:
-                      return 'Check Friend Status';
-                    case 2:
-                      return 'Verify Status';
-                    default:
-                      return 'Continue';
+          const SizedBox(width: 8),
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+            child: InkWell(
+              mouseCursor: SystemMouseCursors.click,
+              hoverColor: AppTheme.buttonHoverColor,
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: value));
+                _copiedResetTimer?.cancel();
+                setState(() => _tokenCopied = true);
+                _copiedResetTimer = Timer(const Duration(seconds: 2), () {
+                  if (mounted) {
+                    setState(() => _tokenCopied = false);
                   }
-                }()),
+                });
+              },
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(
+                  _tokenCopied
+                      ? Icons.check_rounded
+                      : Icons.content_copy_rounded,
+                  size: 18,
+                  color:
+                      _tokenCopied
+                          ? AppTheme.successColor
+                          : AppTheme.secondaryTextColor,
+                ),
               ),
-            ],
+            ),
           ),
         ],
       ),
@@ -1778,7 +1978,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
         final avatarWidget = AvatarCircle(
           imageUrl: avatarUrl,
-          size: isWide ? 120 : 80,
+          size: isWide ? 100 : 76,
           color: AppTheme.successColor,
           fallbackIcon: Icons.verified_user_rounded,
         );
@@ -1792,9 +1992,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
               textAlign: isWide ? TextAlign.left : TextAlign.center,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: isWide ? 28 : 22,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
+                fontSize: isWide ? 24 : 20,
+                fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 6),
@@ -1807,25 +2006,26 @@ class _VerificationScreenState extends State<VerificationScreen> {
           children: [
             _buildModernButton(
               onPressed: () {
-                Navigator.of(context).pushReplacement(
+                Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (context) => const HomeScreen()),
+                  (route) => false,
                 );
               },
               icon: Icons.dashboard_customize_rounded,
               label: 'Go to Dashboard',
-              color: AppTheme.primaryColor,
+              color: AppTheme.brandPurple,
             ),
           ],
         );
 
         final profileBanner = AppCard(
-          padding: EdgeInsets.all(isWide ? 40 : 20),
+          padding: EdgeInsets.all(isWide ? 28 : 20),
           child:
               isWide
                   ? Row(
                     children: [
                       avatarWidget,
-                      const SizedBox(width: 32),
+                      const SizedBox(width: 24),
                       Expanded(child: nameAndStatus),
                       actions,
                     ],
@@ -1843,52 +2043,31 @@ class _VerificationScreenState extends State<VerificationScreen> {
         );
 
         final qrCard = AppCard(
-          padding: EdgeInsets.all(isWide ? 40 : 24),
+          padding: EdgeInsets.all(isWide ? 32 : 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
+              const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceBase,
-                      borderRadius: BorderRadius.circular(
-                        AppTheme.radiusControl,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.qr_code_scanner_rounded,
-                      color: AppTheme.secondaryTextColor,
-                      size: 24,
-                    ),
+                  Icon(
+                    Icons.qr_code_scanner_rounded,
+                    color: AppTheme.brandPurple,
+                    size: 24,
                   ),
-                  const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Mobile Access',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Scan to view your gallery on your phone',
-                        style: TextStyle(
-                          color: AppTheme.secondaryTextColor,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
+                  SizedBox(width: 10),
+                  Text(
+                    'Mobile Access',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 18,
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 28),
               BlurrableQrCode(
                 revealedData: _galleryUrl,
                 blurredData:
@@ -1901,17 +2080,34 @@ class _VerificationScreenState extends State<VerificationScreen> {
           ),
         );
 
+        final isTwoColumn = constraints.maxWidth >= 900;
+        final horizontalPad =
+            isWide
+                ? ((constraints.maxWidth - 1200) / 2).clamp(
+                  28.0,
+                  double.infinity,
+                )
+                : 16.0;
+
         return SingleChildScrollView(
-          padding: EdgeInsets.all(isWide ? 40 : 20),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 800),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [profileBanner, const SizedBox(height: 24), qrCard],
-              ),
-            ),
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPad,
+            vertical: isWide ? 24 : 16,
           ),
+          child:
+              isTwoColumn
+                  ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: profileBanner),
+                      const SizedBox(width: 24),
+                      SizedBox(width: 340, child: qrCard),
+                    ],
+                  )
+                  : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [profileBanner, const SizedBox(height: 24), qrCard],
+                  ),
         );
       },
     );

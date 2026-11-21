@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:pasteboard/pasteboard.dart';
 import '../../../../core/image/image_cache_service.dart';
+import '../../../../core/utils/tag_parser.dart';
 import '../../../../data/models/photo_metadata.dart';
 import '../../../../data/models/config_model.dart';
 import '../../../../data/repositories/photo_metadata_repository.dart';
@@ -48,6 +49,8 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
   String? _uploadStatus;
   Timer? _metadataDebounceTimer;
   final Set<String> _loadedPaths = {};
+
+  static const double _panelWidth = 360;
 
   @override
   void initState() {
@@ -102,8 +105,8 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
       for (var i = _currentIndex - 1; i <= _currentIndex + 1; i++)
         if (i >= 0 && i < widget.photos.length) widget.photos[i].path,
     };
-    for (final path in _loadedPaths.difference(nearby)) {
-      CachedImage.evictOriginal(path);
+    for (final p in _loadedPaths.difference(nearby)) {
+      CachedImage.evictOriginal(p);
     }
     _loadedPaths
       ..clear()
@@ -160,8 +163,46 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
     }
   }
 
+  String _formatDate(int timestamp) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final month = months[dt.month - 1];
+
+    String daySuffix = 'th';
+    if (dt.day == 1 || dt.day == 21 || dt.day == 31) {
+      daySuffix = 'st';
+    } else if (dt.day == 2 || dt.day == 22) {
+      daySuffix = 'nd';
+    } else if (dt.day == 3 || dt.day == 23) {
+      daySuffix = 'rd';
+    }
+
+    final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+    final ampm = dt.hour >= 12 ? 'pm' : 'am';
+    final minute = dt.minute.toString().padLeft(2, '0');
+
+    return '$month ${dt.day}$daySuffix ${dt.year}, $hour:$minute $ampm';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final currentFilename =
+        _currentMetadata?.filename ??
+        path.basename(widget.photos[_currentIndex].path);
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Focus(
@@ -189,7 +230,11 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
             return KeyEventResult.handled;
           } else if (event is KeyDownEvent &&
               event.logicalKey == LogicalKeyboardKey.escape) {
-            Navigator.pop(context);
+            if (_isMetadataPanelOpen) {
+              setState(() => _isMetadataPanelOpen = false);
+            } else {
+              Navigator.pop(context);
+            }
             return KeyEventResult.handled;
           }
           return KeyEventResult.ignored;
@@ -202,7 +247,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
               left: 0,
               top: 0,
               bottom: 0,
-              right: _isMetadataPanelOpen ? 340 : 0,
+              right: _isMetadataPanelOpen ? _panelWidth : 0,
               child: Stack(
                 children: [
                   PageView.builder(
@@ -278,14 +323,16 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                     top: 0,
                     left: 0,
                     right: 0,
-                    child: _buildDynamicAppBar(),
+                    child: _buildDynamicAppBar(currentFilename),
                   ),
 
                   _buildActionPods(),
 
                   if (_isLoadingMetadata)
                     const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
+                      child: CircularProgressIndicator(
+                        color: AppTheme.brandPurple,
+                      ),
                     ),
                 ],
               ),
@@ -294,12 +341,13 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
             AnimatedPositioned(
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOutCubic,
-              right: _isMetadataPanelOpen ? 0 : -340,
+              right: _isMetadataPanelOpen ? 0 : -_panelWidth,
               top: 0,
               bottom: 0,
-              width: 340,
+              width: _panelWidth,
               child: PhotoMetadataPanel(
                 metadata: _currentMetadata,
+                filename: currentFilename,
                 isOpen: true,
                 onClose: () => setState(() => _isMetadataPanelOpen = false),
               ),
@@ -321,7 +369,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                           vertical: 16,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.5),
+                          color: const Color(0xCC08080C),
                           borderRadius: BorderRadius.circular(
                             AppTheme.radiusCard,
                           ),
@@ -333,12 +381,17 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             SizedBox(
-                              width: 200,
-                              child: LinearProgressIndicator(
-                                value: _uploadProgress,
-                                backgroundColor: Colors.white10,
-                                valueColor: const AlwaysStoppedAnimation<Color>(
-                                  AppTheme.primaryColor,
+                              width: 220,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(999),
+                                child: LinearProgressIndicator(
+                                  value: _uploadProgress,
+                                  minHeight: 6,
+                                  backgroundColor: Colors.white10,
+                                  valueColor:
+                                      const AlwaysStoppedAnimation<Color>(
+                                        AppTheme.brandPurple,
+                                      ),
                                 ),
                               ),
                             ),
@@ -368,9 +421,9 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
 
   Widget _buildActionPods() {
     return Positioned(
-      bottom: 32,
-      left: 24,
-      right: 24,
+      bottom: 24,
+      left: 20,
+      right: 20,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -389,7 +442,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
               ),
               if (_currentMetadata?.galleryUrl != null)
                 _PodButton(
-                  icon: Icons.share_rounded,
+                  icon: Icons.link_rounded,
                   label: 'Share',
                   onPressed: () {
                     copyToClipboard(
@@ -400,11 +453,10 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                           () => openUrl(_currentMetadata!.galleryUrl!, context),
                     );
                   },
-                  tooltip: 'Share Link',
+                  tooltip: 'Copy Gallery Link',
                 ),
             ],
           ),
-
           _ActionPod(
             children: [
               _PodButton(
@@ -441,7 +493,7 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
                 _PodButton(
                   icon: Icons.cloud_upload_rounded,
                   label: 'Upload',
-                  activeColor: AppTheme.primaryColor,
+                  accentColor: AppTheme.brandPurple,
                   onPressed: _manualUpload,
                   tooltip: 'Upload to Gallery',
                 ),
@@ -452,33 +504,36 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
     );
   }
 
-  Widget _buildDynamicAppBar() {
-    String dateStr = '';
-    if (_currentMetadata != null) {
-      final dt = DateTime.fromMillisecondsSinceEpoch(
-        _currentMetadata!.takenDate,
-      );
-      dateStr =
-          '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    }
+  Widget _buildDynamicAppBar(String fallbackFilename) {
+    final titleText =
+        _currentMetadata != null
+            ? _formatDate(_currentMetadata!.takenDate)
+            : fallbackFilename;
+    final world = _currentMetadata?.world;
+    final worldName =
+        world != null ? stripResoniteTags(world.name).trim() : '';
+    final playerCount = _currentMetadata?.players.length ?? 0;
+    final isUploaded = _currentMetadata?.galleryUrl != null;
 
-    const textShadows = [Shadow(color: Color(0x99000000), blurRadius: 6)];
+    const textShadows = [
+      Shadow(color: Color(0x99000000), blurRadius: 3, offset: Offset(0, 1)),
+    ];
 
     return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xB3000000), Color(0x59000000), Color(0x00000000)],
-          stops: [0, 0.55, 1],
+          colors: [Color(0x80000000), Color(0x33000000), Color(0x00000000)],
+          stops: [0.0, 0.55, 1.0],
         ),
       ),
       child: SafeArea(
         bottom: false,
-        child: Container(
-          height: 96,
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 16, 32),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _OverlayIconButton(
                 icon: Icons.arrow_back_rounded,
@@ -489,30 +544,80 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _currentMetadata?.filename ??
-                          path.basename(widget.photos[_currentIndex].path),
+                      titleText,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
                         shadows: textShadows,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (dateStr.isNotEmpty)
-                      Text(
-                        dateStr,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          shadows: textShadows,
-                        ),
-                      ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (worldName.isNotEmpty)
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 320),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.public_rounded,
+                                  size: 16,
+                                  color: AppTheme.iconWorld,
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text.rich(
+                                    parseResoniteTags(
+                                      world!.name,
+                                      const TextStyle(
+                                        color: Color(0xD9FFFFFF),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        shadows: textShadows,
+                                      ),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (playerCount > 0)
+                          _MetaClickableItem(
+                            icon: Icons.people_alt_rounded,
+                            iconColor: AppTheme.iconPlayers,
+                            label: '$playerCount',
+                            tooltip: 'View players',
+                            onTap:
+                                () => setState(
+                                  () =>
+                                      _isMetadataPanelOpen =
+                                          !_isMetadataPanelOpen,
+                                ),
+                          ),
+                        if (isUploaded)
+                          const Tooltip(
+                            message: 'Uploaded to Gallery',
+                            child: Icon(
+                              Icons.cloud_done_rounded,
+                              size: 16,
+                              color: AppTheme.successColor,
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -524,38 +629,125 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
   }
 }
 
-class _ActionPod extends StatelessWidget {
-  final List<Widget> children;
+class _MetaClickableItem extends StatefulWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String tooltip;
+  final VoidCallback onTap;
 
-  const _ActionPod({required this.children});
+  const _MetaClickableItem({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  State<_MetaClickableItem> createState() => _MetaClickableItemState();
+}
+
+class _MetaClickableItemState extends State<_MetaClickableItem> {
+  bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(widget.icon, size: 16, color: widget.iconColor),
+              const SizedBox(width: 6),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  color: _isHovered ? Colors.white : const Color(0xD9FFFFFF),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  decoration:
+                      _isHovered
+                          ? TextDecoration.underline
+                          : TextDecoration.none,
+                  decorationColor: Colors.white,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  shadows: const [
+                    Shadow(
+                      color: Color(0x99000000),
+                      blurRadius: 3,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: children),
         ),
       ),
     );
   }
 }
 
-class _PodButton extends StatelessWidget {
+class _ActionPod extends StatefulWidget {
+  final List<Widget> children;
+
+  const _ActionPod({required this.children});
+
+  @override
+  State<_ActionPod> createState() => _ActionPodState();
+}
+
+class _ActionPodState extends State<_ActionPod> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: _isHovered ? 0.45 : 0.35),
+              borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: _isHovered ? 0.15 : 0.08),
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x4D000000),
+                  blurRadius: 32,
+                  offset: Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: widget.children),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PodButton extends StatefulWidget {
   final IconData icon;
   final String? label;
   final VoidCallback onPressed;
   final int? badge;
   final bool isActive;
-  final Color? activeColor;
+  final Color? accentColor;
   final String? tooltip;
 
   const _PodButton({
@@ -564,93 +756,109 @@ class _PodButton extends StatelessWidget {
     required this.onPressed,
     this.badge,
     this.isActive = false,
-    this.activeColor,
+    this.accentColor,
     this.tooltip,
   });
 
   @override
+  State<_PodButton> createState() => _PodButtonState();
+}
+
+class _PodButtonState extends State<_PodButton> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          mouseCursor: SystemMouseCursors.click,
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: EdgeInsets.symmetric(horizontal: label != null ? 14 : 10),
-            height: 44,
-            decoration: BoxDecoration(
-              color:
-                  isActive
-                      ? (activeColor ?? Colors.white.withValues(alpha: 0.12))
-                      : Colors.transparent,
-              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Icon(
-                      icon,
-                      color:
-                          isActive
-                              ? Colors.white
-                              : Colors.white.withValues(alpha: 0.8),
-                      size: 22,
-                    ),
-                    if (badge != null && badge! > 0)
-                      Positioned(
-                        top: -4,
-                        right: -4,
-                        child: Container(
-                          constraints: const BoxConstraints(
-                            minWidth: 16,
-                            minHeight: 16,
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '$badge',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              height: 1.2,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
+    final fgColor =
+        widget.isActive
+            ? AppTheme.brandPurple
+            : widget.accentColor ??
+                (_isHovered ? Colors.white : Colors.white.withValues(alpha: 0.85));
+
+    final button = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onPressed,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: EdgeInsets.symmetric(
+            horizontal: widget.label != null ? 14 : 10,
+          ),
+          height: 40,
+          decoration: BoxDecoration(
+            color:
+                widget.isActive
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : _isHovered
+                    ? Colors.white.withValues(alpha: 0.10)
+                    : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  AnimatedScale(
+                    scale: _isHovered ? 1.1 : 1.0,
+                    duration: const Duration(milliseconds: 180),
+                    child: Icon(widget.icon, color: fgColor, size: 20),
+                  ),
+                  if (widget.badge != null && widget.badge! > 0)
+                    Positioned(
+                      top: -6,
+                      right: -8,
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '${widget.badge}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            height: 1.1,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: [FontFeature.tabularFigures()],
                           ),
                         ),
                       ),
-                  ],
-                ),
-                if (label != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    label!,
-                    style: TextStyle(
-                      color:
-                          isActive
-                              ? Colors.white
-                              : Colors.white.withValues(alpha: 0.8),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
                     ),
-                  ),
                 ],
+              ),
+              if (widget.label != null) ...[
+                const SizedBox(width: 8),
+                Text(
+                  widget.label!,
+                  style: TextStyle(
+                    color:
+                        widget.accentColor != null ? Colors.white : fgColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),
     );
+
+    if (widget.label == null && widget.tooltip != null) {
+      return Tooltip(message: widget.tooltip!, child: button);
+    }
+    return button;
   }
 }
 
@@ -685,14 +893,16 @@ class _OverlayIconButtonState extends State<_OverlayIconButton> {
           behavior: HitTestBehavior.opaque,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.all(10),
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: Colors.black.withAlpha(_isHovered ? 200 : 150),
+              color: Colors.black.withValues(alpha: _isHovered ? 0.7 : 0.45),
               borderRadius: BorderRadius.circular(AppTheme.radiusControl),
               border: Border.all(
-                color: Colors.white.withAlpha(_isHovered ? 40 : 20),
+                color: Colors.white.withValues(alpha: _isHovered ? 0.18 : 0.08),
               ),
             ),
+            alignment: Alignment.center,
             child: Icon(widget.icon, color: Colors.white, size: 20),
           ),
         ),

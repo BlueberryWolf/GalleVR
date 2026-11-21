@@ -4,9 +4,7 @@ import 'dart:developer' as developer;
 import 'dart:io' as io;
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vrchat_dart/vrchat_dart.dart';
 
 import '../../core/platform/platform_service.dart';
 import '../../core/platform/platform_service_factory.dart';
@@ -15,8 +13,324 @@ import '../models/photo_metadata.dart';
 import '../models/log_metadata.dart';
 import '../../core/isolate/isolate_worker_pool.dart';
 
+class VrcCurrentUser {
+  final String id;
+  final String displayName;
+  final String statusDescription;
+
+  const VrcCurrentUser({
+    required this.id,
+    required this.displayName,
+    required this.statusDescription,
+  });
+
+  factory VrcCurrentUser.fromJson(Map<String, dynamic> json) {
+    return VrcCurrentUser(
+      id: json['id'] as String? ?? '',
+      displayName: json['displayName'] as String? ?? '',
+      statusDescription: json['statusDescription'] as String? ?? '',
+    );
+  }
+}
+
+class VrcLimitedUserFriend {
+  final String id;
+  final String displayName;
+
+  const VrcLimitedUserFriend({required this.id, required this.displayName});
+
+  factory VrcLimitedUserFriend.fromJson(Map<String, dynamic> json) {
+    return VrcLimitedUserFriend(
+      id: json['id'] as String? ?? '',
+      displayName: json['displayName'] as String? ?? '',
+    );
+  }
+}
+
+class _VrcHttpResponse {
+  final int statusCode;
+  final dynamic data;
+  final String? error;
+
+  const _VrcHttpResponse({
+    required this.statusCode,
+    this.data,
+    this.error,
+  });
+
+  bool get isOk => statusCode >= 200 && statusCode < 300;
+}
+
+class _VrchatApiClient {
+  static const String _baseUrl = 'https://api.vrchat.cloud/api/1';
+
+  final String userAgent;
+  final io.HttpClient _httpClient;
+  final Map<String, io.Cookie> _cookies = {};
+
+  VrcCurrentUser? currentUser;
+  List<String> _pendingTwoFactorTypes = const [];
+  String? _pendingUsername;
+
+  _VrchatApiClient({required this.userAgent})
+    : _httpClient =
+          io.HttpClient()
+            ..connectionTimeout = const Duration(seconds: 5)
+            ..userAgent = userAgent;
+
+  bool get hasActiveSession => _cookies.isNotEmpty;
+
+  bool get hasPendingTwoFactor =>
+      _pendingTwoFactorTypes.isNotEmpty && _cookies.containsKey('auth');
+
+  List<String> get pendingTwoFactorTypes =>
+      List.unmodifiable(_pendingTwoFactorTypes);
+
+  bool isPendingTwoFactorFor(String username) =>
+      hasPendingTwoFactor &&
+      _pendingUsername != null &&
+      _pendingUsername!.toLowerCase() == username.trim().toLowerCase();
+
+  void clearCookies() {
+    _cookies.clear();
+    currentUser = null;
+    _pendingTwoFactorTypes = const [];
+    _pendingUsername = null;
+  }
+
+  Future<_VrcHttpResponse> _request(
+    String method,
+    String path, {
+    Map<String, String>? headers,
+    Map<String, String>? queryParameters,
+    Object? jsonBody,
+  }) async {
+    final uri = Uri.parse(
+      '$_baseUrl$path',
+    ).replace(queryParameters: queryParameters);
+
+    final req = await _httpClient
+        .openUrl(method, uri)
+        .timeout(const Duration(seconds: 10));
+    req.headers.set(io.HttpHeaders.userAgentHeader, userAgent);
+    req.headers.set(io.HttpHeaders.acceptHeader, 'application/json');
+
+    if (_cookies.isNotEmpty) {
+      req.headers.set(
+        io.HttpHeaders.cookieHeader,
+        _cookies.values.map((c) => '${c.name}=${c.value}').join('; '),
+      );
+    }
+
+    headers?.forEach((k, v) => req.headers.set(k, v));
+
+    if (jsonBody != null) {
+      final payload = utf8.encode(json.encode(jsonBody));
+      req.headers.contentType = io.ContentType.json;
+      req.contentLength = payload.length;
+      req.add(payload);
+    }
+
+    final res = await req.close().timeout(const Duration(seconds: 10));
+
+    final now = DateTime.now();
+    for (final cookie in res.cookies) {
+      final isExpired =
+          cookie.value.isEmpty ||
+          cookie.maxAge == 0 ||
+          (cookie.expires != null && cookie.expires!.isBefore(now));
+      if (isExpired) {
+        _cookies.remove(cookie.name);
+      } else {
+        _cookies[cookie.name] = cookie;
+      }
+    }
+
+    final rawBody = await res.transform(utf8.decoder).join();
+    dynamic decoded;
+    if (rawBody.isNotEmpty) {
+      try {
+        decoded = json.decode(rawBody);
+      } catch (_) {
+        decoded = rawBody;
+      }
+    }
+
+    String? errorMsg;
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      if (decoded is Map<String, dynamic>) {
+        final err = decoded['error'];
+        if (err is Map<String, dynamic> && err['message'] != null) {
+          errorMsg = err['message'].toString();
+        } else {
+          errorMsg = decoded.toString();
+        }
+      } else {
+        errorMsg = 'HTTP ${res.statusCode}: $rawBody';
+      }
+    }
+
+    return _VrcHttpResponse(
+      statusCode: res.statusCode,
+      data: decoded,
+      error: errorMsg,
+    );
+  }
+
+  Future<({bool requiresTwoFactor, List<String> twoFactorTypes, String? failure})>
+  login({String? username, String? password}) async {
+    final headers = <String, String>{};
+    if (username != null && password != null) {
+      final trimmedUsername = username.trim();
+      final encodedUsername = Uri.encodeComponent(trimmedUsername);
+      final encodedPassword = Uri.encodeComponent(password);
+      final authorization = base64.encode(
+        utf8.encode('$encodedUsername:$encodedPassword'),
+      );
+      headers[io.HttpHeaders.authorizationHeader] = 'Basic $authorization';
+    }
+
+    final res = await _request('GET', '/auth/user', headers: headers);
+    final data = res.data;
+
+    if (data is Map<String, dynamic> && data['requiresTwoFactorAuth'] is List) {
+      final types =
+          (data['requiresTwoFactorAuth'] as List)
+              .map((e) => e.toString())
+              .where((e) => e.isNotEmpty)
+              .toList();
+      if (types.isNotEmpty) {
+        _pendingTwoFactorTypes = types;
+        if (username != null) {
+          _pendingUsername = username.trim();
+        }
+        return (
+          requiresTwoFactor: true,
+          twoFactorTypes: types,
+          failure: null,
+        );
+      }
+    }
+
+    if (!res.isOk || data is! Map<String, dynamic>) {
+      return (
+        requiresTwoFactor: false,
+        twoFactorTypes: const <String>[],
+        failure: res.error ?? 'Authentication failed (${res.statusCode})',
+      );
+    }
+
+    currentUser = VrcCurrentUser.fromJson(data);
+    _pendingTwoFactorTypes = const [];
+    _pendingUsername = null;
+    return (
+      requiresTwoFactor: false,
+      twoFactorTypes: const <String>[],
+      failure: null,
+    );
+  }
+
+  Future<String?> verify2fa(String code) async {
+    final trimmedCode = code.trim();
+    final compactCode = trimmedCode.replaceAll(RegExp(r'\s+'), '');
+    final lowerTypes =
+        _pendingTwoFactorTypes.map((e) => e.toLowerCase()).toList();
+
+    final bool hasEmailOtp = lowerTypes.contains('emailotp');
+    final bool hasTotp = lowerTypes.contains('totp');
+    final bool hasRecoveryOtp = lowerTypes.contains('otp');
+    final bool isSixDigits = RegExp(r'^\d{6}$').hasMatch(compactCode);
+
+    final String endpoint;
+    final String payloadCode;
+    if (hasEmailOtp && !hasTotp) {
+      endpoint = '/auth/twofactorauth/emailotp/verify';
+      payloadCode = compactCode;
+    } else if (hasRecoveryOtp && !isSixDigits) {
+      endpoint = '/auth/twofactorauth/otp/verify';
+      payloadCode = trimmedCode;
+    } else {
+      endpoint = '/auth/twofactorauth/totp/verify';
+      payloadCode = compactCode;
+    }
+
+    final res = await _request('POST', endpoint, jsonBody: {'code': payloadCode});
+    if (!res.isOk) {
+      return res.error ?? '2FA verification failed (${res.statusCode})';
+    }
+    if (res.data is! Map<String, dynamic> || res.data['verified'] != true) {
+      return 'Invalid 2FA code';
+    }
+
+    final loginRes = await login();
+    if (loginRes.failure != null) {
+      return loginRes.failure;
+    }
+    if (loginRes.requiresTwoFactor) {
+      return 'Additional two-factor verification required';
+    }
+    return null;
+  }
+
+  Future<bool> logout() async {
+    if (!hasActiveSession) {
+      clearCookies();
+      return true;
+    }
+    try {
+      final res = await _request('PUT', '/logout');
+      return res.isOk;
+    } finally {
+      clearCookies();
+    }
+  }
+
+  Future<List<VrcLimitedUserFriend>> getFriends() async {
+    final res = await _request(
+      'GET',
+      '/auth/user/friends',
+      queryParameters: {'n': '60'},
+    );
+    if (!res.isOk || res.data is! List) {
+      throw Exception('Failed to get friends: ${res.error ?? res.statusCode}');
+    }
+    return (res.data as List)
+        .whereType<Map<String, dynamic>>()
+        .map(VrcLimitedUserFriend.fromJson)
+        .toList();
+  }
+
+  Future<bool> getFriendStatus(String userId) async {
+    final res = await _request('GET', '/user/$userId/friendStatus');
+    if (res.isOk && res.data is Map<String, dynamic>) {
+      return res.data['isFriend'] == true;
+    }
+    return false;
+  }
+
+  Future<void> sendFriendRequest(String userId) async {
+    await _request('POST', '/user/$userId/friendRequest');
+  }
+
+  Future<bool> updateUserStatusDescription(
+    String userId,
+    String statusDescription,
+  ) async {
+    final res = await _request(
+      'PUT',
+      '/users/$userId',
+      jsonBody: {'statusDescription': statusDescription},
+    );
+    if (res.isOk && res.data is Map<String, dynamic>) {
+      currentUser = VrcCurrentUser.fromJson(res.data as Map<String, dynamic>);
+      return true;
+    }
+    return res.isOk;
+  }
+}
+
 class VRChatService {
-  late final VrchatDart _api;
+  late final _VrchatApiClient _api;
 
   bool _isInitialized = false;
 
@@ -24,9 +338,9 @@ class VRChatService {
   static final Map<String, bool> _cachedIsVerifiedMap = {};
   static final Map<String, DateTime> _lastVerificationCheckMap = {};
 
-  CurrentUser? get currentUser => _api.auth.currentUser;
+  VrcCurrentUser? get currentUser => _api.currentUser;
 
-  bool get isLoggedIn => currentUser != null;
+  bool get isLoggedIn => _isInitialized && currentUser != null;
 
   final PlatformService _platformService;
 
@@ -41,15 +355,10 @@ class VRChatService {
       developer.log('Initializing VRChat API client', name: 'VRChatService');
 
       final packageInfo = await PackageInfo.fromPlatform();
-      await getApplicationDocumentsDirectory();
 
-      _api = VrchatDart(
-        userAgent: VrchatUserAgent(
-          applicationName: 'GalleVR',
-          version: packageInfo.version,
-          contactInfo: 'https://github.com/BlueberryWolf/GalleVR',
-        ),
-        cookiePath: '${(await _platformService.getConfigDirectory())}/.cookies',
+      _api = _VrchatApiClient(
+        userAgent:
+            'GalleVR/${packageInfo.version} https://github.com/BlueberryWolf/GalleVR',
       );
 
       await _clearAuthCookies();
@@ -71,7 +380,7 @@ class VRChatService {
       developer.log('Clearing auth cookies', name: 'VRChatService');
 
       try {
-        await _api.auth.logout();
+        await _api.logout();
       } catch (e) {
         developer.log(
           'Ignoring error during cookie cleanup: $e',
@@ -81,8 +390,9 @@ class VRChatService {
 
       await _clearCookiesFolder();
 
-      if (_api.auth.currentUser != null) {
+      if (_api.currentUser != null) {
         developer.log('Forcing current user to null', name: 'VRChatService');
+        _api.clearCookies();
       }
     } catch (e) {
       developer.log('Error clearing auth cookies: $e', name: 'VRChatService');
@@ -101,24 +411,63 @@ class VRChatService {
       await initialize();
     }
 
-    try {
-      await _clearAuthCookies();
+    final trimmedCode = totpCode?.trim();
 
-      try {
-        await logout();
-      } catch (e) {
+    try {
+      if (trimmedCode != null &&
+          trimmedCode.isNotEmpty &&
+          _api.isPendingTwoFactorFor(username)) {
         developer.log(
-          'Ignoring error during logout: $e',
+          'Submitting 2FA code against existing pending session for user: $username',
           name: 'VRChatService',
         );
+
+        final twoFactorFailure = await _api.verify2fa(trimmedCode);
+        if (twoFactorFailure != null) {
+          developer.log(
+            '2FA verification failed: $twoFactorFailure',
+            name: 'VRChatService',
+          );
+          return LoginResult(
+            success: false,
+            requiresTwoFactor: true,
+            twoFactorTypes: _api.pendingTwoFactorTypes,
+            errorMessage: twoFactorFailure,
+          );
+        }
+
+        if (_api.currentUser == null) {
+          developer.log(
+            'User still not logged in after 2FA verification',
+            name: 'VRChatService',
+          );
+          return LoginResult(
+            success: false,
+            requiresTwoFactor: false,
+            errorMessage: 'Failed to complete login after 2FA verification',
+          );
+        }
+
+        developer.log(
+          '2FA verification successful for user: ${_api.currentUser!.displayName}',
+          name: 'VRChatService',
+        );
+
+        return LoginResult(
+          success: true,
+          requiresTwoFactor: false,
+          user: _api.currentUser,
+        );
       }
+
+      await _clearAuthCookies();
 
       developer.log(
         'Starting login for user: $username',
         name: 'VRChatService',
       );
 
-      final loginResponse = await _api.auth.login(
+      final loginResponse = await _api.login(
         username: username,
         password: password,
       );
@@ -135,17 +484,17 @@ class VRChatService {
         );
       }
 
-      final authResponse = loginResponse.success!.data;
-      if (authResponse.requiresTwoFactorAuth) {
+      if (loginResponse.requiresTwoFactor) {
         developer.log(
-          '2FA required for user: $username',
+          '2FA required for user: $username (types: ${loginResponse.twoFactorTypes})',
           name: 'VRChatService',
         );
 
-        if (totpCode == null || totpCode.isEmpty) {
+        if (trimmedCode == null || trimmedCode.isEmpty) {
           return LoginResult(
             success: false,
             requiresTwoFactor: true,
+            twoFactorTypes: loginResponse.twoFactorTypes,
             errorMessage: 'Two-factor authentication required',
           );
         }
@@ -155,16 +504,17 @@ class VRChatService {
           name: 'VRChatService',
         );
 
-        final twoFactorResponse = await _api.auth.verify2fa(totpCode);
-        if (twoFactorResponse.failure != null) {
+        final twoFactorFailure = await _api.verify2fa(trimmedCode);
+        if (twoFactorFailure != null) {
           developer.log(
-            '2FA verification failed: ${twoFactorResponse.failure}',
+            '2FA verification failed: $twoFactorFailure',
             name: 'VRChatService',
           );
           return LoginResult(
             success: false,
             requiresTwoFactor: true,
-            errorMessage: 'Invalid 2FA code',
+            twoFactorTypes: _api.pendingTwoFactorTypes,
+            errorMessage: twoFactorFailure,
           );
         }
 
@@ -173,7 +523,7 @@ class VRChatService {
           name: 'VRChatService',
         );
 
-        if (_api.auth.currentUser == null) {
+        if (_api.currentUser == null) {
           developer.log(
             'User still not logged in after 2FA verification',
             name: 'VRChatService',
@@ -186,7 +536,7 @@ class VRChatService {
         }
       }
 
-      if (_api.auth.currentUser == null) {
+      if (_api.currentUser == null) {
         developer.log('User is null after login', name: 'VRChatService');
         return LoginResult(
           success: false,
@@ -196,33 +546,14 @@ class VRChatService {
       }
 
       developer.log(
-        'Login successful for user: ${_api.auth.currentUser?.displayName}',
-        name: 'VRChatService',
-      );
-
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      if (_api.auth.currentUser == null) {
-        developer.log(
-          'Current user is still null after login',
-          name: 'VRChatService',
-        );
-        return LoginResult(
-          success: false,
-          requiresTwoFactor: false,
-          errorMessage: 'Login succeeded but user data is not available',
-        );
-      }
-
-      developer.log(
-        'Successfully verified user data access: ${_api.auth.currentUser!.displayName}',
+        'Login successful for user: ${_api.currentUser!.displayName}',
         name: 'VRChatService',
       );
 
       return LoginResult(
         success: true,
         requiresTwoFactor: false,
-        user: _api.auth.currentUser,
+        user: _api.currentUser,
       );
     } catch (e) {
       developer.log('Error during login: $e', name: 'VRChatService');
@@ -243,11 +574,11 @@ class VRChatService {
     }
 
     try {
-      final response = await _api.auth.logout();
+      final ok = await _api.logout();
 
       await _clearCookiesFolder();
 
-      return response.failure == null;
+      return ok;
     } catch (e) {
       developer.log('Error logging out: $e', name: 'VRChatService');
 
@@ -307,7 +638,7 @@ class VRChatService {
     }
   }
 
-  Future<List<LimitedUserFriend>> getFriends() async {
+  Future<List<VrcLimitedUserFriend>> getFriends() async {
     if (!_isInitialized) {
       await initialize();
     }
@@ -317,14 +648,7 @@ class VRChatService {
     }
 
     try {
-      final friendsResponse =
-          await _api.rawApi.getFriendsApi().getFriends().validateVrc();
-
-      if (friendsResponse.failure != null) {
-        throw Exception('Failed to get friends: ${friendsResponse.failure}');
-      }
-
-      return friendsResponse.success!.data;
+      return await _api.getFriends();
     } catch (e) {
       developer.log('Error getting friends: $e', name: 'VRChatService');
       rethrow;
@@ -341,7 +665,7 @@ class VRChatService {
     }
 
     try {
-      final userId = _api.auth.currentUser?.id;
+      final userId = _api.currentUser?.id;
       if (userId == null) {
         developer.log(
           'User ID is null when updating status description',
@@ -355,18 +679,9 @@ class VRChatService {
         name: 'VRChatService',
       );
 
-      final response =
-          await _api.rawApi
-              .getUsersApi()
-              .updateUser(
-                userId: userId,
-                updateUserRequest: UpdateUserRequest(
-                  statusDescription: newStatus,
-                ),
-              )
-              .validateVrc();
+      final success = await _api.updateUserStatusDescription(userId, newStatus);
 
-      if (response.failure == null) {
+      if (success) {
         developer.log(
           'Successfully updated status description for user ID: $userId',
           name: 'VRChatService',
@@ -374,7 +689,7 @@ class VRChatService {
         return true;
       } else {
         developer.log(
-          'Failed to update status: ${response.failure}',
+          'Failed to update status description for user ID: $userId',
           name: 'VRChatService',
         );
         return false;
@@ -402,7 +717,7 @@ class VRChatService {
     }
 
     try {
-      if (_api.auth.currentUser == null) {
+      if (_api.currentUser == null) {
         developer.log(
           'Current user is null when getting status',
           name: 'VRChatService',
@@ -410,7 +725,7 @@ class VRChatService {
         throw Exception('Current user is null');
       }
 
-      final statusDescription = _api.auth.currentUser!.statusDescription;
+      final statusDescription = _api.currentUser!.statusDescription;
       developer.log(
         'Retrieved status directly from currentUser',
         name: 'VRChatService',
@@ -439,7 +754,7 @@ class VRChatService {
       return VerificationResult.failure('Not logged in');
     }
 
-    if (_api.auth.currentUser == null) {
+    if (_api.currentUser == null) {
       developer.log(
         'Current user is null when starting verification',
         name: 'VRChatService',
@@ -467,12 +782,7 @@ class VRChatService {
         const botId = 'usr_cfd81636-0ad1-4454-883e-e5c75ac9bafb';
         onProgress?.call('Verifying bot connection...');
 
-        final statusRes =
-            await _api.rawApi
-                .getFriendsApi()
-                .getFriendStatus(userId: botId)
-                .validateVrc();
-        bool isFriend = statusRes.success?.data.isFriend ?? false;
+        bool isFriend = await _api.getFriendStatus(botId);
 
         if (!isFriend) {
           onProgress?.call('Connecting to GalleVR...');
@@ -482,17 +792,12 @@ class VRChatService {
           );
 
           // silently try to friend the bot.
-          await _api.rawApi.getFriendsApi().friend(userId: botId).validateVrc();
+          await _api.sendFriendRequest(botId);
 
           // briefly wait for the server's websocket bot listener to automatically accept request
           for (int attempt = 1; attempt <= 3; attempt++) {
             await Future.delayed(const Duration(seconds: 2));
-            final verifyRes =
-                await _api.rawApi
-                    .getFriendsApi()
-                    .getFriendStatus(userId: botId)
-                    .validateVrc();
-            if (verifyRes.success?.data.isFriend == true) {
+            if (await _api.getFriendStatus(botId)) {
               developer.log(
                 'Successfully automatically friended GalleVR bot locally',
                 name: 'VRChatService',
@@ -529,13 +834,8 @@ class VRChatService {
         name: 'VRChatService',
       );
 
-      final username = currentUser?.displayName;
-      if (username == null) {
-        return VerificationResult.failure('Username is null');
-      }
-
       final verificationResponse = await _verifyWithServer(
-        username,
+        userId,
         true,
         ageVerified: ageVerified,
       );
@@ -707,7 +1007,7 @@ class VRChatService {
 
     try {
       final url = Uri.parse(
-        'https://api.gallevr.app/vrchat/verify/status/$userId',
+        'https://api.gallevr.app/vrchat/verify/status/${Uri.encodeComponent(userId)}',
       );
       developer.log(
         'Checking verification status for $userId at URL: $url',
@@ -777,6 +1077,7 @@ class VRChatService {
   Future<AuthData?> fetchMe(
     AuthData authData, {
     bool forceRefresh = false,
+    bool saveToStorage = true,
   }) async {
     try {
       final url = Uri.parse(
@@ -818,11 +1119,13 @@ class VRChatService {
               responseData['pfp'] as String?,
         );
 
-        final sec = await loadAuthDataSecondary();
-        if (sec != null && sec.userId == authData.userId) {
-          await saveAuthDataSecondary(updatedAuthData);
-        } else {
-          await saveAuthData(updatedAuthData);
+        if (saveToStorage) {
+          final sec = await loadAuthDataSecondary();
+          if (sec != null && sec.userId == authData.userId) {
+            await saveAuthDataSecondary(updatedAuthData);
+          } else {
+            await saveAuthData(updatedAuthData);
+          }
         }
         developer.log(
           'Successfully fetched and saved updated auth data for ${updatedAuthData.displayName}',
@@ -1120,7 +1423,10 @@ class VRChatService {
     }
   }
 
-  Future<AuthData?> pairWithCode(String code) async {
+  Future<AuthData?> pairWithCode(
+    String code, {
+    bool saveAsPrimary = true,
+  }) async {
     try {
       final response = await http.post(
         Uri.parse('https://api.gallevr.app/vrchat/pair/verify'),
@@ -1136,12 +1442,14 @@ class VRChatService {
           final authData = AuthData(
             accessKey: data['accessKey'],
             userId: data['userId'],
-            ageVerified: true,
+            ageVerified: data['ageVerified'] == true,
             displayName: data['displayName'],
             avatarUrl: data['avatarUrl'],
           );
 
-          await saveAuthData(authData);
+          if (saveAsPrimary) {
+            await saveAuthData(authData);
+          }
           return authData;
         }
       }
@@ -1158,16 +1466,24 @@ class LoginResult {
 
   final bool requiresTwoFactor;
 
+  final List<String> twoFactorTypes;
+
   final String? errorMessage;
 
-  final CurrentUser? user;
+  final VrcCurrentUser? user;
 
   LoginResult({
     required this.success,
     required this.requiresTwoFactor,
+    this.twoFactorTypes = const [],
     this.errorMessage,
     this.user,
   });
+
+  bool get isEmailOtp {
+    final lower = twoFactorTypes.map((e) => e.toLowerCase()).toList();
+    return lower.contains('emailotp') && !lower.contains('totp');
+  }
 }
 
 List<PhotoMetadata> _parsePhotosTask(String jsonBody) {

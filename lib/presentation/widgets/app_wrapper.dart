@@ -380,42 +380,46 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: AppTheme.errorColor.withAlpha(230),
+            color: AppTheme.tint(AppTheme.errorColor, 0.22),
             borderRadius: BorderRadius.circular(AppTheme.radiusCard),
             border: Border.all(
-              color: AppTheme.errorColor.withAlpha(128),
-              width: 1.5,
+              color: AppTheme.errorColor.withValues(alpha: 0.40),
+              width: 1,
             ),
-            boxShadow: [
+            boxShadow: const [
               BoxShadow(
-                color: Colors.black.withAlpha(102),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: Color(0x80000000),
+                blurRadius: 20,
+                offset: Offset(0, 8),
               ),
             ],
           ),
           child: Row(
             children: [
-              const Icon(Icons.wifi_off_rounded, color: Colors.white, size: 24),
+              const Icon(
+                Icons.wifi_off_rounded,
+                color: AppTheme.errorTextColor,
+                size: 22,
+              ),
               const SizedBox(width: 12),
-              Expanded(
+              const Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'No Internet Connection',
                       style: TextStyle(
                         color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
                     ),
                     Text(
                       'Internet is required to sync with VRChat.',
                       style: TextStyle(
-                        color: Colors.white.withAlpha(179),
-                        fontSize: 11,
+                        color: AppTheme.secondaryTextColor,
+                        fontSize: 12,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -429,8 +433,11 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
                   await ConnectivityService().checkConnectionManually();
                 },
                 style: TextButton.styleFrom(
-                  backgroundColor: Colors.white.withAlpha(38),
+                  backgroundColor: AppTheme.tint(AppTheme.errorColor, 0.30),
                   foregroundColor: Colors.white,
+                  side: BorderSide(
+                    color: AppTheme.errorColor.withValues(alpha: 0.45),
+                  ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 6,
@@ -442,8 +449,8 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
                   ),
                 ),
                 child: const Text(
-                  'RETRY',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  'Retry',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
                 ),
               ),
             ],

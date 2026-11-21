@@ -19,9 +19,15 @@ void main(List<String> args) async {
 
 Future<void> _buildAppAndScript() async {
   print('Building app and generating Inno Setup script...');
+  final env = Map<String, String>.from(Platform.environment);
+  env.putIfAbsent(
+    'CMAKE_BUILD_PARALLEL_LEVEL',
+    () => Platform.numberOfProcessors.toString(),
+  );
   final process = await Process.start(
     'dart',
     ['run', 'inno_bundle:build', '--release', '--no-installer'],
+    environment: env,
     runInShell: true,
     mode: ProcessStartMode.inheritStdio,
   );

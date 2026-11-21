@@ -34,6 +34,27 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     "Debug" "Profile" "Release")
 endif()
 
+find_program(CCACHE_PROGRAM NAMES sccache ccache)
+if(CCACHE_PROGRAM)
+  set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+endif()
+
+find_program(MOLD_LINKER mold)
+if(MOLD_LINKER)
+  add_link_options("-fuse-ld=mold")
+else()
+  find_program(LLD_LINKER NAMES ld.lld lld)
+  if(LLD_LINKER)
+    add_link_options("-fuse-ld=lld")
+  endif()
+endif()
+
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)
+if(NOT FETCHCONTENT_SOURCE_DIR_SQLITE3 AND EXISTS "${CMAKE_BINARY_DIR}/_deps/sqlite3-src/sqlite3.c")
+  set(FETCHCONTENT_SOURCE_DIR_SQLITE3 "${CMAKE_BINARY_DIR}/_deps/sqlite3-src" CACHE PATH "Cached sqlite3 source" FORCE)
+endif()
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
@@ -125,6 +146,9 @@ install(CODE "
   " COMPONENT Runtime)
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
+install(CODE "
+  file(REMOVE_RECURSE \"${INSTALL_BUNDLE_DATA_DIR}/${FLUTTER_ASSET_DIR_NAME}/assets/bin/windows\")
+  " COMPONENT Runtime)
 
 # Install the AOT library on non-Debug builds only.
 if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")

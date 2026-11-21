@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:ui';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:gallevr/data/models/log_metadata.dart';
 import 'package:gallevr/core/utils/tag_parser.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,72 +11,66 @@ import '../theme/app_theme.dart';
 
 class PhotoMetadataPanel extends StatelessWidget {
   final PhotoMetadata? metadata;
-
+  final String? filename;
   final bool isOpen;
-
   final VoidCallback onClose;
 
   const PhotoMetadataPanel({
     super.key,
     required this.metadata,
+    this.filename,
     required this.isOpen,
     required this.onClose,
   });
 
   @override
   Widget build(BuildContext context) {
+    final resolvedFilename = filename ?? metadata?.filename;
+
     return Material(
       color: Colors.transparent,
-      child: ClipRRect(
+      child: ClipRect(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
-            width: 340,
+            width: 360,
             height: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.7),
+            decoration: const BoxDecoration(
+              color: Color(0xCC08080C),
               border: Border(
-                left: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  width: 1,
-                ),
+                left: BorderSide(color: Color(0x1AFFFFFF), width: 1),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  blurRadius: 40,
-                  offset: const Offset(-10, 0),
-                ),
-              ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Photo Info',
-                        style: TextStyle(
-                          color: AppTheme.textColor,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+            child: SafeArea(
+              left: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Photo Info',
+                          style: TextStyle(
+                            color: AppTheme.textColor,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      _HeaderCloseButton(onPressed: onClose),
-                    ],
+                        _HeaderCloseButton(onPressed: onClose),
+                      ],
+                    ),
                   ),
-                ),
-
-                Expanded(
-                  child:
-                      metadata == null
-                          ? _buildNoMetadataMessage()
-                          : _buildMetadataContent(context),
-                ),
-              ],
+                  Expanded(
+                    child:
+                        metadata == null && resolvedFilename == null
+                            ? _buildNoMetadataMessage()
+                            : _buildMetadataContent(context, resolvedFilename),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -84,60 +80,71 @@ class PhotoMetadataPanel extends StatelessWidget {
 
   Widget _buildNoMetadataMessage() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.info_outline_rounded,
-            color: Colors.white.withValues(alpha: 0.15),
-            size: 64,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No metadata available',
-            style: TextStyle(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(
+              Icons.info_outline_rounded,
               color: AppTheme.secondaryTextColor,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+              size: 16,
             ),
-          ),
-        ],
+            SizedBox(width: 6),
+            Text(
+              'No additional information',
+              style: TextStyle(
+                color: AppTheme.secondaryTextColor,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildMetadataContent(BuildContext context) {
+  Widget _buildMetadataContent(BuildContext context, String? resolvedFilename) {
+    final hasWorld = metadata?.world != null;
+    final hasPlayers = metadata?.players.isNotEmpty == true;
+    final hasFile = resolvedFilename != null && resolvedFilename.isNotEmpty;
+
+    if (!hasWorld && !hasPlayers && !hasFile) {
+      return _buildNoMetadataMessage();
+    }
+
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
       children: [
-        if (metadata?.world != null) ...[
-          _buildSectionHeader('WORLD'),
+        if (hasWorld) ...[
+          _buildSectionHeader('World'),
           _InteractiveMetadataItem(
             onTap: () => _launchVRChatWorldUrl(metadata!.world!.id),
-            child: _buildWorldContent(context, metadata!.world!),
+            builder: (hovered) => _buildWorldContent(metadata!.world!, hovered),
           ),
           const SizedBox(height: 12),
-          Divider(color: Colors.white.withValues(alpha: 0.1)),
+          const Divider(color: Color(0x1AFFFFFF), height: 1),
           const SizedBox(height: 12),
         ],
 
-        if (metadata?.players.isNotEmpty == true) ...[
+        if (hasPlayers) ...[
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildSectionHeader('PLAYERS'),
+              _buildSectionHeader('Players'),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusTag),
                 ),
                 child: Text(
                   '${metadata!.players.length}',
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: AppTheme.secondaryTextColor,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 ),
               ),
@@ -147,94 +154,107 @@ class PhotoMetadataPanel extends StatelessWidget {
           ...metadata!.players.map(
             (player) => _InteractiveMetadataItem(
               onTap: () => _launchVRChatUserUrl(player.id),
-              margin: const EdgeInsets.only(bottom: 4),
-              child: _buildPlayerContent(player),
+              margin: const EdgeInsets.only(bottom: 2),
+              builder: (hovered) => _buildPlayerContent(player, hovered),
             ),
           ),
         ],
 
-        if (metadata?.world == null && metadata?.players.isEmpty == true)
-          _buildNoMetadataMessage(),
+        if (hasFile) ...[
+          if (hasWorld || hasPlayers) ...[
+            const SizedBox(height: 12),
+            const Divider(color: Color(0x1AFFFFFF), height: 1),
+            const SizedBox(height: 12),
+          ],
+          _buildSectionHeader('File'),
+          _CopyableFilenameField(value: resolvedFilename),
+        ],
       ],
     );
   }
 
   Widget _buildSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Text(
         title,
         style: TextStyle(
-          color: AppTheme.secondaryTextColor,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
+          color: Colors.white.withValues(alpha: 0.6),
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
   }
 
-  Widget _buildWorldContent(BuildContext context, WorldInfo world) {
+  Widget _buildWorldContent(WorldInfo world, bool hovered) {
     return Row(
       children: [
         Icon(
           Icons.public_rounded,
-          color: Colors.white.withValues(alpha: 0.7),
-          size: 20,
+          color: hovered ? AppTheme.primaryLightColor : AppTheme.iconWorld,
+          size: 18,
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text.rich(
-                parseResoniteTags(
-                  world.name,
-                  const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+          child: Text.rich(
+            parseResoniteTags(
+              world.name,
+              TextStyle(
+                color: hovered ? AppTheme.primaryLightColor : Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
               ),
-            ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
+        const SizedBox(width: 8),
         Icon(
-          Icons.arrow_forward_ios_rounded,
-          color: AppTheme.secondaryTextColor,
-          size: 14,
+          Icons.arrow_forward_rounded,
+          color:
+              hovered
+                  ? AppTheme.primaryLightColor
+                  : Colors.white.withValues(alpha: 0.4),
+          size: 15,
         ),
       ],
     );
   }
 
-  Widget _buildPlayerContent(Player player) {
+  Widget _buildPlayerContent(Player player, bool hovered) {
     return Row(
       children: [
         Icon(
-          Icons.person_outline_rounded,
-          color: Colors.white.withValues(alpha: 0.7),
-          size: 20,
+          Icons.person_rounded,
+          color:
+              hovered
+                  ? AppTheme.primaryLightColor
+                  : Colors.white.withValues(alpha: 0.7),
+          size: 18,
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         Expanded(
           child: Text(
             player.name,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
+            style: TextStyle(
+              color: hovered ? AppTheme.primaryLightColor : Colors.white,
+              fontSize: 15,
               fontWeight: FontWeight.w400,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
         ),
+        const SizedBox(width: 8),
         Icon(
-          Icons.arrow_forward_ios_rounded,
-          color: AppTheme.secondaryTextColor,
-          size: 14,
+          Icons.arrow_forward_rounded,
+          color:
+              hovered
+                  ? AppTheme.primaryLightColor
+                  : Colors.white.withValues(alpha: 0.4),
+          size: 15,
         ),
       ],
     );
@@ -279,13 +299,105 @@ class PhotoMetadataPanel extends StatelessWidget {
   }
 }
 
+class _CopyableFilenameField extends StatefulWidget {
+  final String value;
+
+  const _CopyableFilenameField({required this.value});
+
+  @override
+  State<_CopyableFilenameField> createState() => _CopyableFilenameFieldState();
+}
+
+class _CopyableFilenameFieldState extends State<_CopyableFilenameField> {
+  bool _copied = false;
+  bool _isHovered = false;
+  Timer? _resetTimer;
+
+  @override
+  void dispose() {
+    _resetTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.value));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    _resetTimer?.cancel();
+    _resetTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: const Color(0x66000000),
+        borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+        border: Border.all(color: AppTheme.cardBorderColor),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SelectableText(
+              widget.value,
+              style: const TextStyle(
+                color: AppTheme.bodyTextColor,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Tooltip(
+            message: _copied ? 'Copied' : 'Copy',
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              onEnter: (_) => setState(() => _isHovered = true),
+              onExit: (_) => setState(() => _isHovered = false),
+              child: GestureDetector(
+                onTap: _copy,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color:
+                        _isHovered
+                            ? AppTheme.buttonHoverColor
+                            : Colors.transparent,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    _copied ? Icons.check_rounded : Icons.content_copy_rounded,
+                    size: 16,
+                    color:
+                        _copied
+                            ? AppTheme.successColor
+                            : _isHovered
+                            ? Colors.white
+                            : AppTheme.secondaryTextColor,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _InteractiveMetadataItem extends StatefulWidget {
-  final Widget child;
+  final Widget Function(bool hovered) builder;
   final VoidCallback onTap;
   final EdgeInsets? margin;
 
   const _InteractiveMetadataItem({
-    required this.child,
+    required this.builder,
     required this.onTap,
     this.margin,
   });
@@ -301,26 +413,16 @@ class _InteractiveMetadataItemState extends State<_InteractiveMetadataItem> {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        margin: widget.margin,
-        decoration: BoxDecoration(
-          color:
-              _isHovered
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppTheme.radiusTag),
-        ),
-        child: InkWell(
-          mouseCursor: SystemMouseCursors.click,
-          onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(AppTheme.radiusTag),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-            child: widget.child,
-          ),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          margin: widget.margin,
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: widget.builder(_isHovered),
         ),
       ),
     );
@@ -341,27 +443,33 @@ class _HeaderCloseButtonState extends State<_HeaderCloseButton> {
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: IconButton(
-        mouseCursor: SystemMouseCursors.click,
-        tooltip: 'Close',
-        icon: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color:
-                _isHovered
-                    ? Colors.white.withValues(alpha: 0.1)
-                    : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+    return Tooltip(
+      message: 'Close',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.onPressed,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: _isHovered ? AppTheme.buttonHoverColor : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.close_rounded,
+              color:
+                  _isHovered
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.6),
+              size: 18,
+            ),
           ),
-          child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
         ),
-        onPressed: widget.onPressed,
-        padding: EdgeInsets.zero,
       ),
     );
   }

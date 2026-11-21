@@ -9,6 +9,7 @@ class AppCard extends StatelessWidget {
   final double borderRadius;
   final Color? color;
   final Color? borderColor;
+  final Color? accent;
   final double borderWidth;
 
   const AppCard({
@@ -19,20 +20,24 @@ class AppCard extends StatelessWidget {
     this.borderRadius = AppTheme.radiusCard,
     this.color,
     this.borderColor,
+    this.accent,
     this.borderWidth = 1.0,
   });
 
   @override
   Widget build(BuildContext context) {
+    final resolvedBorder =
+        borderColor ??
+        (accent != null
+            ? AppTheme.cardAccentBorder(accent!)
+            : AppTheme.cardBorderColor);
+
     final card = Material(
       color: color ?? AppTheme.cardBackgroundColor,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(borderRadius),
-        side: BorderSide(
-          color: borderColor ?? AppTheme.cardBorderColor,
-          width: borderWidth,
-        ),
+        side: BorderSide(color: resolvedBorder, width: borderWidth),
       ),
       child: padding == null ? child : Padding(padding: padding!, child: child),
     );

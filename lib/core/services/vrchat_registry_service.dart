@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:developer' as developer;
 
 import 'package:win32_registry/win32_registry.dart';
-import 'package:process_run/process_run.dart';
 
 class VRChatRegistryService {
   static const String vrchatRegistryPath = r'Software\VRChat\VRChat';
@@ -16,12 +15,12 @@ class VRChatRegistryService {
         name: 'VRChatRegistryService',
       );
 
-      final shell = Shell();
-      final result = await shell.run(
-        'tasklist /FI "IMAGENAME eq VRChat.exe" /NH',
+      final result = await Process.run(
+        'tasklist',
+        ['/FI', 'IMAGENAME eq VRChat.exe', '/NH'],
       );
 
-      final output = result.outText;
+      final output = result.stdout.toString();
       final isRunning = output.contains('VRChat.exe');
 
       developer.log(

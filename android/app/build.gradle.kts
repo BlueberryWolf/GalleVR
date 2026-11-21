@@ -33,6 +33,10 @@ android {
             excludes.add("assets/flutter_assets/assets/bin/linux/**")
             excludes.add("assets/flutter_assets/assets/bin/windows/**")
         }
+        jniLibs {
+            // system sqlite
+            excludes.add("**/libsqlite3.so")
+        }
     }
 
     val keystorePropertiesFile = rootProject.file("key.properties")

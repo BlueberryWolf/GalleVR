@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/services/update_service.dart';
 import '../theme/app_theme.dart';
+import 'tinted_button.dart';
 
 class UpdateDialog extends StatefulWidget {
   final String latestVersion;
@@ -54,11 +55,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
       children: [
         Positioned.fill(
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: GestureDetector(
               onTap: () {},
               behavior: HitTestBehavior.opaque,
-              child: Container(color: Colors.black.withValues(alpha: 0.6)),
+              child: Container(color: Colors.black.withValues(alpha: 0.65)),
             ),
           ),
         ),
@@ -68,73 +69,49 @@ class _UpdateDialogState extends State<UpdateDialog> {
             color: Colors.transparent,
             child: Container(
               width: isSmallScreen ? size.width * 0.9 : 450,
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                color: AppTheme.cardBackgroundColor,
-                borderRadius: BorderRadius.circular(AppTheme.radiusModal),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
+              padding: const EdgeInsets.all(24),
+              decoration: AppTheme.modalDecoration,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  const Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppTheme.tint(AppTheme.primaryColor, 0.2),
-                          borderRadius: BorderRadius.circular(
-                            AppTheme.radiusControl,
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.system_update_rounded,
-                          color: AppTheme.primaryColor,
-                          size: 24,
-                        ),
+                      Icon(
+                        Icons.system_update_rounded,
+                        color: AppTheme.brandPurple,
+                        size: 24,
                       ),
-                      const SizedBox(width: 16),
-                      const Text(
+                      SizedBox(width: 12),
+                      Text(
                         'Update Available',
                         style: TextStyle(
                           fontSize: 20,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                           color: Colors.white,
-                          letterSpacing: 0.5,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  const Divider(color: Colors.white12, height: 1),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
+                  const Divider(color: AppTheme.cardBorderColor, height: 1),
+                  const SizedBox(height: 18),
 
                   if (!_isDownloading) ...[
                     RichText(
                       text: TextSpan(
                         style: const TextStyle(
-                          color: AppTheme.secondaryTextColor,
-                          fontSize: 14.5,
+                          color: AppTheme.bodyTextColor,
+                          fontSize: 14,
                           height: 1.5,
                         ),
                         children: [
                           const TextSpan(text: 'A new version of GalleVR ('),
                           TextSpan(
                             text: 'v${widget.latestVersion}',
-                            style: TextStyle(
-                              color: AppTheme.primaryColor,
-                              fontWeight: FontWeight.bold,
+                            style: const TextStyle(
+                              color: AppTheme.brandPurple,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           const TextSpan(
@@ -150,7 +127,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                       style: TextStyle(
                         color: AppTheme.secondaryTextColor,
                         fontSize: 12,
-                        height: 1.4,
+                        height: 1.5,
                       ),
                     ),
                   ] else ...[
@@ -163,35 +140,34 @@ class _UpdateDialogState extends State<UpdateDialog> {
                             const Text(
                               'Downloading update...',
                               style: TextStyle(
-                                color: AppTheme.secondaryTextColor,
-                                fontWeight: FontWeight.bold,
+                                color: AppTheme.bodyTextColor,
+                                fontWeight: FontWeight.w600,
                                 fontSize: 14,
                               ),
                             ),
                             Text(
                               '${(_progress * 100).toInt()}%',
-                              style: TextStyle(
-                                color: AppTheme.primaryColor,
+                              style: const TextStyle(
+                                color: AppTheme.brandPurple,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 14,
+                                fontFeatures: [FontFeature.tabularFigures()],
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(
-                            AppTheme.radiusTag,
-                          ),
+                          borderRadius: BorderRadius.circular(999),
                           child: LinearProgressIndicator(
                             value: _progress,
                             backgroundColor: Colors.white.withValues(
-                              alpha: 0.05,
+                              alpha: 0.08,
                             ),
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              AppTheme.primaryColor,
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              AppTheme.brandPurple,
                             ),
-                            minHeight: 8,
+                            minHeight: 6,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -211,19 +187,19 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppTheme.errorColor.withValues(alpha: 0.1),
+                        color: AppTheme.tint(AppTheme.errorColor, 0.12),
                         borderRadius: BorderRadius.circular(
                           AppTheme.radiusControl,
                         ),
                         border: Border.all(
-                          color: AppTheme.errorColor.withValues(alpha: 0.2),
+                          color: AppTheme.errorColor.withValues(alpha: 0.35),
                         ),
                       ),
                       child: Row(
                         children: [
                           const Icon(
-                            Icons.error_outline,
-                            color: AppTheme.errorColor,
+                            Icons.error_outline_rounded,
+                            color: AppTheme.errorTextColor,
                             size: 20,
                           ),
                           const SizedBox(width: 10),
@@ -231,7 +207,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                             child: Text(
                               _errorMessage,
                               style: const TextStyle(
-                                color: AppTheme.errorColor,
+                                color: AppTheme.errorTextColor,
                                 fontSize: 13,
                               ),
                             ),
@@ -242,48 +218,19 @@ class _UpdateDialogState extends State<UpdateDialog> {
                   ],
 
                   if (!_isDownloading) ...[
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        TextButton(
+                        TintedButton.neutral(
                           onPressed: () => Navigator.of(context).pop(),
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppTheme.secondaryTextColor,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 12,
-                            ),
-                          ),
-                          child: const Text(
-                            'Later',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
+                          label: 'Later',
                         ),
-                        const SizedBox(width: 12),
-                        ElevatedButton(
+                        const SizedBox(width: 10),
+                        TintedButton(
                           onPressed: _startUpdate,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 22,
-                              vertical: 12,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                AppTheme.radiusControl,
-                              ),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: const Text(
-                            'Update Now',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
+                          label: 'Update Now',
+                          color: AppTheme.brandPurple,
                         ),
                       ],
                     ),
