@@ -13,7 +13,6 @@ struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
   GtkWindow* window;
-  FlEngine* engine;
   FlView* view;
   FlMethodChannel* window_channel;
   gboolean minimize_to_tray;
@@ -40,7 +39,7 @@ static void cancel_memory_trim(MyApplication* self) {
 static gboolean memory_trim_timeout_cb(gpointer user_data) {
   MyApplication* self = MY_APPLICATION(user_data);
   self->trim_timer_id = 0;
-  if (self->is_hidden && self->view == nullptr) {
+  if (self->is_hidden) {
     malloc_trim(0);
   }
   return G_SOURCE_REMOVE;
@@ -59,49 +58,21 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   }
 }
 
-static void detach_view(MyApplication* self) {
-  if (self->view != nullptr) {
-    GtkWidget* view_widget = GTK_WIDGET(self->view);
-    if (self->window != nullptr &&
-        gtk_widget_get_parent(view_widget) == GTK_WIDGET(self->window)) {
-      gtk_container_remove(GTK_CONTAINER(self->window), view_widget);
-    }
-    self->view = nullptr;
-  }
-}
-
-static void attach_view(MyApplication* self, gboolean show_on_first_frame) {
+static void show_window(MyApplication* self) {
   cancel_memory_trim(self);
   self->is_hidden = FALSE;
 
-  if (self->engine == nullptr || self->window == nullptr) {
-    return;
-  }
-
   if (self->view != nullptr) {
     gtk_widget_show(GTK_WIDGET(self->view));
-    if (show_on_first_frame) {
-      gtk_widget_show(GTK_WIDGET(self->window));
-      gtk_window_present(self->window);
-    }
+  }
+  if (self->window != nullptr) {
+    gtk_widget_show(GTK_WIDGET(self->window));
+    gtk_window_deiconify(self->window);
+    gtk_window_present(self->window);
+  }
+  if (self->view != nullptr) {
     gtk_widget_grab_focus(GTK_WIDGET(self->view));
-    return;
   }
-
-  FlView* view = fl_view_new_for_engine(self->engine);
-  GdkRGBA background_color;
-  gdk_rgba_parse(&background_color, "#050508");
-  fl_view_set_background_color(view, &background_color);
-  gtk_widget_show(GTK_WIDGET(view));
-  gtk_container_add(GTK_CONTAINER(self->window), GTK_WIDGET(view));
-  self->view = view;
-
-  if (show_on_first_frame) {
-    g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
-                             self);
-  }
-  gtk_widget_realize(GTK_WIDGET(view));
-  gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
 static void hide_to_tray(MyApplication* self, gboolean notify) {
@@ -109,7 +80,6 @@ static void hide_to_tray(MyApplication* self, gboolean notify) {
   if (self->window != nullptr) {
     gtk_widget_hide(GTK_WIDGET(self->window));
   }
-  detach_view(self);
   if (notify) {
     notify_dart(self, "onWindowHidden");
   }
@@ -135,18 +105,16 @@ static gboolean on_window_state_event(GtkWidget* widget,
 
   if (event->changed_mask & GDK_WINDOW_STATE_ICONIFIED) {
     if (event->new_window_state & GDK_WINDOW_STATE_ICONIFIED) {
-      if (!self->is_hidden || self->view != nullptr) {
+      if (!self->is_hidden) {
         self->is_hidden = TRUE;
-        detach_view(self);
         notify_dart(self, "onWindowMinimized");
         schedule_memory_trim(self, 350);
       }
     } else if (gtk_widget_get_visible(widget)) {
       cancel_memory_trim(self);
-      if (self->is_hidden || self->view == nullptr) {
+      if (self->is_hidden) {
         self->is_hidden = FALSE;
         notify_dart(self, "onWindowRestored");
-        attach_view(self, FALSE);
       }
     }
   }
@@ -169,12 +137,7 @@ static void window_channel_method_call_cb(FlMethodChannel* channel,
     }
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
   } else if (std::strcmp(method, "showWindow") == 0) {
-    cancel_memory_trim(self);
-    self->is_hidden = FALSE;
-    if (self->window != nullptr) {
-      gtk_window_deiconify(self->window);
-    }
-    attach_view(self, TRUE);
+    show_window(self);
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
   } else if (std::strcmp(method, "hideWindow") == 0) {
     hide_to_tray(self, FALSE);
@@ -268,35 +231,44 @@ static void my_application_activate(GApplication* application) {
     }
   }
 
-  g_autoptr(FlDartProject) project = fl_dart_project_new();
-  fl_dart_project_set_dart_entrypoint_arguments(
-      project, self->dart_entrypoint_arguments);
-
-  self->engine = fl_engine_new(project);
-  g_autoptr(GError) error = nullptr;
-  if (!fl_engine_start(self->engine, &error)) {
-    g_warning("Failed to start Flutter engine: %s", error->message);
-    return;
-  }
-
-  fl_register_plugins(FL_PLUGIN_REGISTRY(self->engine));
-
-  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
-  self->window_channel = fl_method_channel_new(
-      fl_engine_get_binary_messenger(self->engine), "gallevr/window",
-      FL_METHOD_CODEC(codec));
-  fl_method_channel_set_method_call_handler(
-      self->window_channel, window_channel_method_call_cb, self, nullptr);
-
   g_signal_connect(window, "window-state-event",
                    G_CALLBACK(on_window_state_event), self);
   g_signal_connect(window, "delete-event", G_CALLBACK(on_delete_event), self);
 
+  g_autoptr(FlDartProject) project = fl_dart_project_new();
+  fl_dart_project_set_dart_entrypoint_arguments(
+      project, self->dart_entrypoint_arguments);
+
+  FlView* view = fl_view_new(project);
+  self->view = view;
+  GdkRGBA background_color;
+  gdk_rgba_parse(&background_color, "#050508");
+  fl_view_set_background_color(view, &background_color);
+  gtk_widget_show(GTK_WIDGET(view));
+  gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
+
+  fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+  FlEngine* engine = fl_view_get_engine(view);
+  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+  self->window_channel = fl_method_channel_new(
+      fl_engine_get_binary_messenger(engine), "gallevr/window",
+      FL_METHOD_CODEC(codec));
+  fl_method_channel_set_method_call_handler(
+      self->window_channel, window_channel_method_call_cb, self, nullptr);
+
+  g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
+                           self);
+
   if (has_start_minimized_arg(self->dart_entrypoint_arguments)) {
     self->is_hidden = TRUE;
+    gtk_widget_realize(GTK_WIDGET(window));
+    gtk_widget_realize(GTK_WIDGET(view));
     schedule_memory_trim(self, 2500);
   } else {
-    attach_view(self, TRUE);
+    self->is_hidden = FALSE;
+    gtk_widget_show(GTK_WIDGET(window));
+    gtk_widget_grab_focus(GTK_WIDGET(view));
   }
 }
 
@@ -326,9 +298,9 @@ static void my_application_startup(GApplication* application) {
 static void my_application_shutdown(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
   cancel_memory_trim(self);
-  detach_view(self);
   g_clear_object(&self->window_channel);
-  g_clear_object(&self->engine);
+  self->view = nullptr;
+  self->window = nullptr;
   G_APPLICATION_CLASS(my_application_parent_class)->shutdown(application);
 }
 
@@ -337,7 +309,6 @@ static void my_application_dispose(GObject* object) {
   cancel_memory_trim(self);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
   g_clear_object(&self->window_channel);
-  g_clear_object(&self->engine);
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }
 
@@ -352,7 +323,6 @@ static void my_application_class_init(MyApplicationClass* klass) {
 
 static void my_application_init(MyApplication* self) {
   self->window = nullptr;
-  self->engine = nullptr;
   self->view = nullptr;
   self->window_channel = nullptr;
   self->minimize_to_tray = TRUE;
