@@ -202,9 +202,13 @@ class _MonitorScreenState extends State<MonitorScreen> {
     if (_config == null || _isWatching) return;
 
     try {
-      final photoWatcherService = _appServiceManager.photoWatcherService;
+      final photoStream =
+          _appServiceManager.isDaemonManaged
+              ? _photoEventService.photoAdded
+              : _appServiceManager.photoWatcherService.photoStream;
 
-      _photoSubscription = photoWatcherService.photoStream.listen((photoPath) {
+      _photoSubscription = photoStream.listen((photoPath) {
+        if (photoPath == '__HEAL_SYNC__') return;
         _addEvent(
           _ProcessingEvent(
             type: _EventType.photo,
@@ -664,14 +668,13 @@ class _MonitorScreenState extends State<MonitorScreen> {
     }
 
     return AppCard(
-      child: Column(
-        children: [
-          for (var i = 0; i < _events.length; i++) ...[
-            if (i > 0)
-              const Divider(height: 1, color: AppTheme.cardBorderColor),
-            _buildEventItem(_events[i]),
-          ],
-        ],
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: _events.length,
+        separatorBuilder:
+            (_, __) => const Divider(height: 1, color: AppTheme.cardBorderColor),
+        itemBuilder: (context, index) => _buildEventItem(_events[index]),
       ),
     );
   }

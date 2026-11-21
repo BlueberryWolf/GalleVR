@@ -66,6 +66,21 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
     0.35,
   )!;
 
+  static const List<String> _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
   @override
   void dispose() {
     _isHovered.dispose();
@@ -76,161 +91,117 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
   Widget build(BuildContext context) {
     final isUploaded = widget.metadata?.galleryUrl != null;
 
-    return RepaintBoundary(
-      child: ValueListenableBuilder<bool>(
-        valueListenable: _isHovered,
-        builder: (context, hovered, child) {
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: const Cubic(0.16, 1, 0.3, 1),
-            transform: Matrix4.translationValues(0, hovered ? -3.0 : 0.0, 0),
-            decoration: BoxDecoration(
-              color: AppTheme.cardBackgroundColor,
-              borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-              boxShadow: [
-                BoxShadow(
-                  color:
-                      hovered
-                          ? const Color(0x80000000)
-                          : const Color(0x66000000),
-                  blurRadius: hovered ? 32 : 24,
-                  offset: Offset(0, hovered ? 12 : 8),
-                ),
-              ],
-            ),
-            child: child,
-          );
-        },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              ValueListenableBuilder<bool>(
-                valueListenable: _isHovered,
-                builder: (context, hovered, child) {
-                  final bool isGreyedOut =
-                      !isUploaded && !hovered && !widget.isSelected;
-                  return AnimatedScale(
-                    scale: hovered && !widget.isSelected ? 1.04 : 1.0,
-                    duration: const Duration(milliseconds: 300),
-                    curve: const Cubic(0.16, 1, 0.3, 1),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      foregroundDecoration: BoxDecoration(
-                        color:
-                            widget.isSelected
-                                ? AppTheme.brandPurple.withValues(alpha: 0.14)
-                                : hovered
-                                ? Colors.white.withValues(alpha: 0.04)
-                                : Colors.transparent,
-                      ),
-                      child: CachedImage(
-                        filePath: widget.entity.path,
-                        fit: BoxFit.cover,
-                        thumbnailSize: widget.decodeWidth,
-                        highQuality: false,
-                        greyscale: isGreyedOut,
-                        opacity: isGreyedOut ? 0.6 : 1.0,
-                      ),
-                    ),
-                  );
-                },
-              ),
-
-              ValueListenableBuilder<bool>(
-                valueListenable: _isHovered,
-                builder: (context, hovered, _) {
-                  return IgnorePointer(
-                    child: AnimatedOpacity(
-                      opacity: hovered ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 250),
-                      child: const DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [Color(0xB3000000), Color(0x00000000)],
-                            stops: [0.0, 0.45],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: widget.onTap,
-                  onHover: (value) => _isHovered.value = value,
-                  hoverColor: Colors.transparent,
-                  splashColor: Colors.white.withValues(alpha: 0.08),
-                  highlightColor: Colors.transparent,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-                  mouseCursor: SystemMouseCursors.click,
-                ),
-              ),
-
-              _buildTopGradient(),
-              ValueListenableBuilder<bool>(
-                valueListenable: _isHovered,
-                builder: (context, hovered, child) {
-                  return _buildSelectionIndicator(hovered);
-                },
-              ),
-              _buildTopMetadata(),
-              _buildTopRightActions(),
-
-              ValueListenableBuilder<bool>(
-                valueListenable: _isHovered,
-                builder: (context, hovered, child) {
-                  return IgnorePointer(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(
-                          AppTheme.radiusCard,
-                        ),
-                        border: Border.all(
-                          color:
-                              widget.isSelected
-                                  ? AppTheme.brandPurple
-                                  : hovered
-                                  ? _hoverBorderColor
-                                  : AppTheme.cardBorderColor,
-                          width: widget.isSelected ? 2 : 1,
-                        ),
-                      ),
-                    ),
-                  );
-                },
+    return ValueListenableBuilder<bool>(
+      valueListenable: _isHovered,
+      builder: (context, hovered, child) {
+        final bool isGreyedOut =
+            !isUploaded && !hovered && !widget.isSelected;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: const Cubic(0.16, 1, 0.3, 1),
+          transform: Matrix4.translationValues(0, hovered ? -2.0 : 0.0, 0),
+          decoration: BoxDecoration(
+            color: AppTheme.cardBackgroundColor,
+            borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+            boxShadow: [
+              BoxShadow(
+                color:
+                    hovered
+                        ? const Color(0x80000000)
+                        : const Color(0x66000000),
+                blurRadius: hovered ? 32 : 24,
+                offset: Offset(0, hovered ? 12 : 8),
               ),
             ],
+            border: Border.all(
+              color:
+                  widget.isSelected
+                      ? AppTheme.brandPurple
+                      : hovered
+                      ? _hoverBorderColor
+                      : AppTheme.cardBorderColor,
+              width: widget.isSelected ? 2 : 1,
+            ),
           ),
-        ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(
+              AppTheme.radiusCard - (widget.isSelected ? 2 : 1),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                AnimatedScale(
+                  scale: hovered && !widget.isSelected ? 1.03 : 1.0,
+                  duration: const Duration(milliseconds: 220),
+                  curve: const Cubic(0.16, 1, 0.3, 1),
+                  child: DecoratedBox(
+                    position: DecorationPosition.foreground,
+                    decoration: BoxDecoration(
+                      color:
+                          widget.isSelected
+                              ? AppTheme.brandPurple.withValues(alpha: 0.14)
+                              : hovered
+                              ? Colors.white.withValues(alpha: 0.04)
+                              : Colors.transparent,
+                    ),
+                    child: CachedImage(
+                      filePath: widget.entity.path,
+                      fit: BoxFit.cover,
+                      thumbnailSize: widget.decodeWidth,
+                      highQuality: false,
+                      greyscale: isGreyedOut,
+                      opacity: isGreyedOut ? 0.6 : 1.0,
+                    ),
+                  ),
+                ),
+
+                if (hovered)
+                  const IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [Color(0x99000000), Color(0x00000000)],
+                          stops: [0.0, 0.45],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                child!,
+              ],
+            ),
+          ),
+        );
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
+              onHover: (value) => _isHovered.value = value,
+              hoverColor: Colors.transparent,
+              splashColor: Colors.white.withValues(alpha: 0.08),
+              highlightColor: Colors.transparent,
+              borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+              mouseCursor: SystemMouseCursors.click,
+            ),
+          ),
+          _buildTopGradient(),
+          _buildSelectionIndicator(),
+          _buildTopMetadata(),
+          _buildTopRightActions(),
+        ],
       ),
     );
   }
 
   String _formatDate(int timestamp) {
     final dt = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    final months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    final month = months[dt.month - 1];
+    final month = _months[dt.month - 1];
 
     String daySuffix = 'th';
     if (dt.day == 1 || dt.day == 21 || dt.day == 31) {
@@ -383,7 +354,7 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
     );
   }
 
-  Widget _buildSelectionIndicator(bool hovered) {
+  Widget _buildSelectionIndicator() {
     final isUploaded = widget.metadata?.galleryUrl != null;
     if (!widget.isSelectionMode || isUploaded) return const SizedBox.shrink();
 

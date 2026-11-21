@@ -8,7 +8,6 @@ class ImageDimensions {
   const ImageDimensions(this.width, this.height);
 }
 
-/// Reads width and height from header.
 class ImageDimensionsReader {
   static Future<ImageDimensions?> readFromFile(String filePath) async {
     final file = File(filePath);
@@ -23,7 +22,6 @@ class ImageDimensionsReader {
       final header = await raf.read(32);
       if (header.length < 10) return null;
 
-      // PNG
       if (header.length >= 24 &&
           header[0] == 0x89 &&
           header[1] == 0x50 &&
@@ -42,7 +40,6 @@ class ImageDimensionsReader {
         return null;
       }
 
-      // WebP
       if (header.length >= 30 &&
           header[0] == 0x52 &&
           header[1] == 0x49 &&
@@ -55,7 +52,6 @@ class ImageDimensionsReader {
         return _parseWebpHeader(header);
       }
 
-      // JPEG
       if (header[0] == 0xFF && header[1] == 0xD8) {
         return await _parseJpeg(raf, fileLength);
       }
@@ -77,7 +73,6 @@ class ImageDimensionsReader {
     final c2 = header[14];
     final c3 = header[15];
 
-    // 'VP8 ' (lossy)
     if (c0 == 0x56 && c1 == 0x50 && c2 == 0x38 && c3 == 0x20) {
       if (header[23] == 0x9D && header[24] == 0x01 && header[25] == 0x2A) {
         final width = bd.getUint16(26, Endian.little) & 0x3FFF;
@@ -89,7 +84,6 @@ class ImageDimensionsReader {
       return null;
     }
 
-    // 'VP8L' (lossless)
     if (c0 == 0x56 && c1 == 0x50 && c2 == 0x38 && c3 == 0x4C) {
       if (header[20] == 0x2F) {
         final bits = bd.getUint32(21, Endian.little);
@@ -102,7 +96,6 @@ class ImageDimensionsReader {
       return null;
     }
 
-    // 'VP8X' (extended)
     if (c0 == 0x56 && c1 == 0x50 && c2 == 0x38 && c3 == 0x58) {
       final width =
           1 + (header[24] | (header[25] << 8) | (header[26] << 16));

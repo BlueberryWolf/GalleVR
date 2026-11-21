@@ -1,16 +1,16 @@
 import 'dart:async';
-import '../image/image_cache_service.dart';
 import 'dart:developer' as developer;
-import 'dart:ffi';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:win32_registry/win32_registry.dart';
-import 'package:flutter/painting.dart';
-import 'package:flutter/foundation.dart';
 
+import '../../daemon/daemon_ipc.dart';
+import '../../data/database/app_database.dart';
+import 'memory_manager.dart';
 import 'notification_service.dart';
 
 class WindowsService {
@@ -21,17 +21,15 @@ class WindowsService {
   static const String _windowChannelName = 'gallevr/window';
 
   final SystemTray _systemTray = SystemTray();
-  final AppWindow _appWindow = AppWindow();
   final NotificationService _notificationService = NotificationService();
   final MethodChannel _windowChannel = const MethodChannel(_windowChannelName);
 
   bool _isInitialized = false;
   bool _minimizeToTray = true;
+  bool _daemonManaged = false;
 
-  /// True while the window is hidden, so the widget tree can be torn down.
   final ValueNotifier<bool> isHidden = ValueNotifier<bool>(false);
 
-  /// Called on close when minimize to tray is off.
   Future<void> Function()? onCloseRequest;
 
   static final WindowsService _instance = WindowsService._internal();
@@ -47,13 +45,15 @@ class WindowsService {
   Future<void> initialize({
     required bool minimizeToTray,
     String? appTitle,
+    bool daemonManaged = false,
   }) async {
     if (!Platform.isWindows || _isInitialized) return;
 
     try {
       _minimizeToTray = minimizeToTray;
+      _daemonManaged = daemonManaged;
 
-      if (Platform.isWindows) {
+      if (!_daemonManaged) {
         try {
           await _notificationService.initialize();
           developer.log(
@@ -66,14 +66,19 @@ class WindowsService {
             name: 'WindowsService',
           );
         }
-      }
 
-      await _initSystemTray(appTitle ?? 'GalleVR');
+        await _initSystemTray(appTitle ?? 'GalleVR');
+      } else {
+        await _windowChannel.invokeMethod('setDaemonMode', true);
+      }
 
       await _windowChannel.invokeMethod('updateMinimizeToTray', minimizeToTray);
 
       _isInitialized = true;
-      developer.log('Windows service initialized', name: 'WindowsService');
+      developer.log(
+        'Windows service initialized (daemonManaged=$_daemonManaged)',
+        name: 'WindowsService',
+      );
     } catch (e) {
       developer.log(
         'Error initializing Windows service: $e',
@@ -121,24 +126,18 @@ class WindowsService {
 
       await _systemTray.setContextMenu(menu);
 
-      await _systemTray.setToolTip('GalleVR is running');
+      await _systemTray.setToolTip(
+        isHidden.value
+            ? 'GalleVR is running in the background'
+            : 'GalleVR is running',
+      );
 
       _systemTray.registerSystemTrayEventHandler((eventName) {
         developer.log('System tray event: $eventName', name: 'WindowsService');
         if (eventName == kSystemTrayEventClick) {
-          // Left click shows the app on Windows, the context menu on macOS.
-          if (Platform.isWindows) {
-            showWindow();
-          } else {
-            _systemTray.popUpContextMenu();
-          }
+          showWindow();
         } else if (eventName == kSystemTrayEventRightClick) {
-          // Right click shows the context menu on Windows, the app on macOS.
-          if (Platform.isWindows) {
-            _systemTray.popUpContextMenu();
-          } else {
-            showWindow();
-          }
+          _systemTray.popUpContextMenu();
         } else if (eventName == kSystemTrayEventDoubleClick) {
           showWindow();
         }
@@ -158,11 +157,9 @@ class WindowsService {
     _windowChannel.invokeMethod('updateMinimizeToTray', minimizeToTray);
   }
 
-  /// Returns true when the window was minimized to tray instead of closed.
   Future<bool> handleWindowClose({bool forceExit = false}) async {
     if (!Platform.isWindows || !_isInitialized) return false;
 
-    // exit pls
     if (forceExit) {
       developer.log(
         'Force exiting application from handleWindowClose',
@@ -207,42 +204,36 @@ class WindowsService {
 
     if (_isInitialized) {
       try {
-        developer.log(
-          'Cleaning up system tray before exit',
-          name: 'WindowsService',
-        );
+        await _windowChannel
+            .invokeMethod('hideWindow')
+            .timeout(const Duration(milliseconds: 100));
 
-        _appWindow.hide();
-
-        await _systemTray
-            .setToolTip('')
-            .timeout(const Duration(milliseconds: 100), onTimeout: () => false);
-        await _systemTray
-            .setTitle('')
-            .timeout(const Duration(milliseconds: 100), onTimeout: () => false);
-
-        final emptyMenu = Menu();
-        await emptyMenu
-            .buildFrom([])
-            .timeout(const Duration(milliseconds: 100), onTimeout: () => false);
-        await _systemTray
-            .setContextMenu(emptyMenu)
-            .timeout(const Duration(milliseconds: 100), onTimeout: () => false);
-
-        await Future.delayed(const Duration(milliseconds: 50));
-
-        developer.log('System tray cleanup completed', name: 'WindowsService');
+        if (_daemonManaged) {
+          await DaemonClient().shutdownDaemon();
+        } else {
+          developer.log(
+            'Cleaning up system tray before exit',
+            name: 'WindowsService',
+          );
+          await _systemTray
+              .destroy()
+              .timeout(const Duration(milliseconds: 150), onTimeout: () => null);
+          developer.log('System tray cleanup completed', name: 'WindowsService');
+        }
       } catch (e) {
         developer.log(
-          'Error during system tray cleanup: $e',
+          'Error during shutdown cleanup: $e',
           name: 'WindowsService',
         );
       }
     }
 
     try {
+      await AppDatabase().close();
+    } catch (_) {}
+
+    try {
       if (Platform.isAndroid || Platform.isIOS) {
-        developer.log('Stopping any foreground tasks', name: 'WindowsService');
         await FlutterForegroundTask.stopService().timeout(
           const Duration(milliseconds: 100),
         );
@@ -256,6 +247,19 @@ class WindowsService {
 
     developer.log('Force terminating process', name: 'WindowsService');
 
+    exit(0);
+  }
+
+  Future<void> exitUiOnly() async {
+    try {
+      await _windowChannel
+          .invokeMethod('savePlacement')
+          .timeout(const Duration(milliseconds: 150));
+    } catch (_) {}
+    try {
+      await AppDatabase().close();
+    } catch (_) {}
+    DaemonClient().disconnect();
     exit(0);
   }
 
@@ -332,37 +336,61 @@ class WindowsService {
   }
 
   Future<void> showWindow() async {
-    if (!Platform.isWindows || !_isInitialized) return;
+    if (!Platform.isWindows) return;
 
     try {
       developer.log('Restoring application window...', name: 'WindowsService');
 
-      ImageCacheService.applyMemoryLimits();
-
+      MemoryManager.restoreUiResources();
       isHidden.value = false;
 
-      await Future.delayed(const Duration(milliseconds: 50));
-
-      _appWindow.show();
+      await _windowChannel.invokeMethod('showWindow');
+      if (_isInitialized && !_daemonManaged) {
+        await _systemTray.setToolTip('GalleVR is running');
+      }
     } catch (e) {
       developer.log('Error showing window: $e', name: 'WindowsService');
     }
   }
 
-  Future<void> hideWindow({bool showNotification = false}) async {
-    if (!Platform.isWindows || !_isInitialized) return;
+  Future<void> hideWindow({
+    bool showNotification = false,
+    bool alreadyHiddenNatively = false,
+  }) async {
+    if (!Platform.isWindows) return;
 
     try {
       developer.log('Hiding application window', name: 'WindowsService');
       isHidden.value = true;
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      if (_daemonManaged && DaemonClient().isConnected) {
+        if (!alreadyHiddenNatively) {
+          try {
+            await _windowChannel
+                .invokeMethod('savePlacement')
+                .timeout(const Duration(milliseconds: 150));
+          } catch (_) {}
+        }
+        if (showNotification) {
+          await DaemonClient().showTrayBalloon(
+            'GalleVR Minimized',
+            'GalleVR is running in the background. Click the tray icon to reopen.',
+          );
+        }
+        await AppDatabase().close();
+        DaemonClient().disconnect();
+        exit(0);
+      }
 
-      _appWindow.hide();
+      if (!alreadyHiddenNatively) {
+        await _windowChannel.invokeMethod('hideWindow');
+      }
 
       await trimMemory();
 
-      await _systemTray.setToolTip('GalleVR is running in the background');
+      if (_isInitialized && !_daemonManaged) {
+        await _systemTray.setToolTip('GalleVR is running in the background');
+      }
 
       if (showNotification) {
         await _showMinimizedNotification();
@@ -372,77 +400,35 @@ class WindowsService {
     }
   }
 
-  /// Releases cached memory while the window is hidden.
   Future<void> trimMemory() async {
     if (!Platform.isWindows) return;
 
-    try {
-      PaintingBinding.instance.imageCache.maximumSize = 0;
-      PaintingBinding.instance.imageCache.maximumSizeBytes = 0;
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-
-      PaintingBinding.instance.handleMemoryPressure();
-
-      developer.log(
-        'Purged UI image caches and signaled low-memory pressure.',
-        name: 'WindowsService',
-      );
-    } catch (e) {
-      developer.log('Failed to purge caches: $e', name: 'WindowsService');
-    }
-
-    await Future.delayed(const Duration(milliseconds: 500));
+    await MemoryManager.purgeUiResources();
 
     try {
-      _emptyWorkingSet();
-      developer.log(
-        'Successfully emptied working set.',
-        name: 'WindowsService',
-      );
+      await _windowChannel.invokeMethod('trimMemory');
     } catch (e) {
-      developer.log(
-        'EmptyWorkingSet invocation failed: $e',
-        name: 'WindowsService',
-      );
+      developer.log('Native memory trim failed: $e', name: 'WindowsService');
     }
   }
 
   Future<void> _showMinimizedNotification() async {
-    if (!Platform.isWindows) {
-      await _systemTray.setToolTip('GalleVR is running in the background');
-      return;
-    }
-
     await _notificationService.showMinimizedNotification();
-    await _systemTray.setToolTip('GalleVR is running in the background');
+    if (_isInitialized) {
+      await _systemTray.setToolTip('GalleVR is running in the background');
+    }
   }
 
   Future<void> showStartMinimizedNotification() async {
-    if (!Platform.isWindows) {
-      await _systemTray.setToolTip('GalleVR is running in the background');
-      return;
-    }
-
     await _notificationService.showStartMinimizedNotification();
-    await _systemTray.setToolTip('GalleVR is running in the background');
+    if (_isInitialized) {
+      await _systemTray.setToolTip('GalleVR is running in the background');
+    }
   }
 
   void dispose() {
     if (!Platform.isWindows || !_isInitialized) return;
-
-    try {
-      developer.log(
-        'System tray will be cleaned up when app exits',
-        name: 'WindowsService',
-      );
-      developer.log('Windows service disposed', name: 'WindowsService');
-    } catch (e) {
-      developer.log(
-        'Error disposing Windows service: $e',
-        name: 'WindowsService',
-      );
-    }
+    developer.log('Windows service disposed', name: 'WindowsService');
   }
 
   void _setupWindowEventChannel() {
@@ -452,15 +438,12 @@ class WindowsService {
         name: 'WindowsService',
       );
 
-      if (call.method == 'onWindowHidden' && !isHidden.value) {
-        developer.log(
-          'Executing central hideWindow pipeline from native intercept...',
-          name: 'WindowsService',
+      if (call.method == 'onWindowHidden') {
+        await hideWindow(
+          showNotification: true,
+          alreadyHiddenNatively: true,
         );
-        await hideWindow(showNotification: true);
-      }
-
-      if (call.method == 'onWindowCloseRequest') {
+      } else if (call.method == 'onWindowCloseRequest') {
         try {
           if (onCloseRequest != null) {
             await onCloseRequest!().timeout(const Duration(milliseconds: 300));
@@ -473,24 +456,15 @@ class WindowsService {
         } finally {
           await exitApplication();
         }
-      }
-
-      if (call.method == 'onWindowMinimized' && !isHidden.value) {
-        developer.log(
-          'Window minimized: Virtualizing UI tree and executing memory purge...',
-          name: 'WindowsService',
-        );
+      } else if (call.method == 'onWindowMinimized') {
         isHidden.value = true;
         await trimMemory();
-      }
-
-      if (call.method == 'onWindowRestored' && isHidden.value) {
-        developer.log(
-          'Window restored: Restoring UI tree and re-establishing image caches...',
-          name: 'WindowsService',
-        );
-        ImageCacheService.applyMemoryLimits();
+      } else if (call.method == 'onWindowRestored') {
+        MemoryManager.restoreUiResources();
         isHidden.value = false;
+        if (_isInitialized && !_daemonManaged) {
+          _systemTray.setToolTip('GalleVR is running');
+        }
       }
 
       return null;
@@ -500,14 +474,5 @@ class WindowsService {
       'Window event channel listener bound successfully',
       name: 'WindowsService',
     );
-  }
-
-  void _emptyWorkingSet() {
-    final psapi = DynamicLibrary.open('psapi.dll');
-    final emptyWorkingSet = psapi
-        .lookupFunction<Int32 Function(IntPtr), int Function(int)>(
-          'EmptyWorkingSet',
-        );
-    emptyWorkingSet(-1);
   }
 }

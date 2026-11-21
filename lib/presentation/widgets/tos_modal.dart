@@ -97,7 +97,7 @@ class _TOSModalState extends State<TOSModal> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final size = MediaQuery.sizeOf(context);
     final isSmallScreen = size.width < 600;
 
     return Stack(

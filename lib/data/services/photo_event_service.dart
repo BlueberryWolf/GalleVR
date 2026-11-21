@@ -26,12 +26,31 @@ class PhotoEventService {
 
   PhotoEventService._internal();
 
-  /// Last 100 events, so the monitor can catch up after being unmounted.
   final List<PhotoErrorEvent> _history = [];
 
   List<PhotoErrorEvent> get history => List.unmodifiable(_history);
 
   void clearHistory() => _history.clear();
+
+  void seedHistory(List<Map<String, dynamic>> entries) {
+    if (entries.isEmpty) return;
+    _history.clear();
+    for (final entry in entries.take(100)) {
+      final type = entry['type'] as String? ?? 'info';
+      final message = entry['message'] as String? ?? '';
+      final photoPath = entry['photoPath'] as String?;
+      final ts = entry['timestamp'];
+      _history.add(
+        PhotoErrorEvent(
+          type: type,
+          message: message,
+          photoPath: photoPath,
+          timestamp:
+              ts is int ? DateTime.fromMillisecondsSinceEpoch(ts) : null,
+        ),
+      );
+    }
+  }
 
   final _photoAddedController = StreamController<String>.broadcast();
 

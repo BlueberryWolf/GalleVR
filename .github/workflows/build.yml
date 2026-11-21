@@ -18,7 +18,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.6"
+          flutter-version: "3.50.1"
           channel: stable
           cache: true
 
@@ -75,7 +75,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.6"
+          flutter-version: "3.50.1"
           channel: stable
           cache: true
 
@@ -130,7 +130,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.6"
+          flutter-version: "3.50.1"
           channel: stable
           cache: true
 
@@ -313,13 +313,20 @@ jobs:
           cp build/linux/x64/release/bundle/com.blueberrywolf.gallevr.metainfo.xml linux/runner/com.blueberrywolf.gallevr.metainfo.xml
 
       - name: Build Flatpak
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-        with:
-          bundle: GalleVR.flatpak
-          manifest-path: linux/runner/com.blueberrywolf.gallevr.yml
-          cache: true
-          branch: stable
-          arch: x86_64
+        run: |
+          flatpak-builder \
+            --repo=repo \
+            --disable-rofiles-fuse \
+            --force-clean \
+            --default-branch=stable \
+            --arch=x86_64 \
+            --subject="Built from ${{ github.sha }}" \
+            flatpak_app \
+            linux/runner/com.blueberrywolf.gallevr.yml
+          flatpak build-bundle \
+            --arch=x86_64 \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            repo GalleVR.flatpak com.blueberrywolf.gallevr stable
 
       - name: Upload Flatpak artifact
         uses: actions/upload-artifact@v4

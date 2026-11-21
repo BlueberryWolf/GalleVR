@@ -55,17 +55,21 @@ void AppWindow::initAppWindow(
     const flutter::MethodCall<flutter::EncodableValue>& method_call,
     flutter::MethodResult<flutter::EncodableValue>& result) {
   do {
+    HWND flutter_window = nullptr;
+    HWND window = nullptr;
+
     flutter::FlutterView* view = registrar_->GetView();
-    if (!view) {
-      result.Error(errors::kBadArgumentsError, "",
-                   flutter::EncodableValue(false));
-      break;
+    if (view) {
+      flutter_window = view->GetNativeWindow();
+      window = GetAncestor(flutter_window, GA_ROOT);
+    } else {
+      window = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"GalleVR");
+      if (window) {
+        flutter_window = ::GetWindow(window, GW_CHILD);
+      }
     }
 
-    HWND flutter_window = view->GetNativeWindow();
-    HWND window = GetAncestor(flutter_window, GA_ROOT);
-
-    if (!initAppWindow(window, flutter_window)) {
+    if (!window || !initAppWindow(window, flutter_window)) {
       result.Error(errors::kBadArgumentsError, "",
                    flutter::EncodableValue(false));
       break;

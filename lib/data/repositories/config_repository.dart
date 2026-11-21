@@ -20,7 +20,7 @@ class ConfigRepository {
       final configFile = File(path.join(configDir, 'config.json'));
 
       if (!await configFile.exists()) {
-        return _createDefaultConfig();
+        return await _createDefaultConfig();
       }
 
       final jsonString = await configFile.readAsString();

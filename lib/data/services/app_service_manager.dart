@@ -21,8 +21,8 @@ import '../../core/isolate/isolate_worker_pool.dart';
 import '../models/verification_models.dart';
 import '../database/app_database.dart';
 import '../../core/platform/platform_service_factory.dart';
+import '../../daemon/daemon_ipc.dart';
 
-/// Owns the services that run for the whole app lifecycle.
 class AppServiceManager {
   static final AppServiceManager _instance = AppServiceManager._internal();
 
@@ -73,6 +73,10 @@ class AppServiceManager {
   late final LogParserService _logParserService = LogParserService();
 
   StreamSubscription<String>? _photoProcessingSubscription;
+  StreamSubscription<Map<String, dynamic>>? _daemonEventSubscription;
+  bool _daemonOwnsWatcher = false;
+
+  bool get isDaemonManaged => _daemonOwnsWatcher;
 
   final VRChatService _vrchatService = VRChatService();
 
@@ -175,6 +179,10 @@ class AppServiceManager {
 
   Future<void> refreshWatcher() async {
     if (_config == null) return;
+    if (_daemonOwnsWatcher && DaemonClient().isConnected) {
+      await DaemonClient().reloadConfig();
+      return;
+    }
     await _photoProcessingSubscription?.cancel();
     _photoProcessingSubscription = null;
     await photoWatcherService.stopWatching();
@@ -207,6 +215,15 @@ class AppServiceManager {
 
   Future<void> _initializeBackgroundTasks() async {
     try {
+      if (Platform.isWindows && DaemonClient().isDaemonAvailable) {
+        final connected = await DaemonClient().ensureConnected();
+        if (connected) {
+          _daemonOwnsWatcher = true;
+          photoEventService.seedHistory(DaemonClient().initialHistory);
+          _subscribeToDaemonEvents();
+        }
+      }
+
       if (_config != null) {
         if (Platform.isWindows) {
           windowsService.onCloseRequest = () async {
@@ -215,6 +232,7 @@ class AppServiceManager {
           await windowsService.initialize(
             minimizeToTray: _config!.minimizeToTray,
             appTitle: 'GalleVR',
+            daemonManaged: _daemonOwnsWatcher,
           );
         } else if (Platform.isLinux) {
           await linuxService.initialize(
@@ -224,14 +242,18 @@ class AppServiceManager {
         }
       }
 
-      if (_config != null && await _shouldStartWatcher(_config!)) {
+      if (!_daemonOwnsWatcher &&
+          _config != null &&
+          await _shouldStartWatcher(_config!)) {
         await _startPhotoWatcher();
+      } else if (_daemonOwnsWatcher) {
+        unawaited(DaemonClient().reloadConfig());
       }
 
-      await Future.wait([
-        _imageCacheService.initialize(),
-        soundService.initialize(),
-      ]).timeout(const Duration(seconds: 10), onTimeout: () => []);
+      await _imageCacheService.initialize().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {},
+      );
 
       await checkVerificationStatus();
 
@@ -247,6 +269,41 @@ class AppServiceManager {
         name: 'AppServiceManager',
       );
     }
+  }
+
+  void _subscribeToDaemonEvents() {
+    _daemonEventSubscription?.cancel();
+    _daemonEventSubscription = DaemonClient().events.listen((msg) {
+      final event = msg['event'] as String?;
+      if (event == 'photoAdded') {
+        final photoPath = msg['path'] as String?;
+        if (photoPath != null) {
+          photoEventService.notifyPhotoAdded(photoPath);
+        }
+      } else if (event == 'photoUploaded') {
+        final photoPath = msg['path'] as String?;
+        if (photoPath != null) {
+          photoEventService.notifyPhotoUploaded(photoPath);
+        }
+      } else if (event == 'photoEvent') {
+        final type = msg['type'] as String? ?? 'info';
+        final message = msg['message'] as String? ?? '';
+        final photoPath = msg['photoPath'] as String?;
+        photoEventService.notifyError(type, message, photoPath: photoPath);
+      } else if (event == 'hideUi') {
+        if (Platform.isWindows) {
+          unawaited(windowsService.hideWindow(showNotification: false));
+        }
+      } else if (event == 'showUi') {
+        if (Platform.isWindows) {
+          unawaited(windowsService.showWindow());
+        }
+      } else if (event == 'exitUi' || event == 'daemonShutdown') {
+        if (Platform.isWindows) {
+          unawaited(windowsService.exitUiOnly());
+        }
+      }
+    });
   }
 
   Future<bool> _shouldStartWatcher(ConfigModel config) async {
@@ -306,6 +363,8 @@ class AppServiceManager {
 
         if (Platform.isWindows && windowsService.isHidden.value) {
           await windowsService.trimMemory();
+        } else if (Platform.isLinux && linuxService.isHidden.value) {
+          await linuxService.trimMemory();
         }
       }
     } catch (e) {
@@ -345,7 +404,9 @@ class AppServiceManager {
         logsDirectoryChanged ||
         resonitePhotosDirectoryChanged;
 
-    if (dirChanged) {
+    if (_daemonOwnsWatcher && DaemonClient().isConnected) {
+      await DaemonClient().reloadConfig();
+    } else if (dirChanged) {
       await _photoProcessingSubscription?.cancel();
       _photoProcessingSubscription = null;
       await photoWatcherService.stopWatching();
@@ -358,14 +419,13 @@ class AppServiceManager {
     _configStreamController.add(config);
   }
 
-  /// Returns true when the window was minimized to tray instead of closed.
   Future<bool> handleWindowClose({bool forceExit = false}) async {
     if (Platform.isWindows) {
       if (forceExit) {
         await dispose();
 
         await windowsService.exitApplication();
-        return false; // unreachable: exitApplication ends the process
+        return false;
       } else if (_config != null && _config!.minimizeToTray) {
         return await windowsService.handleWindowClose();
       }
@@ -399,6 +459,11 @@ class AppServiceManager {
         name: 'AppServiceManager',
       );
     }
+
+    try {
+      await _daemonEventSubscription?.cancel();
+      _daemonEventSubscription = null;
+    } catch (_) {}
 
     try {
       await _photoProcessingSubscription?.cancel();

@@ -9,7 +9,6 @@
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "shell32.lib")
 
-// Writes a log message to %TEMP%\GalleVR-Migration.log
 void WriteLog(const std::wstring& message) {
   wchar_t tempPath[MAX_PATH];
   if (GetTempPathW(MAX_PATH, tempPath)) {
@@ -75,7 +74,6 @@ bool DeleteDirectory(const std::wstring& path) {
     return true;
   }
 
-  // SHFileOperation requires a double-null-terminated string
   std::wstring doubleNullPath = path + L"\0";
   SHFILEOPSTRUCTW fileOp = {};
   fileOp.wFunc = FO_DELETE;
@@ -92,7 +90,6 @@ bool DeleteDirectory(const std::wstring& path) {
   }
 }
 
-// Cleans up legacy shortcuts
 void CleanLegacyShortcuts() {
   WriteLog(L"Cleaning legacy shortcuts...");
   
@@ -141,7 +138,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
   DeleteDirectory(legacyPath);
   
-  // Old shortcuts would otherwise point at the removed install.
   CleanLegacyShortcuts();
 
   WriteLog(L"GalleVR-Migrator completed successfully.");

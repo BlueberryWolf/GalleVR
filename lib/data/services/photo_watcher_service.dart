@@ -123,11 +123,18 @@ class PhotoWatcherService {
     }
   }
 
+  void _rememberHandledPhoto(String photoPath) {
+    if (_handledPhotos.length >= 500) {
+      _handledPhotos.remove(_handledPhotos.first);
+    }
+    _handledPhotos.add(photoPath);
+  }
+
   void _onReceiveTaskData(Object data) {
     if (data is Map<String, dynamic>) {
       if (data.containsKey('newPhoto')) {
         final photoPath = data['newPhoto'] as String;
-        _handledPhotos.add(photoPath);
+        _rememberHandledPhoto(photoPath);
         _photoStreamController.add(photoPath);
         PhotoEventService().notifyPhotoAdded(photoPath);
       } else if (data['action'] == 'configAligned') {
@@ -370,7 +377,7 @@ class PhotoWatcherService {
       return;
     }
 
-    _handledPhotos.add(finalPath);
+    _rememberHandledPhoto(finalPath);
 
     developer.log(
       'New screenshot detected from log: $finalPath',
@@ -390,12 +397,11 @@ class PhotoWatcherService {
   ) async {
     if (_handledPhotos.contains(photoPath)) return;
 
-    // Wait for the file to be fully written before processing.
     final file = File(photoPath);
     final ready = await ScreenshotUtils.waitForFileReady(file, maxAttempts: 15);
     if (!ready) return;
 
-    _handledPhotos.add(photoPath);
+    _rememberHandledPhoto(photoPath);
     developer.log(
       'New Resonite screenshot detected: $photoPath',
       name: 'PhotoWatcherService',

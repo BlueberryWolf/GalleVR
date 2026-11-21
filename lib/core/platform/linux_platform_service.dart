@@ -144,14 +144,12 @@ class LinuxPlatformService implements PlatformService {
       try {
         final content = await vdfFile.readAsString();
 
-        // very basic parsing for library paths
         final pathRegex = RegExp(r'"path"\s+"([^"]+)"');
         final matches = pathRegex.allMatches(content);
 
         for (final match in matches) {
           final libraryPath = match.group(1);
           if (libraryPath != null) {
-            // check if vrchat (438100) is in this library
             final vrcCompatDataPath = path.join(
               libraryPath,
               'steamapps',

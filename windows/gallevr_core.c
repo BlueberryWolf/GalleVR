@@ -175,32 +175,42 @@ char* extract_players_json(const char* xml) {
         char* head_scale = decode_xml_entities(raw_head_scale);
         char* is_in_view = decode_xml_entities(raw_is_in_view);
         if (id && name) {
-            char entry[512];
-            sprintf(entry, "%s{\"id\":\"%s\",\"displayName\":\"%s\",\"headPosition\":\"%s\",\"headOrientation\":\"%s\",\"headScale\":\"%s\",\"isInView\":\"%s\"}",
-                    first ? "" : ",", id, name, head_pos ? head_pos : "", head_ori ? head_ori : "", head_scale ? head_scale : "1.0", is_in_view ? is_in_view : "true");
-            first = 0;
-            if (strlen(out) + strlen(entry) + 10 >= out_cap) {
-                out_cap *= 2;
-                char* new_out = realloc(out, out_cap);
-                if (!new_out) {
-                    if (raw_id) free(raw_id);
-                    if (raw_name) free(raw_name);
-                    if (raw_head_pos) free(raw_head_pos);
-                    if (raw_head_ori) free(raw_head_ori);
-                    if (raw_head_scale) free(raw_head_scale);
-                    if (raw_is_in_view) free(raw_is_in_view);
-                    if (id) free(id);
-                    if (name) free(name);
-                    if (head_pos) free(head_pos);
-                    if (head_ori) free(head_ori);
-                    if (head_scale) free(head_scale);
-                    if (is_in_view) free(is_in_view);
-                    free(item_content);
-                    break;
+            size_t entry_len = 256 + strlen(id) + strlen(name) +
+                (head_pos ? strlen(head_pos) : 0) +
+                (head_ori ? strlen(head_ori) : 0) +
+                (head_scale ? strlen(head_scale) : 3) +
+                (is_in_view ? strlen(is_in_view) : 4);
+            char* entry = malloc(entry_len);
+            if (entry) {
+                snprintf(entry, entry_len, "%s{\"id\":\"%s\",\"displayName\":\"%s\",\"headPosition\":\"%s\",\"headOrientation\":\"%s\",\"headScale\":\"%s\",\"isInView\":\"%s\"}",
+                        first ? "" : ",", id, name, head_pos ? head_pos : "", head_ori ? head_ori : "", head_scale ? head_scale : "1.0", is_in_view ? is_in_view : "true");
+                first = 0;
+                size_t needed = strlen(out) + strlen(entry) + 10;
+                if (needed >= out_cap) {
+                    out_cap = (out_cap * 2) + entry_len;
+                    char* new_out = realloc(out, out_cap);
+                    if (!new_out) {
+                        free(entry);
+                        if (raw_id) free(raw_id);
+                        if (raw_name) free(raw_name);
+                        if (raw_head_pos) free(raw_head_pos);
+                        if (raw_head_ori) free(raw_head_ori);
+                        if (raw_head_scale) free(raw_head_scale);
+                        if (raw_is_in_view) free(raw_is_in_view);
+                        if (id) free(id);
+                        if (name) free(name);
+                        if (head_pos) free(head_pos);
+                        if (head_ori) free(head_ori);
+                        if (head_scale) free(head_scale);
+                        if (is_in_view) free(is_in_view);
+                        free(item_content);
+                        break;
+                    }
+                    out = new_out;
                 }
-                out = new_out;
+                strcat(out, entry);
+                free(entry);
             }
-            strcat(out, entry);
         }
         if (raw_id) free(raw_id);
         if (raw_name) free(raw_name);
@@ -226,12 +236,10 @@ static void parse_png(FILE* file, char** vrcx_json, char** vrchat_xml) {
     uint32_t len_be;
     char type[5] = {0};
 
-    // png chunk format: [length][type][data][crc]
     while (fread(&len_be, 4, 1, file) == 1) {
         uint32_t chunk_length = BSWAP32(len_be);
         if (fread(type, 4, 1, file) != 1) break;
 
-        // VRCX metadata is stored in iTXt chunks
         if (strcmp(type, "iTXt") == 0 || strcmp(type, "tEXt") == 0) {
             char* chunk_data = malloc(chunk_length + 1);
             if (!chunk_data) break;
@@ -245,7 +253,6 @@ static void parse_png(FILE* file, char** vrcx_json, char** vrchat_xml) {
             const char* needle = "{\"application\":\"VRCX\"";
             char* json_start = NULL;
 
-            // find start of JSON in chunk
             for (uint32_t i = 0; i <= (chunk_length > 21 ? chunk_length - 21 : 0); i++) {
                 if (chunk_data[i] == '{' && memcmp(chunk_data + i, needle, 21) == 0) {
                     json_start = chunk_data + i;
@@ -254,7 +261,6 @@ static void parse_png(FILE* file, char** vrcx_json, char** vrchat_xml) {
             }
 
             if (json_start && !*vrcx_json) {
-                // calculate length from start of JSON to end of chunk
                 size_t json_len = chunk_length - (json_start - chunk_data);
                 *vrcx_json = malloc(json_len + 1);
                 if (*vrcx_json) {
@@ -286,11 +292,9 @@ static void parse_png(FILE* file, char** vrcx_json, char** vrchat_xml) {
             fseek(file, 4, SEEK_CUR);
         } 
         else if (strcmp(type, "IDAT") == 0 || strcmp(type, "IEND") == 0) {
-            // stop at pixel data
             break; 
         } 
         else {
-            // jump over other chunks
             fseek(file, chunk_length + 4, SEEK_CUR);
         }
     }
@@ -301,19 +305,17 @@ static void parse_jpeg(FILE* file, char** vrchat_xml) {
     while (1) {
         int c1 = fgetc(file);
         if (c1 == EOF) break;
-        if (c1 != 0xFF) continue; // Skip non-0xFF padding
+        if (c1 != 0xFF) continue;
         int marker = fgetc(file);
         if (marker == EOF) break;
         if (marker == 0xFF) {
             ungetc(marker, file);
             continue;
         }
-        // Stop scanning if we hit SOS (0xDA) or EOI (0xD9)
         if (marker == 0xDA || marker == 0xD9) {
             break;
         }
         
-        // Read segment length (2 bytes, big-endian)
         unsigned char len_bytes[2];
         if (fread(len_bytes, 1, 2, file) != 2) break;
         uint16_t segment_length = (len_bytes[0] << 8) | len_bytes[1];
@@ -321,7 +323,7 @@ static void parse_jpeg(FILE* file, char** vrchat_xml) {
         
         uint32_t payload_len = segment_length - 2;
         
-        if (marker == 0xE1) { // APP1 marker (XMP is typically here)
+        if (marker == 0xE1) {
             char* payload = malloc(payload_len + 1);
             if (payload) {
                 if (fread(payload, 1, payload_len, file) == payload_len) {
@@ -345,7 +347,7 @@ static void parse_jpeg(FILE* file, char** vrchat_xml) {
                 }
                 free(payload);
             }
-            if (*vrchat_xml) break; // found XMP
+            if (*vrchat_xml) break;
         } else {
             fseek(file, payload_len, SEEK_CUR);
         }
@@ -475,7 +477,6 @@ EXPORT char* extract_resonite_metadata(const char* file_path, const char* ext) {
             fseek(fallback_file, 0, SEEK_END);
             size_t file_size = ftell(fallback_file);
             
-            // WebP keeps its XMP chunk near the end, so read the tail first.
             int is_webp = 0;
             size_t path_len = strlen(file_path);
             if (path_len >= 5) {
@@ -532,7 +533,6 @@ EXPORT char* extract_resonite_metadata(const char* file_path, const char* ext) {
                 }
             }
             
-            // Fallback to reading the first 2MB if not found in the tail
             if (!vrchat_xml) {
                 fseek(fallback_file, 0, SEEK_SET);
                 size_t head_size = file_size > 2 * 1024 * 1024 ? 2 * 1024 * 1024 : file_size;
@@ -692,6 +692,7 @@ EXPORT char* extract_resonite_metadata(const char* file_path, const char* ext) {
     if (rot) free(rot);
     if (scale) free(scale);
     if (fov) free(fov);
+    if (cam_man) free(cam_man);
     if (v1_json) free(v1_json);
     if (players_json) free(players_json);
     if (vrchat_xml) free(vrchat_xml);

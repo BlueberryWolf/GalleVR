@@ -67,9 +67,10 @@ class _PhotoDetailViewState extends State<PhotoDetailView> {
     super.didChangeDependencies();
     final window = MediaQuery.sizeOf(context);
     final dpr = MediaQuery.devicePixelRatioOf(context);
-    final bytesPerPhoto =
-        (window.width * dpr * 2) * (window.height * dpr * 2) * 4;
-    ImageCacheService.reserve(count: 3, bytes: (bytesPerPhoto * 3).ceil());
+    final maxW = (window.width * dpr * 1.5).round().clamp(512, 2560);
+    final maxH = (window.height * dpr * 1.5).round().clamp(512, 2560);
+    final bytesPerPhoto = maxW * maxH * 4;
+    ImageCacheService.reserve(count: 3, bytes: bytesPerPhoto * 3);
   }
 
   @override

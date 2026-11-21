@@ -3,14 +3,10 @@ import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'dart:developer' as developer;
 
-import '../../core/platform/platform_service.dart';
-import '../../core/platform/platform_service_factory.dart';
 import '../models/log_metadata.dart';
 import '../models/config_model.dart';
 
 class LogParserService {
-  final PlatformService platformService;
-
   static final _roomNameRegex = RegExp(
     r'\[Behaviour\] Entering Room: (.*?)(?:\r?\n|$)',
   );
@@ -95,9 +91,7 @@ class LogParserService {
     r'\[Behaviour\] OnPlayer(Joined|Left) (.+?) \((.+?)\)',
   );
 
-  LogParserService({PlatformService? platformService})
-    : platformService =
-          platformService ?? PlatformServiceFactory.getPlatformService();
+  LogParserService();
 
   Future<LogMetadata?> getLatestLogMetadata(ConfigModel config) async {
     try {
@@ -113,7 +107,7 @@ class LogParserService {
 
       final stat = await logFile.stat();
       final fileSize = stat.size;
-      const bytesToRead = 204800; // 200KB
+      const bytesToRead = 204800;
       final readSize = fileSize > bytesToRead ? bytesToRead : fileSize;
 
       final raf = await logFile.open(mode: FileMode.read);
@@ -130,7 +124,6 @@ class LogParserService {
         logContent.lastIndexOf('[Behaviour] Entering Room'),
       ].reduce((a, b) => a > b ? a : b);
 
-      // Read the full file when the room join is not in the last 200KB.
       if (lastEnteringIndex == -1 && fileSize > readSize) {
         developer.log(
           'Entering Room/World not found in last 200KB, falling back to full read of ${(fileSize / 1024 / 1024).toStringAsFixed(2)}MB log file',
@@ -168,7 +161,6 @@ class LogParserService {
         }
       }
 
-      // Furality hotfix: build a basic WorldInfo when only the room name was logged.
       if (worldInfo == null && roomName.isNotEmpty) {
         final worldIdMatch = RegExp(
           r'Joining (wrld_[^:]+):',

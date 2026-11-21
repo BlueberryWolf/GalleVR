@@ -286,7 +286,7 @@ class NotificationService {
           message,
           NotificationDetails(windows: WindowsNotificationDetails()),
           payload:
-              'update', // matched by the tap handler to open the releases page
+              'update',
         );
       } else if (Platform.isAndroid) {
         const AndroidNotificationDetails androidDetails =
@@ -305,7 +305,7 @@ class NotificationService {
           message,
           NotificationDetails(android: androidDetails),
           payload:
-              'update', // matched by the tap handler to open the releases page
+              'update',
         );
       }
 

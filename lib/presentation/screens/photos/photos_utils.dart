@@ -9,25 +9,22 @@ import '../../theme/app_theme.dart';
 String shortenGalleryUrl(String url) {
   try {
     final uri = Uri.parse(url);
-    // case 1: https://gallevr.app/p?i=PHOTO_ID&u=...
     if (uri.path == '/p' && uri.queryParameters.containsKey('i')) {
       final photoId = uri.queryParameters['i']!;
       return 'https://gallevr.app/p/$photoId';
     }
-    // case 2: https://gallevr.app/gallery/USER_ID?focus=PHOTO_ID
     if (uri.path.startsWith('/gallery/') &&
         uri.queryParameters.containsKey('focus')) {
       final photoId = uri.queryParameters['focus']!;
       return 'https://gallevr.app/p/$photoId';
     }
-    // case 3: https://gallevr.app/u/USER_ID?focus=PHOTO_ID
     if (uri.path.startsWith('/u/') &&
         uri.queryParameters.containsKey('focus')) {
       final photoId = uri.queryParameters['focus']!;
       return 'https://gallevr.app/p/$photoId';
     }
-  } catch (e) {
-    // original url
+  } catch (_) {
+    return url;
   }
   return url;
 }

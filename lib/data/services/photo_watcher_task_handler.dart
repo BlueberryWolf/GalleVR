@@ -21,7 +21,6 @@ class PhotoWatcherTaskHandler extends TaskHandler {
 
   final Set<String> _handledPhotos = {};
 
-  /// Android has no file system events, so photos are polled.
   Timer? _pollingTimer;
 
   StreamSubscription<FileSystemEvent>? _watcherSubscription;
@@ -239,7 +238,6 @@ class PhotoWatcherTaskHandler extends TaskHandler {
         final updatedConfig = config.copyWith(photosDirectory: screenshotDir);
         _config = updatedConfig;
 
-        // The main isolate saves config, so writes never race.
         FlutterForegroundTask.sendDataToMain({
           'action': 'configAligned',
           'photosDirectory': screenshotDir,

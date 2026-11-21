@@ -65,6 +65,33 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 add_subdirectory("runner")
 add_subdirectory("gallevr_core")
 
+find_program(DART_EXECUTABLE
+  NAMES dart.bat dart
+  HINTS "${FLUTTER_ROOT}/bin" "$ENV{FLUTTER_ROOT}/bin"
+)
+set(GALLEVR_DAEMON_EXE "${CMAKE_BINARY_DIR}/gallevr_daemon.exe")
+if(DART_EXECUTABLE)
+  file(GLOB_RECURSE GALLEVR_DAEMON_SOURCES
+    "${CMAKE_SOURCE_DIR}/../bin/gallevr_daemon.dart"
+    "${CMAKE_SOURCE_DIR}/../lib/daemon/*.dart"
+    "${CMAKE_SOURCE_DIR}/../lib/core/metadata/*.dart"
+  )
+  add_custom_command(
+    OUTPUT "${GALLEVR_DAEMON_EXE}"
+    COMMAND "${DART_EXECUTABLE}" compile exe
+      "${CMAKE_SOURCE_DIR}/../bin/gallevr_daemon.dart"
+      -o "${GALLEVR_DAEMON_EXE}"
+    COMMAND "${DART_EXECUTABLE}" run
+      "${CMAKE_SOURCE_DIR}/../tool/patch_windows_subsystem.dart"
+      "${GALLEVR_DAEMON_EXE}"
+    DEPENDS ${GALLEVR_DAEMON_SOURCES} "${CMAKE_SOURCE_DIR}/../pubspec.lock"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/.."
+    COMMENT "Compiling pure-Dart background daemon (gallevr_daemon.exe)..."
+  )
+  add_custom_target(gallevr_daemon ALL DEPENDS "${GALLEVR_DAEMON_EXE}")
+  add_dependencies(${BINARY_NAME} gallevr_daemon)
+endif()
+
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
@@ -90,6 +117,11 @@ install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
 
 install(TARGETS gallevr_core RUNTIME DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
+
+if(DART_EXECUTABLE)
+  install(FILES "${GALLEVR_DAEMON_EXE}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+endif()
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)

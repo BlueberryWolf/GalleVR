@@ -9,7 +9,7 @@ class IsolateWorkerPool {
   static final IsolateWorkerPool _instance = IsolateWorkerPool._internal();
   factory IsolateWorkerPool() => _instance;
 
-  static const Duration _idleTimeout = Duration(seconds: 45);
+  static const Duration _idleTimeout = Duration(seconds: 15);
 
   final int _poolSize;
   final List<_WorkerInstance> _workers = [];
@@ -80,6 +80,19 @@ class IsolateWorkerPool {
       }
       _workers.clear();
     });
+  }
+
+  void trimIdleWorkers() {
+    if (_taskQueue.isNotEmpty) return;
+    final idleWorkers = _workers.where((w) => !w.isBusy).toList();
+    for (final w in idleWorkers) {
+      w.stop();
+      _workers.remove(w);
+    }
+    if (_workers.isEmpty) {
+      _idleTimer?.cancel();
+      _idleTimer = null;
+    }
   }
 
   void dispose() {

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'dart:developer' as developer;
+import '../../core/isolate/isolate_worker_pool.dart';
 import '../../data/models/config_model.dart';
 import '../../data/models/photo_metadata.dart';
 import '../../data/models/verification_models.dart';
@@ -70,10 +71,13 @@ class PhotosController extends ValueNotifier<PhotosState> {
   static const int _pageSize = 24;
   ConfigModel? _config;
   int _currentLoadId = 0;
+  bool _initialized = false;
 
   PhotosController() : super(PhotosState(isLoading: true));
 
   void init() {
+    if (_initialized) return;
+    _initialized = true;
     _subscribeToEvents();
     Future.microtask(() => loadConfig());
   }
@@ -198,10 +202,7 @@ class PhotosController extends ValueNotifier<PhotosState> {
         }
       });
 
-      final newMetadataMap = Map<String, PhotoMetadata?>.from(
-        value.metadataMap,
-      );
-      newMetadataMap.addAll(metadata);
+      final newMetadataMap = Map<String, PhotoMetadata?>.from(metadata);
 
       final List<FileSystemEntity> filteredAll = List.from(sortedPhotos);
       final List<FileSystemEntity> filteredDisplayed = List.from(initialBatch);
@@ -235,10 +236,11 @@ class PhotosController extends ValueNotifier<PhotosState> {
     final Set<String> knownNonVrcx =
         await _metadataRepository.getNonVrcxFilenames();
 
-    final sortedPaths = await compute(
-      _scanDirectoryIsolate,
-      ScanParams(directory.path, knownNonVrcx, isResonite: isResonite),
-    );
+    final sortedPaths = await IsolateWorkerPool()
+        .execute<ScanParams, List<(String, int)>>(
+          _scanDirectoryIsolate,
+          ScanParams(directory.path, knownNonVrcx, isResonite: isResonite),
+        );
 
     return sortedPaths;
   }

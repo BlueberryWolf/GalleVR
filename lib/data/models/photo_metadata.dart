@@ -43,7 +43,7 @@ class ResoniteMetadata {
   final String? cameraFov;
   final String? cameraManufacturer;
   final String? takenById;
-  final WorldInfo? world; // locationName / locationUrl
+  final WorldInfo? world;
   final List<Player> players;
 
   ResoniteMetadata({
@@ -108,7 +108,6 @@ class ResoniteMetadata {
 }
 
 class PhotoMetadata {
-  /// Timestamp when the photo was taken (milliseconds since epoch).
   final int takenDate;
 
   final String filename;
@@ -121,15 +120,12 @@ class PhotoMetadata {
 
   final String? remoteId;
 
-  /// Scanned and confirmed to have no VRCX metadata.
   final bool isNonVrcx;
 
   final bool isEdited;
 
-  /// Already checked against VRChat logs for metadata recovery.
   final bool logChecked;
 
-  /// Application that created the metadata (e.g. 'VRCX', 'VRChat', 'Resonite').
   final String? application;
 
   final VrcMetadata? vrcMetadata;
@@ -367,7 +363,7 @@ class PhotoMetadata {
         localPath: other.localPath ?? localPath,
         isNonVrcx: false,
         isEdited: other.isEdited || isEdited,
-        takenDate: other.takenDate, // Prefer local file stats/metadata
+        takenDate: other.takenDate,
         logChecked: other.logChecked || logChecked,
         application: other.application ?? application,
         vrcMetadata:

@@ -1,27 +1,22 @@
 import 'package:equatable/equatable.dart';
 
 enum VerificationMethod {
-  /// Automatic verification using VRChat login.
   automatic,
 
-  /// Manual verification by adding GalleVR as a friend.
   manual,
 
-  /// Link via instantaneous numerical pair code from existing web session.
   pairCode,
 }
 
 enum VerificationStatus { notVerified, inProgress, verified, failed }
 
 class VerificationResponse extends Equatable {
-  /// Token the user adds to their VRChat bio.
   final String token;
 
   final String accessKey;
 
   final String userId;
 
-  /// Whether the user is verified as over 13 years old.
   final bool ageVerified;
 
   const VerificationResponse({
@@ -58,7 +53,6 @@ class AuthData extends Equatable {
 
   final String userId;
 
-  /// Whether the user is verified as over 13 years old.
   final bool ageVerified;
 
   final List<String> badges;
@@ -111,7 +105,6 @@ class AuthData extends Equatable {
     avatarUrl,
   ];
 
-  /// Highest supporter tier among the user's badges.
   SupporterTier get supporterTier {
     final lowerBadges = badges.map((b) => b.toLowerCase()).toList();
 
@@ -178,10 +171,8 @@ class VerificationResult extends Equatable {
 
   final VerificationStatus status;
 
-  /// Token the user adds to their VRChat bio.
   final String? verificationToken;
 
-  /// Whether the user is verified as over 13 years old.
   final bool ageVerified;
 
   const VerificationResult({

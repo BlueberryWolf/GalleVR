@@ -546,7 +546,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   List<Widget> _getSteps() {
-    final size = MediaQuery.of(context).size;
+    final size = MediaQuery.sizeOf(context);
     final isSmallScreen = size.width < 600;
 
     if (Platform.isAndroid) {

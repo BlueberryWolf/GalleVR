@@ -10,7 +10,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'notification_service.dart';
 
-/// Checks GitHub releases for newer versions.
 class UpdateService {
   static final UpdateService _instance = UpdateService._internal();
 
@@ -157,7 +156,6 @@ class UpdateService {
     }
   }
 
-  /// Checks for updates even if the last check was recent.
   Future<bool> forceCheckForUpdates() async {
     try {
       if (!_isInitialized) {
@@ -355,7 +353,6 @@ class UpdateService {
     }
   }
 
-  /// Whether enough time has passed since the last update check.
   Future<bool> _shouldCheckForUpdates() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -384,7 +381,7 @@ class UpdateService {
         'Error checking last update time: $e',
         name: 'UpdateService',
       );
-      return true; // check anyway if the last check time can't be read
+      return true;
     }
   }
 
@@ -453,7 +450,6 @@ class UpdateService {
     }
   }
 
-  /// Downloads and launches the Windows installer, then exits.
   Future<void> downloadAndInstall({Function(double)? onProgress}) async {
     if (!Platform.isWindows) return;
 

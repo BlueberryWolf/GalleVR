@@ -21,6 +21,7 @@ class AvatarCircle extends StatelessWidget {
     final fallback = Center(
       child: Icon(fallbackIcon, size: size / 2, color: color),
     );
+    final decodePx = (size * MediaQuery.devicePixelRatioOf(context)).ceil();
 
     return Container(
       width: size,
@@ -38,6 +39,7 @@ class AvatarCircle extends StatelessWidget {
                     imageUrl!,
                     width: size,
                     height: size,
+                    cacheHeight: decodePx,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => fallback,
                   )

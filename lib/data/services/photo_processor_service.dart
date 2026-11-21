@@ -381,32 +381,32 @@ class PhotoProcessorService {
     if (badges.contains('mega_supporter') ||
         badges.contains('mega supporter')) {
       return {
-        'maxDimension': 7680, // 8K
+        'maxDimension': 7680,
         'webpQuality': 95,
-        'maxSizeBytes': 5242880, // 5.0MB limit
-        'maxTierPixels': 33177600, // 7680x4320
+        'maxSizeBytes': 5242880,
+        'maxTierPixels': 33177600,
       };
     } else if (badges.contains('super_supporter') ||
         badges.contains('super supporter')) {
       return {
-        'maxDimension': 3840, // 4K
+        'maxDimension': 3840,
         'webpQuality': 92,
-        'maxSizeBytes': 2621440, // 2.5MB limit
-        'maxTierPixels': 8294400, // 3840x2160
+        'maxSizeBytes': 2621440,
+        'maxTierPixels': 8294400,
       };
     } else if (badges.contains('supporter')) {
       return {
-        'maxDimension': 2560, // 2K
+        'maxDimension': 2560,
         'webpQuality': 90,
-        'maxSizeBytes': 1048576, // 1MB limit
-        'maxTierPixels': 3686400, // 2560x1440
+        'maxSizeBytes': 1048576,
+        'maxTierPixels': 3686400,
       };
     } else {
       return {
-        'maxDimension': 1920, // 1080p
+        'maxDimension': 1920,
         'webpQuality': 85,
-        'maxSizeBytes': 153600, // 150KB limit
-        'maxTierPixels': 2073600, // 1920x1080
+        'maxSizeBytes': 153600,
+        'maxTierPixels': 2073600,
       };
     }
   }

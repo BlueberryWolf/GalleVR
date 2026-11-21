@@ -140,7 +140,6 @@ class PhotoUploadService {
           return false;
         }
 
-        // Resonite photos without camera metadata are not allowed to upload.
         if (photoMetadata.cameraManufacturer == null ||
             photoMetadata.cameraManufacturer!.isEmpty) {
           final error =
@@ -199,7 +198,6 @@ class PhotoUploadService {
       final metadataJson = json.encode(photoMetadata.toJson());
       final metadataBase64 = base64.encode(utf8.encode(metadataJson));
 
-      // Native curl on Windows and Linux keeps the file off the Dart heap.
       if (Platform.isWindows || Platform.isLinux) {
         try {
           developer.log(

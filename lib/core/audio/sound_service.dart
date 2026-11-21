@@ -1,45 +1,58 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:audioplayers/audioplayers.dart';
 
 import '../../data/models/config_model.dart';
 
 class SoundService {
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  static final AssetSource _uploadSound = AssetSource(
+    'sounds/upload_complete.wav',
+  );
+  static const Duration _idleReleaseDelay = Duration(seconds: 10);
 
-  bool _isInitialized = false;
+  AudioPlayer? _audioPlayer;
+  Timer? _idleTimer;
 
-  late final AssetSource _uploadSound;
-
-  Future<void> initialize() async {
-    if (_isInitialized) return;
-
-    try {
-      _uploadSound = AssetSource('sounds/upload_complete.wav');
-
-      _isInitialized = true;
-    } catch (e) {
-      developer.log(
-        'Error initializing sound service: $e',
-        name: 'SoundService',
-      );
-    }
-  }
+  Future<void> initialize() async {}
 
   Future<void> playUploadSound(ConfigModel config) async {
-    if (!_isInitialized) await initialize();
-
     if (!config.soundEnabled) return;
 
+    _idleTimer?.cancel();
+    _idleTimer = null;
+
     try {
-      await _audioPlayer.stop();
-      await _audioPlayer.setVolume(config.soundVolume);
-      await _audioPlayer.play(_uploadSound);
+      final player = _audioPlayer ??= AudioPlayer();
+      await player.stop();
+      await player.setVolume(config.soundVolume);
+      await player.play(_uploadSound);
+
+      _idleTimer = Timer(_idleReleaseDelay, () {
+        releasePlayer();
+      });
     } catch (e) {
       developer.log('Error playing upload sound: $e', name: 'SoundService');
     }
   }
 
+  Future<void> releasePlayer() async {
+    _idleTimer?.cancel();
+    _idleTimer = null;
+    final player = _audioPlayer;
+    if (player == null) return;
+    _audioPlayer = null;
+    try {
+      await player.dispose();
+    } catch (e) {
+      developer.log('Error releasing audio player: $e', name: 'SoundService');
+    }
+  }
+
   void dispose() {
-    _audioPlayer.dispose();
+    _idleTimer?.cancel();
+    _idleTimer = null;
+    final player = _audioPlayer;
+    _audioPlayer = null;
+    player?.dispose();
   }
 }

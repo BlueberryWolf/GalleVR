@@ -3,11 +3,6 @@ import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:path/path.dart' as path;
 
-/// Watches the Resonite photos directory for new image files using inotify.
-///
-/// Watches the root directory for new subdirectories (month folders like 2026-06/)
-/// and also watches every existing subdirectory directly. This avoids relying on
-/// [Directory.watch] recursive mode, which is unreliable on Linux.
 class ResoniteDirWatcher {
   static const _allowedExtensions = {'.png', '.jpg', '.jpeg', '.webp'};
 
@@ -102,6 +97,9 @@ class ResoniteDirWatcher {
     final ext = path.extension(filePath).toLowerCase();
     if (!_allowedExtensions.contains(ext)) return;
     if (_seenFiles.contains(filePath)) return;
+    if (_seenFiles.length >= 500) {
+      _seenFiles.remove(_seenFiles.first);
+    }
     _seenFiles.add(filePath);
     developer.log(
       'ResoniteDirWatcher: new photo: $filePath',

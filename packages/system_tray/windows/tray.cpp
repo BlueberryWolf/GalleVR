@@ -94,13 +94,6 @@ void Tray::initTray(
     const flutter::MethodCall<flutter::EncodableValue>& method_call,
     flutter::MethodResult<flutter::EncodableValue>& result) {
   do {
-    flutter::FlutterView* view = registrar_->GetView();
-    if (!view) {
-      result.Error(errors::kBadArgumentsError, "",
-                   flutter::EncodableValue(false));
-      break;
-    }
-
     const auto* map =
         std::get_if<flutter::EncodableMap>(method_call.arguments());
     if (!map) {
@@ -118,8 +111,15 @@ void Tray::initTray(
     const std::string* toolTip =
         std::get_if<std::string>(utils::ValueOrNull(*map, kToolTipKey));
 
-    HWND window = GetAncestor(view->GetNativeWindow(), GA_ROOT);
-    if (!initTray(window, title, iconPath, toolTip)) {
+    if (tray_window_ == nullptr) {
+      if (!CreateTrayWindow()) {
+        result.Error(errors::kBadArgumentsError, "",
+                     flutter::EncodableValue(false));
+        break;
+      }
+    }
+
+    if (!initTray(tray_window_, title, iconPath, toolTip)) {
       result.Error(errors::kBadArgumentsError, "",
                    flutter::EncodableValue(false));
       break;
@@ -431,6 +431,16 @@ LRESULT Tray::TrayMessageHandler(HWND window,
                                  UINT const message,
                                  WPARAM const wparam,
                                  LPARAM const lparam) noexcept {
+  if (message == taskbar_created_message_) {
+    reinstallTrayIcon();
+    return 0;
+  } else if (message == tray_notify_callback_message_) {
+    UINT id = HIWORD(lparam);
+    UINT notifyMsg = LOWORD(lparam);
+    POINT pt = {GET_X_LPARAM(wparam), GET_Y_LPARAM(wparam)};
+    OnTrayIconCallback(id, notifyMsg, pt);
+    return 0;
+  }
   return DefWindowProc(window, message, wparam, lparam);
 }
 

@@ -10,6 +10,7 @@ import '../widgets/refresh_button.dart';
 import '../widgets/tinted_button.dart';
 import '../widgets/walkthrough_dialog.dart';
 import '../controllers/photos_controller.dart';
+import '../../core/image/image_cache_service.dart';
 import '../../data/services/photo_upload_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -25,8 +26,6 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late int _currentIndex;
   bool _isSidebarCollapsed = false;
-  final GlobalKey _stackKey = GlobalKey();
-  final Set<int> _builtTabs = {};
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -40,7 +39,6 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
 
     _currentIndex = widget.initialTabIndex;
-    _builtTabs.add(_currentIndex);
     _checkCurl();
 
     _navItems = [
@@ -99,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   bool _isSmallScreen(BuildContext context) {
-    return MediaQuery.of(context).size.width < 600;
+    return MediaQuery.sizeOf(context).width < 600;
   }
 
   @override
@@ -109,15 +107,9 @@ class _HomeScreenState extends State<HomeScreen>
       child: RepaintBoundary(
         child: FadeTransition(
           opacity: _fadeAnimation,
-          child: IndexedStack(
-            key: _stackKey,
-            index: _currentIndex,
-            children: [
-              for (var i = 0; i < _navItems.length; i++)
-                _builtTabs.contains(i) || i == _currentIndex
-                    ? _navItems[i].screen
-                    : const SizedBox.shrink(),
-            ],
+          child: KeyedSubtree(
+            key: ValueKey<int>(_currentIndex),
+            child: _navItems[_currentIndex].screen,
           ),
         ),
       ),
@@ -421,30 +413,24 @@ class _HomeScreenState extends State<HomeScreen>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          AnimatedOpacity(
-            opacity: _isSidebarCollapsed ? 0.0 : 1.0,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-            child: Padding(
+          if (!_isSidebarCollapsed)
+            Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Image.asset(
                 'assets/images/logo.png',
                 height: 64,
+                cacheHeight: 128,
                 fit: BoxFit.contain,
               ),
-            ),
-          ),
-          AnimatedOpacity(
-            opacity: _isSidebarCollapsed ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-            child: Image.asset(
+            )
+          else
+            Image.asset(
               'assets/images/square.png',
               height: 48,
               width: 48,
+              cacheHeight: 96,
               fit: BoxFit.contain,
             ),
-          ),
           const Positioned(
             bottom: 0,
             left: 16,
@@ -515,11 +501,14 @@ class _HomeScreenState extends State<HomeScreen>
   void _selectNavItem(int index) {
     if (index == _currentIndex) return;
 
+    final leavingPhotos = _currentIndex == 0 && index != 0;
     _fadeController.reverse().then((_) {
       if (!mounted) return;
+      if (leavingPhotos) {
+        ImageCacheService.applyMemoryLimits();
+      }
       setState(() {
         _currentIndex = index;
-        _builtTabs.add(index);
       });
       _fadeController.forward();
     });

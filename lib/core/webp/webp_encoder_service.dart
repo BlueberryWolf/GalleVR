@@ -37,7 +37,6 @@ class WebpEncoderService {
 
         await File(cwebpPath).writeAsBytes(bytes);
 
-        // ensure the binary is executable on linux
         if (Platform.isLinux) {
           try {
             await Process.run('chmod', ['+x', cwebpPath]);
@@ -60,7 +59,6 @@ class WebpEncoderService {
     }
   }
 
-  /// Uses cwebp on Windows and Linux, FlutterImageCompress on Android.
   Future<void> encodeFileToWebP(
     String inputPath,
     String outputPath, {

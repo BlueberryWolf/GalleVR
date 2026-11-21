@@ -22,7 +22,6 @@ class ManualUploadService {
            photoMetadataRepository ?? PhotoMetadataRepository(),
        _photoUploadService = photoUploadService ?? PhotoUploadService();
 
-  /// Compresses to WebP and uploads. Returns the gallery URL, or null on failure.
   Future<String?> uploadPhoto(
     String photoPath,
     ConfigModel config, {

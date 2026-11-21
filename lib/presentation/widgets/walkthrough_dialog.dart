@@ -116,7 +116,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final size = MediaQuery.sizeOf(context);
     final isSmallScreen = size.width < 600;
 
     return Stack(

@@ -23,7 +23,6 @@ class PhotoMetadataRepository {
   static const String _migrationDoneKey = 'gallevr_webp_migration_v2_done';
   static const String _sqliteMigrationDoneKey = 'gallevr_sqlite_migration_done';
 
-  /// Matches VRChat filenames: `VRChat_YYYY-MM-DD_HH-MM-SS.mmm_WIDTHxHEIGHT`.
   static final RegExp vrcFilenameRegex = RegExp(
     r'VRChat_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}(?:_\d+x\d+)?',
     caseSensitive: false,
@@ -37,7 +36,6 @@ class PhotoMetadataRepository {
   static SharedPreferences? _prefs;
   static Completer<void>? _initCompleter;
 
-  /// In-flight extractions, so the same file is never processed twice at once.
   static final Map<String, Future<PhotoMetadata?>> _processingQueue = {};
 
   Future<void> _initializeCache() async {
@@ -62,26 +60,32 @@ class PhotoMetadataRepository {
         }
       }
 
-      await _forcePurgeRemainingLegacyBloat();
+      if (!(_prefs?.getBool('gallevr_legacy_bloat_purged_v1') ?? false)) {
+        await _forcePurgeRemainingLegacyBloat();
+        await _prefs?.setBool('gallevr_legacy_bloat_purged_v1', true);
+      }
 
       _checkAndMigrateLegacyMetadata();
 
-      AppDatabase().database
-          .then((db) async {
-            await db.execute(
-              'UPDATE photo_metadata SET is_non_vrcx = 1 WHERE gallery_url IS NULL AND world_name IS NULL AND world_id IS NULL',
-            );
-            await db.execute(
-              'UPDATE photo_metadata SET is_non_vrcx = 0 WHERE is_non_vrcx = 1 AND (gallery_url IS NOT NULL OR world_name IS NOT NULL OR world_id IS NOT NULL)',
-            );
-            PhotoEventService().notifyPhotoAdded('__HEAL_SYNC__');
-          })
-          .catchError((e) {
-            developer.log(
-              'Error during background healing: $e',
-              name: 'PhotoMetadataRepository',
-            );
-          });
+      if (!(_prefs?.getBool('gallevr_non_vrcx_heal_v1_done') ?? false)) {
+        AppDatabase().database
+            .then((db) async {
+              await db.execute(
+                'UPDATE photo_metadata SET is_non_vrcx = 1 WHERE gallery_url IS NULL AND world_name IS NULL AND world_id IS NULL',
+              );
+              await db.execute(
+                'UPDATE photo_metadata SET is_non_vrcx = 0 WHERE is_non_vrcx = 1 AND (gallery_url IS NOT NULL OR world_name IS NOT NULL OR world_id IS NOT NULL)',
+              );
+              await _prefs?.setBool('gallevr_non_vrcx_heal_v1_done', true);
+              PhotoEventService().notifyPhotoAdded('__HEAL_SYNC__');
+            })
+            .catchError((e) {
+              developer.log(
+                'Error during background healing: $e',
+                name: 'PhotoMetadataRepository',
+              );
+            });
+      }
 
       final vrcXmpMigrationDone =
           _prefs?.getBool('gallevr_vrc_xmp_migration_done') ?? false;
@@ -415,7 +419,6 @@ class PhotoMetadataRepository {
       if (metadata.localPath != null &&
           (metadata.localPath!.contains('GalleVR-Temp') ||
               metadata.localPath!.contains('GalleVR-ManualUpload'))) {
-        // this is a legacy WebP path
         final nameWithoutExt = path.basenameWithoutExtension(metadata.filename);
         final possiblePngName = '$nameWithoutExt.png';
 
@@ -432,7 +435,6 @@ class PhotoMetadataRepository {
       await savePhotoMetadataBatch(toUpdate);
     }
 
-    // after migration attempt, we can safely delete the temporary directories
     await _cleanupGalleVRTemp();
   }
 
@@ -491,8 +493,6 @@ class PhotoMetadataRepository {
         return;
       }
 
-      // Identify local photos that have a gallery_url but are not in the remote list,
-      // and clear their gallery_url so they can be re-uploaded.
       final db = await AppDatabase().database;
       final List<Map<String, dynamic>> localUploaded = await db.query(
         'photo_metadata',
@@ -1156,11 +1156,22 @@ class PhotoMetadataRepository {
       });
     }
 
-    Timer(const Duration(seconds: 2), () {
-      runRetroactiveLogScanner();
-    });
+    if (toProcess.isNotEmpty) {
+      _scheduleRetroactiveLogScan();
+    }
 
     return result;
+  }
+
+  static Timer? _retroactiveScanTimer;
+  static bool _isRetroactiveScanRunning = false;
+
+  void _scheduleRetroactiveLogScan() {
+    _retroactiveScanTimer?.cancel();
+    _retroactiveScanTimer = Timer(const Duration(seconds: 5), () {
+      _retroactiveScanTimer = null;
+      runRetroactiveLogScanner();
+    });
   }
 
   Future<Set<String>> getNonVrcxFilenames() async {
@@ -1184,8 +1195,17 @@ class PhotoMetadataRepository {
 
   static final Set<String> _scanningQueue = {};
 
-  /// Recovers world and player data from VRChat logs for photos without VRCX metadata.
   Future<void> runRetroactiveLogScanner() async {
+    if (_isRetroactiveScanRunning) return;
+    _isRetroactiveScanRunning = true;
+    try {
+      await _runRetroactiveLogScannerImpl();
+    } finally {
+      _isRetroactiveScanRunning = false;
+    }
+  }
+
+  Future<void> _runRetroactiveLogScannerImpl() async {
     await _initializeCache();
     final config = AppServiceManager().config;
     if (config == null ||
@@ -1267,7 +1287,6 @@ class PhotoMetadataRepository {
 
       final db = await AppDatabase().database;
 
-      // Discard photos taken before the earliest log file on disk because VRChat clears old logs.
       try {
         final logsDir = Directory(config.logsDirectory);
         if (await logsDir.exists()) {
@@ -1683,7 +1702,6 @@ List<PhotoMetadata> _scanLogsForPhotosBatchTask(Map<String, dynamic> params) {
       }
 
       if (worldJoinLineIndex == -1) {
-        // Photo line found but no world join line precedes it in this log.
         recovered.add(
           PhotoMetadata(
             takenDate: entry.photoTime.millisecondsSinceEpoch,

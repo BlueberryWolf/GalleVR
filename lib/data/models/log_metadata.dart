@@ -5,7 +5,6 @@ class WorldInfo {
 
   final String? instanceId;
 
-  /// Access type (public, friends+, etc.).
   final String? accessType;
 
   final String? region;
@@ -69,10 +68,8 @@ class Player {
 
   final String name;
 
-  /// Player head position (for Resonite spatial tagging).
   final String? headPosition;
 
-  /// Player head orientation (for Resonite spatial tagging).
   final String? headOrientation;
 
   Player({

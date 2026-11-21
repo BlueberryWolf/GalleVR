@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:developer' as developer;
 
-/// Polls DNS to detect whether the internet is reachable.
 class ConnectivityService {
   static final ConnectivityService _instance = ConnectivityService._internal();
   factory ConnectivityService() => _instance;
@@ -59,7 +58,6 @@ class ConnectivityService {
 
     bool isConnected = false;
     try {
-      // Several hosts avoid false negatives when one is blocked or down.
       final hosts = ['vrchat.com', 'google.com', 'cloudflare.com'];
 
       for (final host in hosts) {

@@ -59,7 +59,6 @@ List<InlineSpan> _getParsedSpans(String text) {
               parsedColor = Color(int.parse('FF$r$r$g$g$b$b', radix: 16));
             }
           } catch (_) {
-            // ignore malformed hex
           }
         } else {
           const namedColors = {
@@ -139,7 +138,6 @@ InlineSpan parseResoniteTags(String text, TextStyle baseStyle) {
   return TextSpan(style: baseStyle, children: _getParsedSpans(text));
 }
 
-/// Removes Resonite rich-text tags so the text can render as plain text.
 String stripResoniteTags(String text) {
   return text.replaceAll(_stripRegExp, '');
 }

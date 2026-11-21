@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/image/image_cache_service.dart';
@@ -30,10 +31,21 @@ class CachedImage extends StatefulWidget {
   @override
   State<CachedImage> createState() => _CachedImageState();
 
+  static const int _maxThumbnailProviders = 64;
+
   static final Map<String, Map<(int, int), ImageProvider>> _originalProviders =
       {};
 
-  static final Map<String, ImageProvider> _thumbnailProviders = {};
+  static final LinkedHashMap<String, ImageProvider> _thumbnailProviders =
+      LinkedHashMap<String, ImageProvider>();
+
+  static void _recordThumbnailProvider(String filePath, ImageProvider provider) {
+    _thumbnailProviders.remove(filePath);
+    _thumbnailProviders[filePath] = provider;
+    while (_thumbnailProviders.length > _maxThumbnailProviders) {
+      _thumbnailProviders.remove(_thumbnailProviders.keys.first);
+    }
+  }
 
   static void evictOriginal(String filePath) {
     final providers = _originalProviders.remove(filePath)?.values ?? const [];
@@ -41,10 +53,26 @@ class CachedImage extends StatefulWidget {
       provider.evict();
     }
   }
+
+  static void clearAllProviders() {
+    for (final map in _originalProviders.values) {
+      for (final provider in map.values) {
+        provider.evict();
+      }
+    }
+    _originalProviders.clear();
+
+    for (final provider in _thumbnailProviders.values) {
+      provider.evict();
+    }
+    _thumbnailProviders.clear();
+  }
 }
 
 class _CachedImageState extends State<CachedImage> {
   File? _thumbnailFile;
+  ImageProvider? _cachedThumbnailProvider;
+  String? _cachedThumbnailKey;
   bool _isLoading = true;
 
   @override
@@ -58,6 +86,8 @@ class _CachedImageState extends State<CachedImage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.filePath != widget.filePath ||
         oldWidget.thumbnailSize != widget.thumbnailSize) {
+      _cachedThumbnailProvider = null;
+      _cachedThumbnailKey = null;
       _loadImage();
     }
   }
@@ -78,11 +108,14 @@ class _CachedImageState extends State<CachedImage> {
       if (mounted) {
         if (file == null && !isRetry) {
           await Future.delayed(const Duration(milliseconds: 200));
-          return _loadImage(isRetry: true);
+          await _loadImage(isRetry: true);
+          return;
         }
 
         setState(() {
           _thumbnailFile = file;
+          _cachedThumbnailProvider = null;
+          _cachedThumbnailKey = null;
           _isLoading = false;
         });
       }
@@ -90,7 +123,8 @@ class _CachedImageState extends State<CachedImage> {
       if (mounted) {
         if (!isRetry) {
           await Future.delayed(const Duration(milliseconds: 200));
-          return _loadImage(isRetry: true);
+          await _loadImage(isRetry: true);
+          return;
         }
         setState(() {
           _isLoading = false;
@@ -99,12 +133,27 @@ class _CachedImageState extends State<CachedImage> {
     }
   }
 
+  ImageProvider _resolveThumbnailProvider(File displayFile, int targetWidth) {
+    final key = '${displayFile.path}#$targetWidth';
+    if (_cachedThumbnailProvider != null && _cachedThumbnailKey == key) {
+      return _cachedThumbnailProvider!;
+    }
+    final provider = ResizeImage.resizeIfNeeded(
+      targetWidth,
+      null,
+      FileImage(displayFile),
+    );
+    _cachedThumbnailProvider = provider;
+    _cachedThumbnailKey = key;
+    CachedImage._recordThumbnailProvider(widget.filePath, provider);
+    return provider;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: widget.width,
       height: widget.height,
-      color: Colors.transparent,
       child: _buildContent(),
     );
   }
@@ -121,8 +170,8 @@ class _CachedImageState extends State<CachedImage> {
               window.isEmpty
                   ? (0, 0)
                   : (
-                    (window.width * dpr * 2).round(),
-                    (window.height * dpr * 2).round(),
+                    (window.width * dpr * 1.5).round().clamp(512, 2560),
+                    (window.height * dpr * 1.5).round().clamp(512, 2560),
                   );
           final provider = CachedImage._originalProviders
               .putIfAbsent(widget.filePath, () => {})
@@ -165,17 +214,15 @@ class _CachedImageState extends State<CachedImage> {
     }
 
     if (_isLoading && _thumbnailFile == null) {
-      return Container(color: AppTheme.surfaceBase);
+      return const ColoredBox(color: AppTheme.surfaceBase);
     }
 
     final displayFile = _thumbnailFile ?? File(widget.filePath);
-
-    final provider = ResizeImage.resizeIfNeeded(
+    final provider = _resolveThumbnailProvider(
+      displayFile,
       widget.thumbnailSize ?? 300,
-      null,
-      FileImage(displayFile),
     );
-    CachedImage._thumbnailProviders[widget.filePath] = provider;
+
     final image = Image(
       image: provider,
       fit: widget.fit,
@@ -220,12 +267,14 @@ class _CachedImageState extends State<CachedImage> {
     Object error,
     StackTrace? stackTrace,
   ) {
-    return Container(
+    return const ColoredBox(
       color: AppTheme.buttonColor,
-      child: const Icon(
-        Icons.broken_image,
-        color: AppTheme.secondaryTextColor,
-        size: 20,
+      child: Center(
+        child: Icon(
+          Icons.broken_image,
+          color: AppTheme.secondaryTextColor,
+          size: 20,
+        ),
       ),
     );
   }

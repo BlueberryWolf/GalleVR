@@ -81,7 +81,9 @@ class AppTheme {
     ],
   );
 
-  static ThemeData getLightTheme() => getDarkTheme();
+  static final ThemeData darkTheme = getDarkTheme();
+
+  static ThemeData getLightTheme() => darkTheme;
 
   static ThemeData getDarkTheme() {
     final controlShape = RoundedRectangleBorder(

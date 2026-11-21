@@ -334,7 +334,6 @@ class VRChatService {
 
   bool _isInitialized = false;
 
-  /// Cached for 5 minutes.
   static final Map<String, bool> _cachedIsVerifiedMap = {};
   static final Map<String, DateTime> _lastVerificationCheckMap = {};
 
@@ -791,10 +790,8 @@ class VRChatService {
             name: 'VRChatService',
           );
 
-          // silently try to friend the bot.
           await _api.sendFriendRequest(botId);
 
-          // briefly wait for the server's websocket bot listener to automatically accept request
           for (int attempt = 1; attempt <= 3; attempt++) {
             await Future.delayed(const Duration(seconds: 2));
             if (await _api.getFriendStatus(botId)) {

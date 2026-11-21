@@ -48,16 +48,8 @@ class LogFileWatcher {
       'Watching log file: $_currentLogFile',
       name: 'LogFileWatcher',
     );
-    _pollingTimer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => checkForUpdates(),
-    );
 
-    _logFileCheckTimer = Timer.periodic(
-      const Duration(seconds: 60),
-      (_) => _checkForNewerLogFile(),
-    );
-
+    bool nativeWatcherActive = false;
     try {
       final logsDir = Directory(_logsDirectory);
       if (await logsDir.exists()) {
@@ -73,6 +65,7 @@ class LogFileWatcher {
             }
           }
         });
+        nativeWatcherActive = true;
         developer.log('Logs directory watcher active', name: 'LogFileWatcher');
       }
     } catch (e) {
@@ -81,6 +74,20 @@ class LogFileWatcher {
         name: 'LogFileWatcher',
       );
     }
+
+    _pollingTimer = Timer.periodic(
+      nativeWatcherActive
+          ? const Duration(seconds: 30)
+          : const Duration(seconds: 5),
+      (_) => checkForUpdates(),
+    );
+
+    _logFileCheckTimer = Timer.periodic(
+      nativeWatcherActive
+          ? const Duration(minutes: 5)
+          : const Duration(seconds: 60),
+      (_) => _checkForNewerLogFile(),
+    );
   }
 
   Future<void> stopWatching() async {
@@ -133,7 +140,6 @@ class LogFileWatcher {
       if (latestLogFile != null) {
         _currentLogFile = latestLogFile.path;
         _currentLogFileModified = latestModified;
-        // Start from the end of the file so only new entries are read.
         final stat = await latestLogFile.stat();
         _lastPosition = stat.size;
         developer.log(
@@ -170,7 +176,6 @@ class LogFileWatcher {
       final currentSize = stat.size;
 
       if (currentSize < _lastPosition) {
-        // The file was truncated or replaced, so start from the beginning.
         developer.log(
           'Log file was truncated or replaced, restarting from beginning',
           name: 'LogFileWatcher',
@@ -261,6 +266,9 @@ class LogFileWatcher {
         final screenshotPath = match.group(1)?.trim();
         if (screenshotPath != null && screenshotPath.isNotEmpty) {
           if (!_processedScreenshots.contains(screenshotPath)) {
+            if (_processedScreenshots.length >= 500) {
+              _processedScreenshots.remove(_processedScreenshots.first);
+            }
             _processedScreenshots.add(screenshotPath);
             developer.log(
               'Screenshot detected from log: $screenshotPath',

@@ -58,7 +58,6 @@ Future<void> _patchScript(File file) async {
   print('Patching Inno Setup script to handle process termination and migration...');
   var content = await file.readAsString();
 
-  // Add AppMutex and CloseApplications setup directives
   if (content.contains('AppId=2fc54373-926e-545c-883a-dabcd36b229f')) {
     content = content.replaceFirst(
       'AppId=2fc54373-926e-545c-883a-dabcd36b229f',
@@ -77,7 +76,6 @@ Future<void> _patchScript(File file) async {
   );
   final escapedMigratorPath = migratorPath.replaceAll('/', '\\');
 
-  // Add the Migrator executable to [Files]
   if (content.contains('[Files]')) {
     content = content.replaceFirst(
       '[Files]',
@@ -94,7 +92,6 @@ var
 begin
   Result := True;
   
-  // Run the elevated migrator when the old install directory exists.
   if DirExists(ExpandConstant('{commonpf}\GalleVR')) then
   begin
     ExtractTemporaryFile('GalleVR-Migrator.exe');

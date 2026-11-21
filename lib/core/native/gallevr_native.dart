@@ -83,7 +83,9 @@ class GalleVrNative {
 
   ffi.DynamicLibrary _loadLibrary() {
     if (Platform.isWindows) {
+      final exeDir = path.dirname(Platform.resolvedExecutable);
       final possiblePaths = [
+        path.join(exeDir, 'gallevr_core.dll'),
         'gallevr_core.dll',
         path.join(
           Directory.current.path,
@@ -155,16 +157,19 @@ class GalleVrNative {
     if (!_isLoaded) return null;
 
     final filePathPtr = filePath.toNativeUtf8();
+    ffi.Pointer<Utf8> resultPtr = ffi.nullptr;
     try {
-      final resultPtr = _extractVrcxMetadata(filePathPtr);
+      resultPtr = _extractVrcxMetadata(filePathPtr);
       if (resultPtr == ffi.nullptr) return null;
 
       final result = resultPtr.toDartString();
-      _freeMetadata(resultPtr);
       return result;
     } catch (e) {
       return null;
     } finally {
+      if (resultPtr != ffi.nullptr) {
+        _freeMetadata(resultPtr);
+      }
       malloc.free(filePathPtr);
     }
   }
@@ -174,16 +179,19 @@ class GalleVrNative {
 
     final filePathPtr = filePath.toNativeUtf8();
     final extPtr = ext.toNativeUtf8();
+    ffi.Pointer<Utf8> resultPtr = ffi.nullptr;
     try {
-      final resultPtr = _extractVrcMetadata(filePathPtr, extPtr);
+      resultPtr = _extractVrcMetadata(filePathPtr, extPtr);
       if (resultPtr == ffi.nullptr) return null;
 
       final result = resultPtr.toDartString();
-      _freeMetadata(resultPtr);
       return result;
     } catch (e) {
       return null;
     } finally {
+      if (resultPtr != ffi.nullptr) {
+        _freeMetadata(resultPtr);
+      }
       malloc.free(filePathPtr);
       malloc.free(extPtr);
     }
@@ -194,16 +202,19 @@ class GalleVrNative {
 
     final filePathPtr = filePath.toNativeUtf8();
     final extPtr = ext.toNativeUtf8();
+    ffi.Pointer<Utf8> resultPtr = ffi.nullptr;
     try {
-      final resultPtr = _extractResoniteMetadata(filePathPtr, extPtr);
+      resultPtr = _extractResoniteMetadata(filePathPtr, extPtr);
       if (resultPtr == ffi.nullptr) return null;
 
       final result = resultPtr.toDartString();
-      _freeMetadata(resultPtr);
       return result;
     } catch (e) {
       return null;
     } finally {
+      if (resultPtr != ffi.nullptr) {
+        _freeMetadata(resultPtr);
+      }
       malloc.free(filePathPtr);
       malloc.free(extPtr);
     }

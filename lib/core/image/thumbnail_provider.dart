@@ -9,9 +9,13 @@ class ThumbnailProvider extends ChangeNotifier {
 
   ThumbnailProvider._internal();
 
+  static const int _maxThumbnails = 64;
   final Map<String, Uint8List> _thumbnails = {};
 
   void setThumbnail(String filePath, Uint8List thumbnailData) {
+    if (_thumbnails.length >= _maxThumbnails) {
+      _thumbnails.remove(_thumbnails.keys.first);
+    }
     _thumbnails[filePath] = thumbnailData;
   }
 

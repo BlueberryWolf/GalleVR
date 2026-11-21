@@ -31,6 +31,18 @@ class AppDatabase {
       path,
       version: 4,
       onCreate: _onCreate,
+      onOpen: (db) async {
+        try {
+          await db.rawQuery('PRAGMA journal_mode = WAL');
+          await db.rawQuery('PRAGMA busy_timeout = 5000');
+          await db.execute('PRAGMA cache_size = -1024');
+        } catch (e) {
+          developer.log(
+            'Error configuring SQLite pragmas: $e',
+            name: 'AppDatabase',
+          );
+        }
+      },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           try {
@@ -164,6 +176,16 @@ class AppDatabase {
     await db.execute(
       'CREATE INDEX idx_photo_players_player ON photo_players (player_id)',
     );
+  }
+
+  Future<void> shrinkMemory() async {
+    final db = _database;
+    if (db == null) return;
+    try {
+      await db.execute('PRAGMA shrink_memory');
+    } catch (e) {
+      developer.log('Error shrinking SQLite memory: $e', name: 'AppDatabase');
+    }
   }
 
   Future<void> close() async {

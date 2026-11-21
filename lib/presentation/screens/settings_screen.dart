@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:file_picker/file_picker.dart';
 import 'dart:developer' as developer;
 import 'package:path/path.dart' as path;
@@ -51,11 +50,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _latestVersion;
   bool _showTOSModal = false;
 
-  late StreamSubscription<bool>? _updateSubscription;
+  StreamSubscription<bool>? _updateSubscription;
+  StreamSubscription<ConfigModel>? _configSubscription;
   StreamSubscription<AuthData?>? _authSubscription;
 
   bool _isSmallScreen(BuildContext context) {
-    return MediaQuery.of(context).size.width < 600;
+    return MediaQuery.sizeOf(context).width < 600;
   }
 
   @override
@@ -75,7 +75,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     });
 
-    AppServiceManager().configStream.listen((updatedConfig) {
+    _configSubscription = AppServiceManager().configStream.listen((
+      updatedConfig,
+    ) {
       if (mounted) {
         setState(() {
           _config = updatedConfig;
@@ -172,6 +174,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _scrollController.dispose();
     _updateSubscription?.cancel();
+    _configSubscription?.cancel();
     _authSubscription?.cancel();
     super.dispose();
   }

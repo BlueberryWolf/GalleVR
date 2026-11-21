@@ -58,7 +58,6 @@ class VRChatRegistryService {
     }
   }
 
-  /// Whether any `LOGGING_ENABLED` key is set to 1.
   Future<bool> isFullLoggingEnabled() async {
     if (!Platform.isWindows) return false;
 
@@ -135,7 +134,6 @@ class VRChatRegistryService {
     }
   }
 
-  /// Turns on VRChat full logging in the registry. Returns false on failure.
   Future<bool> enableFullLogging() async {
     if (!Platform.isWindows) return false;
 
@@ -182,7 +180,6 @@ class VRChatRegistryService {
           );
           key.createValue(RegistryValue.int32(existingLoggingKeyName, 1));
         } else {
-          // VRChat reads this exact hashed key name.
           const newKeyName = 'LOGGING_ENABLED_h120798204';
           developer.log(
             'No existing logging key found, creating $newKeyName',

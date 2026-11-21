@@ -1,7 +1,6 @@
 class ConfigModel {
   final bool soundEnabled;
 
-  /// Volume level for notification sounds (0.0 to 1.0).
   final double soundVolume;
 
   final String photosDirectory;
@@ -10,7 +9,6 @@ class ConfigModel {
 
   final String resonitePhotosDirectory;
 
-  /// Seconds to wait before compressing a new photo.
   final double compressionDelay;
 
   final bool uploadEnabled;
@@ -21,7 +19,6 @@ class ConfigModel {
 
   final bool autoCopyGalleryUrl;
 
-  /// Windows only.
   final bool autoUpdateEnabled;
 
   ConfigModel({

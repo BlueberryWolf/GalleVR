@@ -9,7 +9,6 @@ import 'vrchat_service.dart';
 class TOSService {
   final VRChatService _vrchatService;
 
-  /// Cached for 5 minutes.
   static bool? _cachedNeedsToAcceptTOS;
   static DateTime? _lastTOSCheck;
 
@@ -59,7 +58,6 @@ class TOSService {
       return needsToAccept;
     } catch (e) {
       developer.log('Error checking TOS status: $e', name: 'TOSService');
-      // On error, assume no acceptance is needed so the user is not blocked.
       _cachedNeedsToAcceptTOS = null;
       _lastTOSCheck = null;
       return false;

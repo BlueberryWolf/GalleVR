@@ -1,15 +1,13 @@
 import 'dart:async';
-import '../image/image_cache_service.dart';
 import 'dart:developer' as developer;
-import 'dart:ffi';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:system_tray/system_tray.dart';
-import 'package:flutter/painting.dart';
-import 'package:flutter/foundation.dart';
 
+import 'memory_manager.dart';
 import 'notification_service.dart';
 
 class LinuxService {
@@ -17,13 +15,11 @@ class LinuxService {
   final MethodChannel _windowChannel = const MethodChannel(_windowChannelName);
 
   final SystemTray _systemTray = SystemTray();
-  final AppWindow _appWindow = AppWindow();
   final NotificationService _notificationService = NotificationService();
 
   bool _isInitialized = false;
   bool _minimizeToTray = true;
 
-  /// True while the window is hidden, so the widget tree can be torn down.
   final ValueNotifier<bool> isHidden = ValueNotifier<bool>(false);
 
   static final LinuxService _instance = LinuxService._internal();
@@ -32,7 +28,11 @@ class LinuxService {
     return _instance;
   }
 
-  LinuxService._internal();
+  LinuxService._internal() {
+    if (Platform.isLinux) {
+      _setupWindowEventChannel();
+    }
+  }
 
   Future<void> initialize({
     required bool minimizeToTray,
@@ -55,7 +55,7 @@ class LinuxService {
 
       await _initSystemTray(appTitle ?? 'GalleVR');
 
-      _setupWindowEventChannel();
+      await _windowChannel.invokeMethod('updateMinimizeToTray', minimizeToTray);
 
       _isInitialized = true;
       developer.log('Linux service initialized', name: 'LinuxService');
@@ -122,6 +122,7 @@ class LinuxService {
 
   void updateMinimizeToTray(bool minimizeToTray) {
     _minimizeToTray = minimizeToTray;
+    _windowChannel.invokeMethod('updateMinimizeToTray', minimizeToTray);
   }
 
   Future<bool> handleWindowClose({bool forceExit = false}) async {
@@ -163,43 +164,37 @@ class LinuxService {
   }
 
   Future<void> showWindow() async {
-    if (!Platform.isLinux || !_isInitialized) return;
-    _appWindow.show();
+    if (!Platform.isLinux) return;
+    MemoryManager.restoreUiResources();
     isHidden.value = false;
-
-    ImageCacheService.applyMemoryLimits();
+    await _windowChannel.invokeMethod('showWindow');
   }
 
-  Future<void> hideWindow({bool showNotification = false}) async {
-    if (!Platform.isLinux || !_isInitialized) return;
+  Future<void> hideWindow({
+    bool showNotification = false,
+    bool alreadyHiddenNatively = false,
+  }) async {
+    if (!Platform.isLinux) return;
 
     isHidden.value = true;
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    _appWindow.hide();
-
-    try {
-      PaintingBinding.instance.imageCache.maximumSize = 0;
-      PaintingBinding.instance.imageCache.maximumSizeBytes = 0;
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-      PaintingBinding.instance.handleMemoryPressure();
-      developer.log(
-        'Purged UI image cache and triggered low-memory reclamation',
-        name: 'LinuxService',
-      );
-    } catch (memErr) {
-      developer.log('Error purging memory: $memErr', name: 'LinuxService');
+    if (!alreadyHiddenNatively) {
+      await _windowChannel.invokeMethod('hideWindow');
     }
 
-    try {
-      _trimHeap();
-    } catch (trimErr) {
-      developer.log('Heap trim skipped: $trimErr', name: 'LinuxService');
-    }
+    await trimMemory();
 
     if (showNotification) {
       await _notificationService.showMinimizedNotification();
+    }
+  }
+
+  Future<void> trimMemory() async {
+    if (!Platform.isLinux) return;
+    await MemoryManager.purgeUiResources();
+    try {
+      await _windowChannel.invokeMethod('trimMemory');
+    } catch (e) {
+      developer.log('Native heap trim skipped: $e', name: 'LinuxService');
     }
   }
 
@@ -216,48 +211,15 @@ class LinuxService {
         name: 'LinuxService',
       );
 
-      if (call.method == 'onWindowHidden' && !isHidden.value) {
-        developer.log(
-          'Executing central hideWindow pipeline from native intercept...',
-          name: 'LinuxService',
-        );
-        await hideWindow(showNotification: true);
-      }
-
-      if (call.method == 'onWindowMinimized' && !isHidden.value) {
-        developer.log(
-          'Window minimized: Virtualizing UI tree and reclaiming memory...',
-          name: 'LinuxService',
-        );
+      if (call.method == 'onWindowHidden') {
+        await hideWindow(showNotification: true, alreadyHiddenNatively: true);
+      } else if (call.method == 'onWindowCloseRequest') {
+        await exitApplication();
+      } else if (call.method == 'onWindowMinimized') {
         isHidden.value = true;
-
-        try {
-          PaintingBinding.instance.imageCache.maximumSize = 0;
-          PaintingBinding.instance.imageCache.maximumSizeBytes = 0;
-          PaintingBinding.instance.imageCache.clear();
-          PaintingBinding.instance.imageCache.clearLiveImages();
-          PaintingBinding.instance.handleMemoryPressure();
-        } catch (e) {
-          developer.log('Error purging memory: $e', name: 'LinuxService');
-        }
-
-        try {
-          _trimHeap();
-          developer.log(
-            'Successfully trimmed Linux heap.',
-            name: 'LinuxService',
-          );
-        } catch (e) {
-          developer.log('Heap trim skipped: $e', name: 'LinuxService');
-        }
-      }
-
-      if (call.method == 'onWindowRestored' && isHidden.value) {
-        developer.log(
-          'Window restored: Restoring UI tree...',
-          name: 'LinuxService',
-        );
-        ImageCacheService.applyMemoryLimits();
+        await trimMemory();
+      } else if (call.method == 'onWindowRestored') {
+        MemoryManager.restoreUiResources();
         isHidden.value = false;
       }
 
@@ -268,14 +230,5 @@ class LinuxService {
       'Window event channel listener bound successfully',
       name: 'LinuxService',
     );
-  }
-
-  void _trimHeap() {
-    final libc = DynamicLibrary.open('libc.so.6');
-    final mallocTrim = libc
-        .lookupFunction<Int32 Function(IntPtr), int Function(int)>(
-          'malloc_trim',
-        );
-    mallocTrim(0);
   }
 }

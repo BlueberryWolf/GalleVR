@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import '../controllers/photos_controller.dart';
 import 'photos/widgets/photo_grid_item.dart';
@@ -128,7 +127,8 @@ class PhotosScreenState extends State<PhotosScreen> {
                   ),
                 ),
               ),
-              _buildSelectionBar(state),
+              if (state.selectedPhotoPaths.isNotEmpty)
+                _buildSelectionBar(state),
             ],
           );
         },
@@ -434,7 +434,6 @@ class _ThrottledGridState extends State<_ThrottledGrid> {
       ),
       delegate: SliverChildBuilderDelegate(
         (context, index) {
-          // loading skeletons
           if (widget.state.isLoading && widget.state.displayedPhotos.isEmpty) {
             return PhotoGridItem.skeleton();
           }

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../data/models/config_model.dart';
 import '../../data/repositories/config_repository.dart';
@@ -34,8 +33,8 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   bool _showTOSModal = false;
   bool _isCheckingTOS = false;
 
-  String? _appVersion;
   String? _latestVersion;
+  StreamSubscription<ConfigModel>? _configSubscription;
   StreamSubscription<bool>? _updateSubscription;
 
   bool _isOffline = false;
@@ -49,7 +48,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _appServiceManager.configStream.listen((config) {
+    _configSubscription = _appServiceManager.configStream.listen((config) {
       if (config.uploadEnabled && _wasUploadDisabledByTOS) {
         _showTOSPromptAndDisableUpload(config);
       }
@@ -69,25 +68,9 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       }
     });
 
-    _loadAppVersion();
-
     _checkTOSStatus();
 
     _startConnectivityMonitoring();
-  }
-
-  Future<void> _loadAppVersion() async {
-    try {
-      final packageInfo = await PackageInfo.fromPlatform();
-      if (mounted) {
-        setState(() {
-          _appVersion = packageInfo.version;
-        });
-      }
-      developer.log('App version loaded: $_appVersion', name: 'AppWrapper');
-    } catch (e) {
-      developer.log('Error loading app version: $e', name: 'AppWrapper');
-    }
   }
 
   String? _lastNotifiedVersion;
@@ -172,6 +155,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _configSubscription?.cancel();
     _updateSubscription?.cancel();
     _connectivitySubscription?.cancel();
     ConnectivityService().stopMonitoring();
@@ -366,7 +350,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
 
   Widget _buildOfflineBanner() {
     final double bannerHeight = 60.0;
-    final double topPadding = MediaQuery.of(context).padding.top;
+    final double topPadding = MediaQuery.paddingOf(context).top;
 
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 300),
@@ -466,7 +450,7 @@ class _AppWrapperState extends State<AppWrapper> with WidgetsBindingObserver {
       children: [
         widget.child,
 
-        _buildOfflineBanner(),
+        if (_isOffline) _buildOfflineBanner(),
 
         if (_showTOSModal)
           TOSModal(
