@@ -10,6 +10,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'core/image/image_cache_service.dart';
 import 'core/services/linux_service.dart';
 import 'core/services/memory_manager.dart';
+import 'core/services/prefs_sanitizer.dart';
 import 'core/services/windows_service.dart';
 import 'data/services/app_service_manager.dart';
 import 'presentation/screens/home_screen.dart';
@@ -27,6 +28,7 @@ class AppArgs {
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  await sanitizeSharedPreferencesFile();
   ImageCacheService.applyMemoryLimits();
   if (Platform.isAndroid || Platform.isIOS) {
     FlutterForegroundTask.initCommunicationPort();

@@ -342,10 +342,21 @@ class _VerificationScreenState extends State<VerificationScreen> {
       );
     }
 
-    if (widget.isLinkMode) {
-      await _vrchatService.saveAuthDataSecondary(finalAuth);
-    } else {
-      await _vrchatService.saveAuthData(finalAuth);
+    final saved =
+        widget.isLinkMode
+            ? await _vrchatService.saveAuthDataSecondary(finalAuth)
+            : await _vrchatService.saveAuthData(finalAuth);
+    if (!saved) {
+      if (mounted) {
+        setState(() {
+          if (_selectedMethod == VerificationMethod.manual) {
+            _manualVerificationStep = 0;
+          }
+          _errorMessage =
+              'Could not save your login locally. Check folder permissions or antivirus settings and try again.';
+        });
+      }
+      return;
     }
     await AppServiceManager().refreshAuth();
     await _vrchatService.setAgeVerified(true);

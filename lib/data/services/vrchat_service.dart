@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/platform/platform_service.dart';
 import '../../core/platform/platform_service_factory.dart';
+import '../../core/services/prefs_sanitizer.dart';
 import '../models/verification_models.dart';
 import '../models/photo_metadata.dart';
 import '../models/log_metadata.dart';
@@ -1207,14 +1208,25 @@ class VRChatService {
     }
   }
 
+  Future<SharedPreferences> _getPrefs() async {
+    try {
+      return await SharedPreferences.getInstance();
+    } catch (e) {
+      if (io.Platform.isWindows || io.Platform.isLinux) {
+        await sanitizeSharedPreferencesFile();
+        return await SharedPreferences.getInstance();
+      }
+      rethrow;
+    }
+  }
+
   Future<bool> saveAuthData(AuthData authData) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
+      final prefs = await _getPrefs();
+      return await prefs.setString(
         'gallevr_auth_data',
         json.encode(authData.toJson()),
       );
-      return true;
     } catch (e) {
       developer.log('Error saving auth data: $e', name: 'VRChatService');
       return false;
@@ -1223,12 +1235,11 @@ class VRChatService {
 
   Future<bool> saveAuthDataSecondary(AuthData authData) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
+      final prefs = await _getPrefs();
+      return await prefs.setString(
         'gallevr_auth_data_secondary',
         json.encode(authData.toJson()),
       );
-      return true;
     } catch (e) {
       developer.log(
         'Error saving secondary auth data: $e',
@@ -1240,7 +1251,7 @@ class VRChatService {
 
   Future<AuthData?> loadAuthData() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       final authDataJson = prefs.getString('gallevr_auth_data');
 
       if (authDataJson == null) {
@@ -1256,7 +1267,7 @@ class VRChatService {
 
   Future<AuthData?> loadAuthDataSecondary() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       final authDataJson = prefs.getString('gallevr_auth_data_secondary');
 
       if (authDataJson == null) {
@@ -1275,9 +1286,8 @@ class VRChatService {
 
   Future<bool> setAgeVerified(bool verified) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('gallevr_age_verified', verified);
-      return true;
+      final prefs = await _getPrefs();
+      return await prefs.setBool('gallevr_age_verified', verified);
     } catch (e) {
       developer.log('Error saving age verification: $e', name: 'VRChatService');
       return false;
@@ -1286,7 +1296,7 @@ class VRChatService {
 
   Future<bool> loadAgeVerified() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       final isVerified = prefs.getBool('gallevr_age_verified') ?? false;
 
       if (!isVerified) {
