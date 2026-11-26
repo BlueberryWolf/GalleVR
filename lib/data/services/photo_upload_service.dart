@@ -48,13 +48,6 @@ class PhotoUploadService {
     );
 
     try {
-      if (!config.uploadEnabled) {
-        final error = 'Photo uploading is disabled in settings';
-        developer.log(error, name: 'PhotoUploadService');
-        PhotoEventService().notifyError('upload', error, photoPath: photoPath);
-        return false;
-      }
-
       PhotoMetadata photoMetadata =
           metadata ?? _createPhotoMetadata(photoPath, logMetadata);
 

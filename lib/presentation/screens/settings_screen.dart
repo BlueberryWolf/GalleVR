@@ -769,10 +769,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               tooltip: 'Copy gallery link after upload',
               value: _config!.autoCopyGalleryUrl,
               onChanged:
-                  _config!.uploadEnabled
-                      ? (v) =>
-                          _saveConfig(_config!.copyWith(autoCopyGalleryUrl: v))
-                      : null,
+                  (v) => _saveConfig(_config!.copyWith(autoCopyGalleryUrl: v)),
             ),
           ],
         ),
